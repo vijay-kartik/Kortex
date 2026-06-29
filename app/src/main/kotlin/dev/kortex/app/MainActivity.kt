@@ -1,18 +1,53 @@
 package dev.kortex.app
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -21,14 +56,22 @@ import dev.kortex.core.state.Message
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent { MaterialTheme { ChatScreen() } }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(vm: ChatViewModel = viewModel()) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+
+    // Keep the latest message in view as the conversation grows.
+    LaunchedEffect(ui.turns.size) {
+        if (ui.turns.isNotEmpty()) listState.animateScrollToItem(ui.turns.lastIndex)
+    }
 
     ui.pendingApproval?.let { pending ->
         AlertDialog(
@@ -40,42 +83,112 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
         )
     }
 
-    Column(Modifier.fillMaxSize().padding(12.dp)) {
-        Text("Kortex", style = MaterialTheme.typography.headlineSmall)
-
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(ui.turns) { msg -> MessageBubble(msg) }
-        }
-
-        if (ui.trace.isNotEmpty()) {
-            Text("trace", style = MaterialTheme.typography.labelSmall)
-            Column(Modifier.heightIn(max = 100.dp).verticalScroll(rememberScrollState())) {
-                ui.trace.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Kortex") }) },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)   // status bar (top) + navigation bar (bottom) insets
+                .imePadding()            // lift the input above the keyboard
+                .padding(horizontal = 12.dp),
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                items(ui.turns) { msg -> MessageBubble(msg) }
             }
-        }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            BasicTextField(
-                value = input,
-                onValueChange = { input = it },
-                modifier = Modifier.weight(1f).padding(8.dp),
-            )
-            Button(
-                enabled = !ui.busy,
-                onClick = { vm.send(input); input = "" },
-            ) { Text(if (ui.busy) "..." else "Send") }
+            if (ui.trace.isNotEmpty()) {
+                Text("trace", style = MaterialTheme.typography.labelSmall)
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 100.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = 8.dp),
+                ) {
+                    ui.trace.forEach { line ->
+                        Text(
+                            line,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
+            if (ui.busy) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text(ui.status ?: "Working…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Ask Kortex anything…") },
+                    enabled = !ui.busy,
+                    singleLine = false,
+                    maxLines = 4,
+                )
+                Button(
+                    enabled = !ui.busy && input.isNotBlank(),
+                    onClick = { vm.send(input); input = "" },
+                ) { Text(if (ui.busy) "…" else "Send") }
+            }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(msg: Message) {
     val isUser = msg.role == Message.Role.USER
-    Surface(
-        color = if (isUser) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.medium,
+    val clipboard = LocalClipboardManager.current
+    val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
-        Text(msg.content, Modifier.padding(10.dp))
+        Surface(
+            color = if (isUser) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier
+                .widthIn(max = 320.dp)
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = {
+                        // Long-press (deep click) to copy the bubble's text to the clipboard.
+                        clipboard.setText(AnnotatedString(msg.content))
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                    },
+                ),
+        ) {
+            Text(msg.content, Modifier.padding(12.dp))
+        }
     }
 }

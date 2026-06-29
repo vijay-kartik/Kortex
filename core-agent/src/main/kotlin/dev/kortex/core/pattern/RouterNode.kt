@@ -19,6 +19,7 @@ class RouterNode(
     private val model: String = Models.FAST,
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
+        ctx.onProgress.report("Analyzing your request…")
         val query = state.messages.lastOrNull { it.role == Message.Role.USER }?.content.orEmpty()
         val prompt = """
             Classify the user request into exactly one of: ${routes.joinToString(", ")}.

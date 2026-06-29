@@ -21,6 +21,7 @@ class ReActNode(
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
         var s = state
         repeat(maxIterations) {
+            ctx.onProgress.report("Thinking…")
             val resp = ctx.llm.complete(
                 LlmRequest(model = model, messages = s.messages, tools = ctx.tools.all())
             )
@@ -31,6 +32,7 @@ class ReActNode(
             if (!resp.wantsTools) return s.copy(done = true)
 
             for (call in resp.message.toolCalls) {
+                ctx.onProgress.report("Tool usage: ${call.name}")
                 val tool = ctx.tools.get(call.name)
                 val result = if (tool == null) {
                     dev.kortex.core.tool.ToolResult(false, "Unknown tool '${call.name}'")

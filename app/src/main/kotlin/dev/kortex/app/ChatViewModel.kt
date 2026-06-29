@@ -5,14 +5,13 @@ import androidx.lifecycle.viewModelScope
 import dev.kortex.core.Agent
 import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Approver
+import dev.kortex.core.graph.ProgressListener
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.OpenAiProvider
 import dev.kortex.core.state.Message
-import dev.kortex.core.tool.RiskLevel
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
-import dev.kortex.core.tool.ToolResult
-import dev.kortex.core.tool.tool
+import dev.kortex.core.tool.builtin.defaultTools
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +23,8 @@ data class ChatUi(
     val turns: List<Message> = emptyList(),
     val trace: List<String> = emptyList(),
     val busy: Boolean = false,
+    /** Live, human-readable status of the current step (e.g. "Tool usage: web_search"). */
+    val status: String? = null,
     /** Set when a HIGH-risk tool is awaiting approval (pattern 13). */
     val pendingApproval: String? = null,
 )
@@ -31,19 +32,13 @@ data class ChatUi(
 /**
  * Wires the pure-Kotlin [Agent] to Compose. The [Approver] bridges the agent's
  * Human-in-the-Loop pause to a UI dialog: the agent suspends until [resolveApproval].
- *
- * NOTE: uses a fake/echo provider until the Claude Ktor client lands in Phase 1.
+ * The agent runs against OpenAI (or the stub if no key) with the default tool set.
  */
 class ChatViewModel : ViewModel() {
     private val _ui = MutableStateFlow(ChatUi())
     val ui: StateFlow<ChatUi> = _ui.asStateFlow()
 
     private var approvalGate: CompletableDeferred<Boolean>? = null
-
-    private val sampleTool = tool("device_time", "Get the current device time") {
-        risk(RiskLevel.LOW)
-        execute { ToolResult(true, java.time.LocalDateTime.now().toString()) }
-    }
 
     // OpenAI is the default provider. Falls back to the stub if no key is configured
     // in local.properties (OPENAI_API_KEY=...), so the app still runs out of the box.
@@ -54,12 +49,13 @@ class ChatViewModel : ViewModel() {
 
     private val ctx = AgentContext(
         llm = provider,
-        tools = ToolRegistry(listOf(sampleTool)),
+        tools = ToolRegistry(defaultTools()),   // calculator, web_search, current_time
         governor = ToolGovernor(onAudit = { /* TODO Phase 3: persist to Room */ }),
         approver = Approver { name, args ->
             _ui.update { it.copy(pendingApproval = "$name $args") }
             CompletableDeferred<Boolean>().also { approvalGate = it }.await()
         },
+        onProgress = ProgressListener { s -> _ui.update { it.copy(status = s) } },
     )
 
     fun resolveApproval(approved: Boolean) {
@@ -71,7 +67,7 @@ class ChatViewModel : ViewModel() {
     fun send(query: String) {
         if (query.isBlank()) return
         _ui.update {
-            it.copy(turns = it.turns + Message(Message.Role.USER, query), busy = true)
+            it.copy(turns = it.turns + Message(Message.Role.USER, query), busy = true, status = "Thinking…")
         }
         viewModelScope.launch {
             val result = Agent(ctx).ask(query)
@@ -80,6 +76,7 @@ class ChatViewModel : ViewModel() {
                     turns = cur.turns + result.messages.filter { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() },
                     trace = result.trace.map { "${it.node}:${it.kind} ${it.detail}" },
                     busy = false,
+                    status = null,
                 )
             }
         }

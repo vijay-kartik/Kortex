@@ -90,9 +90,9 @@ kortex/
                        Android-specific tools, secure key storage, on-device model.
 ```
 
-**Default LLM provider: Anthropic Claude** — `claude-opus-4-8` for hard reasoning,
-`claude-haiku-4-5` for routing/cheap steps (ties into pattern 16). Provider is an
-interface, so OpenAI/Gemini/on-device can drop in.
+**Default LLM provider: OpenAI** — `gpt-4o` for hard reasoning, `gpt-4o-mini` for
+routing/cheap steps (ties into pattern 16). Provider is an interface (`LlmProvider`),
+so Claude/Gemini/on-device can drop in.
 
 ---
 
@@ -143,9 +143,10 @@ interface LlmProvider {
 Gradle multi-module, version catalog, `core-agent` interfaces, Android `app` skeleton
 with a Compose chat screen wired to a stub agent. *(Builds once a JDK + Android SDK are present.)*
 
-**Phase 1 — Single agent that works**
-Claude provider (Ktor) + function calling. A **ReAct loop** node (pattern 17) with 1–2
-real tools (calculator, web search). End-to-end: type a query → see tool calls → answer.
+**Phase 1 — Single agent that works** *(in progress)*
+OpenAI provider (Ktor, Chat Completions) + function calling — done. Next: 1–2 real tools
+(calculator, web search) wired into the ReAct loop (pattern 17). End-to-end: type a
+query → see tool calls → answer.
 
 **Phase 2 — Graph engine + core patterns**
 `AgentGraph` with cycles. Implement Chaining (1), Routing (2), Parallelization (3),
@@ -186,8 +187,8 @@ Turbine (Flow tests) · optional MediaPipe LLM Inference / Gemini Nano for on-de
 ## 8. Open decisions (defaults chosen, change anytime)
 
 - **Project name:** "Kortex" (placeholder).
-- **Primary model:** Claude (`opus-4-8` reasoning / `haiku-4-5` cheap). On-device model
-  is Phase 6, not blocking.
+- **Primary model:** OpenAI (`gpt-4o` reasoning / `gpt-4o-mini` cheap) — user has an
+  OpenAI key. On-device model is Phase 6, not blocking.
 - **min SDK 26 / target latest.** Compose-only UI.
 - **Where keys live:** Android Keystore via EncryptedSharedPreferences; never in code.
 ```

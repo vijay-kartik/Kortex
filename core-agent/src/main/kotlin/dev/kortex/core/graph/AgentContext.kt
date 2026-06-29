@@ -13,7 +13,7 @@ class AgentContext(
     val tools: ToolRegistry,
     val governor: ToolGovernor,
     /** Hook for Human-in-the-Loop (pattern 13): suspends until the UI approves/denies. */
-    val approver: Approver = Approver { true },
+    val approver: Approver = Approver { _, _ -> true },
 )
 
 /** Returns true if the high-risk action is approved. The Android app shows a Compose sheet. */

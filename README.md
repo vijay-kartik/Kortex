@@ -12,15 +12,20 @@ full architecture, the 21-pattern → component map, and the phased roadmap.
 - `app/` — Android (Jetpack Compose) chat UI + trace inspector, ViewModel, the
   Human-in-the-Loop approval dialog, and a stub LLM provider for Phase 0.
 
-## Status: Phase 0 (scaffold)
-The graph runs end-to-end against a stub provider. **Phase 1** adds the real Claude
-client (Ktor, function calling). The build targets Android Studio / a JDK 17 + Android
-SDK environment.
+## Status: Phase 1 (real LLM)
+The graph runs end-to-end through the **OpenAI** provider (`OpenAiProvider`, Ktor + Chat
+Completions function calling). Default models: `gpt-4o` (reasoning) / `gpt-4o-mini`
+(routing). The provider is behind the `LlmProvider` interface, so Claude/Gemini/on-device
+can be swapped in. Without a key, the app falls back to a stub so it still launches.
 
 ## Building
-Open in Android Studio (Ladybug+), let it sync, run the `app` config on a device/emulator.
-The Gradle wrapper is not committed yet — generate it once with a local Gradle:
-`gradle wrapper --gradle-version 8.11` (needs a JDK installed).
+1. Add your key to `local.properties` (gitignored):
+   ```
+   OPENAI_API_KEY=sk-...
+   ```
+2. Open in Android Studio (Ladybug+), let it sync, run the `app` config on a device/emulator.
+3. The Gradle wrapper is not committed yet — generate it once with a local Gradle:
+   `gradle wrapper --gradle-version 8.11` (needs a JDK installed).
 
 ## Tests
 `./gradlew :core-agent:test` — exercises Router → ReAct → tool → governor with a

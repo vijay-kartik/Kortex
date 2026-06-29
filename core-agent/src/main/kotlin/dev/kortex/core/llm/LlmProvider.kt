@@ -5,9 +5,9 @@ import dev.kortex.core.tool.Tool
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Provider-agnostic LLM interface. Default impl targets Anthropic Claude
- * (claude-opus-4-8 for hard reasoning, claude-haiku-4-5 for cheap routing — pattern 16),
- * but OpenAI / Gemini / on-device (Gemini Nano) can implement the same contract.
+ * Provider-agnostic LLM interface. Default impl is [OpenAiProvider]
+ * (gpt-4o for hard reasoning, gpt-4o-mini for cheap routing — pattern 16),
+ * but Claude / Gemini / on-device (Gemini Nano) can implement the same contract.
  */
 interface LlmProvider {
     suspend fun complete(req: LlmRequest): LlmResponse
@@ -36,8 +36,8 @@ sealed interface LlmChunk {
     data object Done : LlmChunk
 }
 
-/** Catalog of model ids we route between. */
+/** Catalog of model ids we route between (OpenAI defaults — change in one place). */
 object Models {
-    const val REASONING = "claude-opus-4-8"
-    const val FAST = "claude-haiku-4-5-20251001"
+    const val REASONING = "gpt-4o"
+    const val FAST = "gpt-4o-mini"
 }

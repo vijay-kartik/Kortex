@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import dev.kortex.core.Agent
 import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Approver
+import dev.kortex.core.llm.LlmProvider
+import dev.kortex.core.llm.OpenAiProvider
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.RiskLevel
 import dev.kortex.core.tool.ToolGovernor
@@ -43,8 +45,15 @@ class ChatViewModel : ViewModel() {
         execute { ToolResult(true, java.time.LocalDateTime.now().toString()) }
     }
 
+    // OpenAI is the default provider. Falls back to the stub if no key is configured
+    // in local.properties (OPENAI_API_KEY=...), so the app still runs out of the box.
+    private val provider: LlmProvider =
+        BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
+            ?.let { OpenAiProvider(apiKey = it) }
+            ?: StubLlmProvider()
+
     private val ctx = AgentContext(
-        llm = StubLlmProvider(),                       // TODO Phase 1: ClaudeProvider
+        llm = provider,
         tools = ToolRegistry(listOf(sampleTool)),
         governor = ToolGovernor(onAudit = { /* TODO Phase 3: persist to Room */ }),
         approver = Approver { name, args ->

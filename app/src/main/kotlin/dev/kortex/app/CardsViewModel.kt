@@ -23,6 +23,7 @@ data class CardsUi(
     val cards: List<ActionCard> = emptyList(),
     val busy: Boolean = false,
     val status: String? = null,
+    val testSignalText: String = "Hey! Are we still on for dinner Friday at 7? Rahul might join too.",
 )
 
 /**
@@ -39,6 +40,10 @@ class CardsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refresh() = viewModelScope.launch {
         _ui.update { it.copy(cards = container.cardDao.feed().map { e -> e.toDomain() }) }
+    }
+
+    fun onTestSignalTextChanged(text: String) {
+        _ui.update { it.copy(testSignalText = text) }
     }
 
     fun syncContacts() = viewModelScope.launch {
@@ -78,7 +83,7 @@ class CardsViewModel(app: Application) : AndroidViewModel(app) {
             kind = SignalKind.MESSAGE,
             direction = Direction.INCOMING,
             senderHandle = handle,
-            content = "Hey! Are we still on for dinner Friday at 7? Rahul might join too.",
+            content = _ui.value.testSignalText,
             timestampMillis = System.currentTimeMillis(),
         )
         val outcome = when (val r = container.coordinator.onSignal(signal)) {

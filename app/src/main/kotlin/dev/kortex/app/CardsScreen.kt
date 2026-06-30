@@ -20,6 +20,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,6 +64,15 @@ fun CardsScreen(modifier: Modifier = Modifier, vm: CardsViewModel = viewModel())
     }
 
     Column(modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+        OutlinedTextField(
+            value = ui.testSignalText,
+            onValueChange = { vm.onTestSignalTextChanged(it) },
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            label = { Text("Test Signal Content") },
+            enabled = !ui.busy,
+            maxLines = 3
+        )
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

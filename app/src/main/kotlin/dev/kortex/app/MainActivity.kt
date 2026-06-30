@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun RootScreen() {
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Cards", "Chat")
+    val tabs = listOf("Cards", "Chat", "Context")
 
     Scaffold(
         topBar = {
@@ -86,7 +86,8 @@ fun RootScreen() {
         Box(Modifier.padding(innerPadding)) {
             when (tab) {
                 0 -> CardsScreen()
-                else -> ChatScreen()
+                1 -> ChatScreen()
+                else -> ContextScreen()
             }
         }
     }

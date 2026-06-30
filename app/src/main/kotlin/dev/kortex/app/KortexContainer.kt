@@ -34,9 +34,9 @@ class KortexContainer(context: Context) {
     val conversationDao get() = database.conversationDao()
     val cardDao get() = database.cardDao()
     val memoryDao get() = database.memoryDao()
-    private val graphEntityDao get() = database.graphEntityDao()
-    private val mentionDao get() = database.mentionDao()
-    private val relationDao get() = database.relationDao()
+    val graphEntityDao get() = database.graphEntityDao()
+    val mentionDao get() = database.mentionDao()
+    val relationDao get() = database.relationDao()
 
     // LLM provider — OpenAI when a key is configured, else the stub (so the app still runs).
     val llm: LlmProvider by lazy {

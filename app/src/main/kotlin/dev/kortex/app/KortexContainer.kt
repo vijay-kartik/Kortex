@@ -15,6 +15,9 @@ import dev.kortex.core.ambient.SignalIngestor
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.OpenAiProvider
 import dev.kortex.core.store.KortexDatabase
+import dev.kortex.core.tool.ToolRegistry
+import dev.kortex.core.tool.builtin.defaultTools
+import dev.kortex.app.tools.whatsappTool
 
 /**
  * Manual dependency container (no DI framework — fewer moving parts). Built once in
@@ -68,4 +71,8 @@ class KortexContainer(context: Context) {
     }
 
     val contactSeeder by lazy { ContactSeeder(appContext, contactDao) }
+
+    val toolRegistry by lazy {
+        ToolRegistry(defaultTools() + whatsappTool(appContext))
+    }
 }

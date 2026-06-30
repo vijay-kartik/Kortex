@@ -1,6 +1,7 @@
 package dev.kortex.app
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.kortex.core.Agent
 import dev.kortex.core.graph.AgentContext
@@ -10,8 +11,6 @@ import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.OpenAiProvider
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.ToolGovernor
-import dev.kortex.core.tool.ToolRegistry
-import dev.kortex.core.tool.builtin.defaultTools
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +33,9 @@ data class ChatUi(
  * Human-in-the-Loop pause to a UI dialog: the agent suspends until [resolveApproval].
  * The agent runs against OpenAI (or the stub if no key) with the default tool set.
  */
-class ChatViewModel : ViewModel() {
+class ChatViewModel(app: Application) : AndroidViewModel(app) {
+    private val container get() = getApplication<KortexApp>().container
+
     private val _ui = MutableStateFlow(ChatUi())
     val ui: StateFlow<ChatUi> = _ui.asStateFlow()
 
@@ -49,7 +50,7 @@ class ChatViewModel : ViewModel() {
 
     private val ctx = AgentContext(
         llm = provider,
-        tools = ToolRegistry(defaultTools()),   // calculator, web_search, current_time
+        tools = container.toolRegistry,
         governor = ToolGovernor(onAudit = { /* TODO Phase 3: persist to Room */ }),
         approver = Approver { name, args ->
             _ui.update { it.copy(pendingApproval = "$name $args") }

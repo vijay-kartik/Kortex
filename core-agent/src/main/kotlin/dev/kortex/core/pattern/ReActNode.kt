@@ -43,7 +43,7 @@ class ReActNode(
                 }
                 s = s.copy(budget = s.budget.copy(toolCallsMade = s.budget.toolCallsMade + 1))
                     .withMessage(Message(Message.Role.TOOL, result.content, toolCallId = call.id))
-                    .trace("react", "tool", "${call.name}->${result.ok}")
+                    .trace("react", "tool", "${call.name}->${result.ok} content=${result.content.take(50)}")
             }
             if (s.budget.exhausted) return s.copy(done = true)
         }

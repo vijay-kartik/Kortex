@@ -78,13 +78,15 @@ fun CardsScreen(modifier: Modifier = Modifier, vm: CardsViewModel = viewModel())
         ) {
             val selectedContact = ui.contacts.find { it.id == ui.selectedContactId }
             OutlinedTextField(
-                value = selectedContact?.displayName ?: "Select a contact",
-                onValueChange = {},
-                readOnly = true,
+                value = if (expanded) ui.contactQuery else (selectedContact?.displayName ?: ""),
+                onValueChange = { 
+                    vm.onContactQueryChanged(it)
+                    expanded = true
+                },
                 label = { Text("Sender") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryEditable).fillMaxWidth()
             )
 
             ExposedDropdownMenu(

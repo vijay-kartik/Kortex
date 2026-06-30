@@ -11,6 +11,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts")
     suspend fun all(): List<ContactEntity>
 
+    @Query("SELECT * FROM contacts WHERE displayName LIKE '%' || :query || '%'")
+    suspend fun search(query: String): List<ContactEntity>
+
     @Query("SELECT * FROM contacts WHERE id = :id")
     suspend fun byId(id: String): ContactEntity?
 

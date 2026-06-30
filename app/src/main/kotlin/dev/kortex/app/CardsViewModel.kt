@@ -27,6 +27,7 @@ data class CardsUi(
     val testSignalText: String = "Hey! Are we still on for dinner Friday at 7? Rahul might join too.",
     val contacts: List<ContactRef> = emptyList(),
     val selectedContactId: String? = null,
+    val contactQuery: String = "",
 )
 
 /**
@@ -54,7 +55,22 @@ class CardsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onContactSelected(contactId: String) {
-        _ui.update { it.copy(selectedContactId = contactId) }
+        _ui.update { it.copy(selectedContactId = contactId, contactQuery = "") }
+        // Optionally reload all contacts so the list is fresh next time
+        viewModelScope.launch {
+            val contacts = container.contactDao.all().map { it.toDomain() }
+            _ui.update { it.copy(contacts = contacts) }
+        }
+    }
+
+    fun onContactQueryChanged(query: String) = viewModelScope.launch {
+        _ui.update { it.copy(contactQuery = query) }
+        val results = if (query.isBlank()) {
+            container.contactDao.all()
+        } else {
+            container.contactDao.search(query)
+        }
+        _ui.update { it.copy(contacts = results.map { it.toDomain() }) }
     }
 
     fun onTestSignalTextChanged(text: String) {

@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 data class ContextUi(
     val contacts: List<ContactRef> = emptyList(),
     val selectedContactId: String? = null,
+    val contactQuery: String = "",
     val conversation: Conversation? = null,
     val memories: List<MemoryEntry> = emptyList(),
     val entities: List<Entity> = emptyList(),
@@ -37,8 +38,22 @@ class ContextViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onContactSelected(contactId: String) {
-        _ui.update { it.copy(selectedContactId = contactId) }
-        viewModelScope.launch { loadContext(contactId) }
+        _ui.update { it.copy(selectedContactId = contactId, contactQuery = "") }
+        viewModelScope.launch { 
+            loadContext(contactId)
+            val contacts = container.contactDao.all().map { it.toDomain() }
+            _ui.update { it.copy(contacts = contacts) }
+        }
+    }
+
+    fun onContactQueryChanged(query: String) = viewModelScope.launch {
+        _ui.update { it.copy(contactQuery = query) }
+        val results = if (query.isBlank()) {
+            container.contactDao.all()
+        } else {
+            container.contactDao.search(query)
+        }
+        _ui.update { it.copy(contacts = results.map { it.toDomain() }) }
     }
 
     private suspend fun loadContext(contactId: String?) {

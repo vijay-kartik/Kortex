@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dev.kortex.core.ambient.ActionCard
 import dev.kortex.core.ambient.CardAction
 import dev.kortex.core.ambient.CardStatus
+import dev.kortex.core.ambient.ContactRef
 import dev.kortex.core.ambient.CoordinationResult
 import dev.kortex.core.ambient.Direction
 import dev.kortex.core.ambient.Signal
@@ -24,6 +25,8 @@ data class CardsUi(
     val busy: Boolean = false,
     val status: String? = null,
     val testSignalText: String = "Hey! Are we still on for dinner Friday at 7? Rahul might join too.",
+    val contacts: List<ContactRef> = emptyList(),
+    val selectedContactId: String? = null,
 )
 
 /**
@@ -39,7 +42,19 @@ class CardsViewModel(app: Application) : AndroidViewModel(app) {
     val ui: StateFlow<CardsUi> = _ui.asStateFlow()
 
     fun refresh() = viewModelScope.launch {
-        _ui.update { it.copy(cards = container.cardDao.feed().map { e -> e.toDomain() }) }
+        val cards = container.cardDao.feed().map { e -> e.toDomain() }
+        val contacts = container.contactDao.all().map { it.toDomain() }
+        _ui.update {
+            it.copy(
+                cards = cards,
+                contacts = contacts,
+                selectedContactId = it.selectedContactId ?: contacts.firstOrNull()?.id
+            )
+        }
+    }
+
+    fun onContactSelected(contactId: String) {
+        _ui.update { it.copy(selectedContactId = contactId) }
     }
 
     fun onTestSignalTextChanged(text: String) {
@@ -64,19 +79,24 @@ class CardsViewModel(app: Application) : AndroidViewModel(app) {
         refresh()
     }
 
-    /** Dev/testing: push a sample incoming message for the first saved contact through the pipeline. */
+    /** Dev/testing: push a sample incoming message for a specific contact through the pipeline. */
     fun injectTestSignal() = viewModelScope.launch {
-        val contact = container.contactDao.all().firstOrNull()
-        if (contact == null) {
+        val contactId = _ui.value.selectedContactId
+        if (contactId == null) {
             _ui.update { it.copy(status = "Sync contacts first") }
             return@launch
         }
-        val handle = contact.toDomain().handles.firstOrNull()
+        val contact = container.contactDao.byId(contactId)?.toDomain()
+        if (contact == null) {
+            _ui.update { it.copy(status = "Contact not found") }
+            return@launch
+        }
+        val handle = contact.handles.firstOrNull()
         if (handle == null) {
             _ui.update { it.copy(status = "Contact has no phone/email handle") }
             return@launch
         }
-        _ui.update { it.copy(busy = true, status = "Analyzing test signal…") }
+        _ui.update { it.copy(busy = true, status = "Analyzing test signal from ${contact.displayName}…") }
         val signal = Signal(
             id = UUID.randomUUID().toString(),
             source = SignalSource(appId = "com.kortex.test", appLabel = "Test"),

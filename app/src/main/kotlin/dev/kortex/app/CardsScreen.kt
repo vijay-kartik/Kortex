@@ -17,7 +17,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -40,10 +45,12 @@ import dev.kortex.core.ambient.requiresApproval
 import dev.kortex.core.ambient.risk
 import dev.kortex.core.tool.RiskLevel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CardsScreen(modifier: Modifier = Modifier, vm: CardsViewModel = viewModel()) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     var pending by remember { mutableStateOf<Pair<ActionCard, CardAction>?>(null) }
+    var expanded by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -64,6 +71,38 @@ fun CardsScreen(modifier: Modifier = Modifier, vm: CardsViewModel = viewModel())
     }
 
     Column(modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded },
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        ) {
+            val selectedContact = ui.contacts.find { it.id == ui.selectedContactId }
+            OutlinedTextField(
+                value = selectedContact?.displayName ?: "Select a contact",
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Sender") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+            )
+
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                ui.contacts.forEach { contact ->
+                    DropdownMenuItem(
+                        text = { Text(contact.displayName) },
+                        onClick = {
+                            vm.onContactSelected(contact.id)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+
         OutlinedTextField(
             value = ui.testSignalText,
             onValueChange = { vm.onTestSignalTextChanged(it) },

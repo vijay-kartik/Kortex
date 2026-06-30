@@ -38,7 +38,10 @@ class AgentGraph internal constructor(
         while (current != END) {
             val node = nodes[current] ?: error("No node '$current' in graph")
             state = node.run(ctx, state).let { it.copy(budget = it.budget.copy(steps = it.budget.steps + 1)) }
-            if (state.done || state.budget.exhausted) break
+            // `done` is informational (a final answer is ready); flow to termination is
+            // controlled by edges to END so downstream nodes (e.g. Reflection) can still run.
+            // Budget is the hard safety stop against runaway loops.
+            if (state.budget.exhausted) break
             current = edges[current]?.firstOrNull { it.condition(state) }?.to
                 ?: error("No outgoing edge from '$current' matched")
         }

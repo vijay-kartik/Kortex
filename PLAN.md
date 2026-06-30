@@ -148,9 +148,11 @@ OpenAI provider (Ktor, Chat Completions) + function calling — done. Next: 1–
 (calculator, web search) wired into the ReAct loop (pattern 17). End-to-end: type a
 query → see tool calls → answer.
 
-**Phase 2 — Graph engine + core patterns**
-`AgentGraph` with cycles. Implement Chaining (1), Routing (2), Parallelization (3),
-Reflection (4). Trace every node for the inspector screen.
+**Phase 2 — Graph engine + core patterns** *(in progress)*
+`AgentGraph` with cycles — done. Routing (2) now branches (simple_qa → DirectAnswerNode,
+else → ReActNode) and Reflection (4) loops react→reflect→react until the critic is
+satisfied or the reflection/budget cap is hit. Every node traces for the inspector
+screen. Remaining: Parallelization (3).
 
 **Phase 3 — Tools, done right**
 `tool { }` DSL, schema generation, `ToolGovernor`, permission mapping, Compose approval

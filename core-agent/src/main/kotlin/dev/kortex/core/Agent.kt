@@ -3,27 +3,44 @@ package dev.kortex.core
 import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.END
 import dev.kortex.core.graph.agentGraph
+import dev.kortex.core.pattern.DirectAnswerNode
 import dev.kortex.core.pattern.ReActNode
+import dev.kortex.core.pattern.ReflectNode
 import dev.kortex.core.pattern.RouterNode
 import dev.kortex.core.state.AgentState
 import dev.kortex.core.state.Goal
 import dev.kortex.core.state.Message
 
 /**
- * Top-level entry point. Builds the default graph (Routing -> ReAct) and runs a query.
- * As more patterns land (Planner, Reflection, Supervisor), they slot in as extra nodes
- * and edges here — the public surface (`ask`) stays the same.
+ * Top-level entry point. Builds the agent graph and runs a query. Patterns compose here:
+ *
+ *   router ──simple_qa──▶ direct ───────────────▶ END        (cheap, no tools)
+ *   router ──else───────▶ react ──▶ reflect ──ok─▶ END        (tool loop + critique)
+ *                                      ▲           │
+ *                                      └──revise───┘           (Reflection cycle)
+ *
+ * Routing (2) picks the strategy; ReAct (5+17) does tool work; Reflection (4) reviews and
+ * loops back until the answer is good or the reflection/budget cap is hit. New patterns
+ * (Planner, Supervisor) slot in as more nodes/edges without changing `ask`.
  */
 class Agent(private val ctx: AgentContext) {
 
     private val graph = agentGraph {
         node("router", RouterNode())
+        node("direct", DirectAnswerNode())
         node("react", ReActNode())
+        node("reflect", ReflectNode())
         entry("router")
-        // Conditional edges (pattern 2). For now every route funnels to ReAct;
-        // "plan" will later route to a PlannerNode, "simple_qa" to a direct-answer node.
-        edge("router", "react")
-        edge("react", END)
+
+        // Routing (pattern 2): branch on the label the router stored in scratch["route"].
+        edge("router", "direct") { it.scratch["route"] == "simple_qa" }
+        edge("router", "react")  // tool_task / plan (fallthrough)
+        edge("direct", END)
+
+        // Reflection (pattern 4): react -> reflect, loop back on "revise", else finish.
+        edge("react", "reflect")
+        edge("reflect", "react") { it.scratch[ReflectNode.VERDICT] == ReflectNode.REVISE }
+        edge("reflect", END)
     }
 
     suspend fun ask(query: String, system: String = DEFAULT_SYSTEM): AgentState {

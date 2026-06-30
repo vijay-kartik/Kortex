@@ -8,13 +8,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -31,12 +32,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -57,18 +61,43 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { MaterialTheme { ChatScreen() } }
+        setContent { MaterialTheme { RootScreen() } }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(vm: ChatViewModel = viewModel()) {
+fun RootScreen() {
+    var tab by remember { mutableIntStateOf(0) }
+    val tabs = listOf("Cards", "Chat")
+
+    Scaffold(
+        topBar = {
+            Column {
+                TopAppBar(title = { Text("Kortex") })
+                TabRow(selectedTabIndex = tab) {
+                    tabs.forEachIndexed { i, title ->
+                        Tab(selected = tab == i, onClick = { tab = i }, text = { Text(title) })
+                    }
+                }
+            }
+        },
+    ) { innerPadding ->
+        Box(Modifier.padding(innerPadding)) {
+            when (tab) {
+                0 -> CardsScreen()
+                else -> ChatScreen()
+            }
+        }
+    }
+}
+
+@Composable
+fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
-    // Keep the latest message in view as the conversation grows.
     LaunchedEffect(ui.turns.size) {
         if (ui.turns.isNotEmpty()) listState.animateScrollToItem(ui.turns.lastIndex)
     }
@@ -83,79 +112,64 @@ fun ChatScreen(vm: ChatViewModel = viewModel()) {
         )
     }
 
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("Kortex") }) },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)   // status bar (top) + navigation bar (bottom) insets
-                .imePadding()            // lift the input above the keyboard
-                .padding(horizontal = 12.dp),
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .imePadding()
+            .padding(horizontal = 12.dp),
+    ) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 8.dp),
-            ) {
-                items(ui.turns) { msg -> MessageBubble(msg) }
-            }
+            items(ui.turns) { msg -> MessageBubble(msg) }
+        }
 
-            if (ui.trace.isNotEmpty()) {
-                Text("trace", style = MaterialTheme.typography.labelSmall)
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 100.dp)
-                        .verticalScroll(rememberScrollState())
-                        .padding(bottom = 8.dp),
-                ) {
-                    ui.trace.forEach { line ->
-                        Text(
-                            line,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-
-            if (ui.busy) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Text(ui.status ?: "Working…", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-
-            Row(
-                modifier = Modifier
+        if (ui.trace.isNotEmpty()) {
+            Text("trace", style = MaterialTheme.typography.labelSmall)
+            Column(
+                Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .heightIn(max = 100.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 8.dp),
+            ) {
+                ui.trace.forEach { line ->
+                    Text(line, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+
+        if (ui.busy) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedTextField(
-                    value = input,
-                    onValueChange = { input = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ask Kortex anything…") },
-                    enabled = !ui.busy,
-                    singleLine = false,
-                    maxLines = 4,
-                )
-                Button(
-                    enabled = !ui.busy && input.isNotBlank(),
-                    onClick = { vm.send(input); input = "" },
-                ) { Text(if (ui.busy) "…" else "Send") }
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(ui.status ?: "Working…", style = MaterialTheme.typography.bodySmall)
             }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Ask Kortex anything…") },
+                enabled = !ui.busy,
+                maxLines = 4,
+            )
+            Button(
+                enabled = !ui.busy && input.isNotBlank(),
+                onClick = { vm.send(input); input = "" },
+            ) { Text(if (ui.busy) "…" else "Send") }
         }
     }
 }
@@ -181,7 +195,6 @@ private fun MessageBubble(msg: Message) {
                 .combinedClickable(
                     onClick = {},
                     onLongClick = {
-                        // Long-press (deep click) to copy the bubble's text to the clipboard.
                         clipboard.setText(AnnotatedString(msg.content))
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()

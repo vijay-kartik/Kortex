@@ -5,6 +5,7 @@ import androidx.room.Room
 import dev.kortex.core.ambient.AmbientAnalyzer
 import dev.kortex.core.ambient.AmbientCoordinator
 import dev.kortex.core.ambient.AmbientTriage
+import dev.kortex.core.ambient.CardActionExecutor
 import dev.kortex.core.ambient.CardGuardrails
 import dev.kortex.core.ambient.IdentityResolver
 import dev.kortex.core.ambient.LlmCardGenerator
@@ -71,6 +72,14 @@ class KortexContainer(context: Context) {
     }
 
     val contactSeeder by lazy { ContactSeeder(appContext, contactDao) }
+
+    /** Executes card actions (governed + audited), with an intent-based handler. */
+    val cardActionExecutor by lazy {
+        CardActionExecutor(
+            handler = IntentActionHandler(appContext, contactDao),
+            onAudit = { /* TODO: persist audit trail */ },
+        )
+    }
 
     val toolRegistry by lazy {
         ToolRegistry(defaultTools() + whatsappTool(appContext))

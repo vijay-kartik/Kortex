@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.kortex.core.ambient.ActionCard
+import dev.kortex.core.ambient.ActionOutcome
 import dev.kortex.core.ambient.CardAction
 import dev.kortex.core.ambient.CardStatus
 import dev.kortex.core.ambient.ContactRef
@@ -88,10 +89,17 @@ class CardsViewModel(app: Application) : AndroidViewModel(app) {
         refresh()
     }
 
-    /** Confirmed execution. TODO: route through CardActionExecutor + ToolGovernor for real side effects. */
+    /**
+     * Executes a card action through the governed [CardActionExecutor]. Risky actions reach
+     * here only after the UI confirm dialog, so we pass approved = true; the executor still
+     * enforces the gate and audits. On success the card is marked ACTED.
+     */
     fun act(card: ActionCard, action: CardAction) = viewModelScope.launch {
-        _ui.update { it.copy(status = "Would: ${action.label}") }
-        container.cardDao.setStatus(card.id, CardStatus.ACTED.name)
+        val outcome = container.cardActionExecutor.execute(card, action, approved = true)
+        _ui.update { it.copy(status = outcome.message) }
+        if (outcome is ActionOutcome.Done) {
+            container.cardDao.setStatus(card.id, CardStatus.ACTED.name)
+        }
         refresh()
     }
 

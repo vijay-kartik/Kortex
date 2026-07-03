@@ -52,6 +52,10 @@ android {
 
 dependencies {
     implementation(project(":core-agent"))
+    implementation(project(":wa"))
+
+    // QR rendering for the WhatsApp linking screen (WhatsAppScreen uses ZXing directly).
+    implementation(libs.zxing.core)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)

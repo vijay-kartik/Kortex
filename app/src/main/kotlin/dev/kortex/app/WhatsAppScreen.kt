@@ -12,8 +12,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -36,7 +40,18 @@ fun WhatsAppScreen(modifier: Modifier = Modifier) {
         Text("WhatsApp", style = MaterialTheme.typography.headlineSmall)
         Text(state.status, style = MaterialTheme.typography.bodyMedium)
 
-        val qr = state.qrCodes.firstOrNull()
+        // The server sends several refs at once; each is only valid for ~20s, so rotate through
+        // them like whatsmeow does. Showing just the first one means a slightly slow scan fails
+        // with no visible reason.
+        val codes = state.qrCodes
+        var index by remember(codes) { mutableIntStateOf(0) }
+        LaunchedEffect(codes) {
+            while (index < codes.size - 1) {
+                delay(20_000)
+                index++
+            }
+        }
+        val qr = codes.getOrNull(index)
         if (qr != null) {
             val bitmap = remember(qr) { qrBitmap(qr, 640) }
             bitmap?.let {

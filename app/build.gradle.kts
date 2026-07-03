@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.ksp)
 }
 
 // Read the OpenAI key from local.properties (gitignored) so secrets never enter VCS.
@@ -62,6 +63,9 @@ dependencies {
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    // WaDatabase (@Database/@Dao in WaStorage.kt) needs Room's codegen, or databaseBuilder
+    // throws "cannot find implementation for WaDatabase" at runtime.
+    ksp(libs.room.compiler)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

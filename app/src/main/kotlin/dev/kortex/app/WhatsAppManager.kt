@@ -6,10 +6,14 @@ import androidx.room.Room
 import dev.kortex.core.ambient.AmbientCoordinator
 import dev.kortex.wa.client.WAClient
 import dev.kortex.wa.signal.MessageDecryptor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * App-level owner of the native WhatsApp connection: builds the Room-backed stores, runs the
@@ -29,6 +33,7 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
     private val keyValueStore = RoomKeyValueStore(db.kvDao())
     private val credentialStore = RoomCredentialStore(db.credentialsDao())
     private val gateway = WaGateway(coordinator)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
@@ -76,7 +81,7 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         }
 
         override fun onMessage(messages: List<MessageDecryptor.Result>) {
-            gateway.onMessages(messages)
+            scope.launch { gateway.onMessages(messages) }
         }
 
         override fun onDisconnected(cause: Throwable?) {

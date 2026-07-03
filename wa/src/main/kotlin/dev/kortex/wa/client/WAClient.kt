@@ -99,8 +99,25 @@ class WAClient(
             }
             "message" -> handleMessage(node)
             "failure" -> listener.onDisconnected(IllegalStateException("stream failure: ${node.attr("reason")}"))
-            "stream:error" -> listener.onDisconnected(IllegalStateException("stream error"))
+            "stream:error" -> handleStreamError(node)
             else -> listener.onNode(node)
+        }
+    }
+
+    /**
+     * Stream errors (whatsmeow `handleStreamError`). The important one for pairing is `515`:
+     * immediately after `pair-success` the server tears down the registration stream and asks us
+     * to reconnect — now with the saved login credentials. Treating 515 as fatal is exactly why a
+     * freshly scanned QR would pair on the phone but never finish logging in on-device. We close
+     * the current socket and let the read loop's [ClosedReceiveChannelException] path reconnect.
+     */
+    private fun handleStreamError(node: Node) {
+        val code = node.attr("code")
+        if (code == "515") {
+            expectReconnect = true
+            transport?.close()
+        } else {
+            listener.onDisconnected(IllegalStateException("stream error${code?.let { ": $it" }.orEmpty()}"))
         }
     }
 

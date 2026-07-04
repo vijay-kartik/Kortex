@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.ksp)
 }
 
 // Read the OpenAI key from local.properties (gitignored) so secrets never enter VCS.
@@ -52,12 +53,19 @@ android {
 
 dependencies {
     implementation(project(":core-agent"))
+    implementation(project(":wa"))
+
+    // QR rendering for the WhatsApp linking screen (WhatsAppScreen uses ZXing directly).
+    implementation(libs.zxing.core)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    // WaDatabase (@Database/@Dao in WaStorage.kt) needs Room's codegen, or databaseBuilder
+    // throws "cannot find implementation for WaDatabase" at runtime.
+    ksp(libs.room.compiler)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

@@ -1,5 +1,6 @@
 package dev.kortex.wa.client
 
+import android.util.Log
 import dev.kortex.wa.auth.AdvSignatures
 import dev.kortex.wa.auth.ClientPayloadFactory
 import dev.kortex.wa.auth.CredentialStore
@@ -14,7 +15,17 @@ import dev.kortex.wa.noise.WaCertVerifier
 import dev.kortex.wa.signal.MessageDecryptor
 import dev.kortex.wa.signal.WaSignalStore
 import dev.kortex.wa.store.KeyValueStore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okio.ByteString.Companion.toByteString
 import org.whispersystems.libsignal.util.KeyHelper
 import proto.ADVDeviceIdentity
@@ -56,6 +67,9 @@ class WAClient(
     private var noise: NoiseTransport? = null
     private var expectReconnect = false
     private val rng = java.security.SecureRandom()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val sendMutex = Mutex()
+    private var keepAliveJob: Job? = null
 
     suspend fun connect() {
         credentials = credentialStore.load() ?: DeviceCredentials.generate().also { credentialStore.save(it) }
@@ -68,7 +82,10 @@ class WAClient(
             ClientPayloadFactory.login(user, device)
         } ?: ClientPayloadFactory.registration(credentials)
 
+        Log.i(TAG, "connecting (${if (credentials.deviceJid != null) "login" else "register"})")
         noise = NoiseHandshake(WaCertVerifier).perform(t, credentials.noiseKey, payload)
+        Log.i(TAG, "handshake complete")
+        startKeepAlive()
         readLoop(t, noise!!)
     }
 
@@ -78,34 +95,87 @@ class WAClient(
                 val node = WaBinary.unmarshal(noise.decrypt(transport.receiveFrame()))
                 route(node)
             }
-        } catch (e: ClosedReceiveChannelException) {
+        } catch (e: CancellationException) {
+            keepAliveJob?.cancel()
+            throw e
+        } catch (e: Exception) {
+            keepAliveJob?.cancel()
+            // The post-pairing teardown can surface as a clean channel close, a stream:error 515,
+            // or a bare TLS close (an SSLException from the read). Reconnect for all of them when a
+            // reconnect is expected; only a genuine, unexpected drop is reported as disconnected.
+            Log.w(TAG, "read loop ended (expectReconnect=$expectReconnect): ${e.message}")
             if (expectReconnect) {
                 expectReconnect = false
                 connect() // reconnect with the login payload after pairing
             } else {
-                listener.onDisconnected(null)
+                listener.onDisconnected(if (e is ClosedReceiveChannelException) null else e)
             }
-        } catch (e: Exception) {
-            listener.onDisconnected(e)
         }
     }
 
     private suspend fun route(node: Node) {
+        Log.d(TAG, "recv <${node.tag}> ${node.attrs}")
         when (node.tag) {
             "iq" -> handleIq(node)
             "success" -> {
+                Log.i(TAG, "success — logged in")
                 runCatching { uploadPreKeysIfNeeded() }
+                runCatching { sendActive() }
                 listener.onLoggedIn()
             }
             "message" -> handleMessage(node)
-            "failure" -> listener.onDisconnected(IllegalStateException("stream failure: ${node.attr("reason")}"))
-            "stream:error" -> listener.onDisconnected(IllegalStateException("stream error"))
+            // The server pushes these after login (device/identity/account sync). It waits for our
+            // <ack> before it finishes linking, so acking is required to get past "Logging in…".
+            "receipt" -> sendAck(node)
+            "notification" -> sendAck(node)
+            "call" -> sendAck(node)
+            "failure" -> {
+                Log.w(TAG, "failure node: ${node.attrs}")
+                listener.onDisconnected(IllegalStateException("stream failure: ${node.attr("reason")}"))
+            }
+            "stream:error" -> handleStreamError(node)
             else -> listener.onNode(node)
+        }
+    }
+
+    /**
+     * Acknowledge a server stanza (whatsmeow `sendAck`): `<ack class=<tag> id=… to=<from> …/>`.
+     * Post-link the primary device blocks on these acks, so without them pairing hangs at
+     * "Logging in…".
+     */
+    private suspend fun sendAck(node: Node) {
+        val attrs = buildMap<String, Any?> {
+            put("class", node.tag)
+            node.attrs["id"]?.let { put("id", it) }
+            node.attrs["from"]?.let { put("to", it) }
+            node.attrs["participant"]?.let { put("participant", it) }
+            node.attrs["recipient"]?.let { put("recipient", it) }
+            if (node.tag != "message") node.attrs["type"]?.let { put("type", it) }
+        }
+        runCatching { sendNode(Node("ack", attrs)) }
+            .onFailure { Log.w(TAG, "ack failed for <${node.tag}>", it) }
+    }
+
+    /**
+     * Stream errors (whatsmeow `handleStreamError`). The important one for pairing is `515`:
+     * immediately after `pair-success` the server tears down the registration stream and asks us
+     * to reconnect — now with the saved login credentials. Treating 515 as fatal is exactly why a
+     * freshly scanned QR would pair on the phone but never finish logging in on-device. We close
+     * the current socket and let the read loop's [ClosedReceiveChannelException] path reconnect.
+     */
+    private fun handleStreamError(node: Node) {
+        val code = node.attr("code")
+        if (code == "515") {
+            expectReconnect = true
+            transport?.close()
+        } else {
+            listener.onDisconnected(IllegalStateException("stream error${code?.let { ": $it" }.orEmpty()}"))
         }
     }
 
     private suspend fun handleMessage(node: Node) {
         val msgId = node.attr("id") ?: return
+        sendAck(node)
 
         // Deduplication check
         if (keyValueStore.get(SEEN_NS, msgId) != null) return
@@ -153,6 +223,7 @@ class WAClient(
         )
         val refs = node.child("pair-device")?.childrenWithTag("ref").orEmpty()
         val codes = refs.mapNotNull { it.contentBytes()?.let(::makeQrData) }
+        Log.i(TAG, "pair-device: ${codes.size} QR refs")
         listener.onQr(codes)
     }
 
@@ -176,10 +247,13 @@ class WAClient(
         val jid = pairSuccess.child("device")?.jidAttr("jid")?.toString().orEmpty()
         val businessName = pairSuccess.child("biz")?.attr("name")
 
+        Log.i(TAG, "pair-success jid=$jid")
         try {
             handlePair(deviceIdentityBytes, reqId, jid, businessName)
+            Log.i(TAG, "paired & signed; awaiting reconnect for login")
             listener.onPaired(jid)
         } catch (e: Exception) {
+            Log.w(TAG, "pairing failed", e)
             listener.onDisconnected(e)
         }
     }
@@ -248,7 +322,50 @@ class WAClient(
     private suspend fun sendNode(node: Node) {
         val t = transport ?: error("not connected")
         val n = noise ?: error("handshake not complete")
-        t.sendFrame(n.encrypt(WaBinary.marshal(node)))
+        // Serialize sends: the Noise cipher uses a per-message nonce counter, so the keepalive
+        // pinger and the read loop's receipts/acks must not encrypt concurrently.
+        sendMutex.withLock {
+            t.sendFrame(n.encrypt(WaBinary.marshal(node)))
+        }
+    }
+
+    /**
+     * WhatsApp closes idle sockets, so mirror whatsmeow's keepalive: an `<iq xmlns="w:p"><ping/>`
+     * every [KEEPALIVE_MS]. Without it the server drops the connection while the user is switching
+     * to their phone to scan, which shows up as a TLS close (SSLV3_ALERT_CLOSE_NOTIFY).
+     */
+    private fun startKeepAlive() {
+        keepAliveJob?.cancel()
+        keepAliveJob = scope.launch {
+            while (isActive) {
+                delay(KEEPALIVE_MS)
+                runCatching { sendPing() }
+            }
+        }
+    }
+
+    private suspend fun sendPing() {
+        sendNode(
+            Node(
+                "iq",
+                mapOf("to" to SERVER_JID, "type" to "get", "xmlns" to "w:p", "id" to randomId()),
+                listOf(Node("ping")),
+            )
+        )
+    }
+
+    /**
+     * whatsmeow's `SetPassive(false)`, sent right after `success`. Without it the freshly linked
+     * device never announces itself as active, so the primary device stays stuck on "Logging in…".
+     */
+    private suspend fun sendActive() {
+        sendNode(
+            Node(
+                "iq",
+                mapOf("to" to SERVER_JID, "type" to "set", "xmlns" to "passive", "id" to randomId()),
+                listOf(Node("active")),
+            )
+        )
     }
 
     /** After login, publish one-time pre-keys so contacts can start Signal sessions with us. */
@@ -315,5 +432,7 @@ class WAClient(
         const val PREKEY_BATCH = 30
         const val HEX = "0123456789abcdef"
         const val SEEN_NS = "wa_seen"
+        const val KEEPALIVE_MS = 20_000L
+        const val TAG = "KortexWA"
     }
 }

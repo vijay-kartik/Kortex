@@ -47,6 +47,9 @@ object ClientPayloadFactory {
         connectType = ClientPayload.ConnectType.WIFI_UNKNOWN,
         connectReason = ClientPayload.ConnectReason.USER_ACTIVATED,
         passive = true,
+        // whatsmeow's getLoginPayload sets pull=true alongside passive; without it the server can
+        // refuse the reconnect that follows QR pairing.
+        pull = true,
         username = username,
         device = device,
     ).encode()

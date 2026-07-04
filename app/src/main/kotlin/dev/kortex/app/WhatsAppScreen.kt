@@ -9,11 +9,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -23,7 +29,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 
 @Composable
-fun WhatsAppScreen(modifier: Modifier = Modifier) {
+fun WhatsAppScreen(modifier: Modifier = Modifier, onSkip: (() -> Unit)? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val manager = remember { (context.applicationContext as KortexApp).container.whatsApp }
     val state by manager.state.collectAsStateWithLifecycle()
@@ -36,18 +42,41 @@ fun WhatsAppScreen(modifier: Modifier = Modifier) {
         Text("WhatsApp", style = MaterialTheme.typography.headlineSmall)
         Text(state.status, style = MaterialTheme.typography.bodyMedium)
 
-        val qr = state.qrCodes.firstOrNull()
-        if (qr != null) {
-            val bitmap = remember(qr) { qrBitmap(qr, 640) }
-            bitmap?.let {
-                Image(it.asImageBitmap(), contentDescription = "WhatsApp pairing QR", modifier = Modifier.size(280.dp))
+        // The server sends several refs at once; each is only valid for ~20s, so rotate through
+        // them like whatsmeow does. Showing just the first one means a slightly slow scan fails
+        // with no visible reason.
+        val codes = state.qrCodes
+        var index by remember(codes) { mutableIntStateOf(0) }
+        LaunchedEffect(codes) {
+            while (index < codes.size - 1) {
+                delay(20_000)
+                index++
             }
-            Text(
-                "Open WhatsApp → Settings → Linked devices → Link a device, then scan.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        } else if (!state.connected) {
-            Button(onClick = { manager.connect() }) { Text("Connect WhatsApp") }
+        }
+        val qr = codes.getOrNull(index)
+        when {
+            qr != null -> {
+                val bitmap = remember(qr) { qrBitmap(qr, 640) }
+                bitmap?.let {
+                    Image(it.asImageBitmap(), contentDescription = "WhatsApp pairing QR", modifier = Modifier.size(280.dp))
+                }
+                Text(
+                    "Open WhatsApp → Settings → Linked devices → Link a device, then scan.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            // Scanned: pairing done on the phone, finishing the companion login. Keep this open.
+            state.paired && !state.connected -> {
+                CircularProgressIndicator()
+                Text("Finishing sign-in… keep this screen open.", style = MaterialTheme.typography.bodySmall)
+            }
+            !state.connected -> {
+                Button(onClick = { manager.connect() }) { Text("Connect WhatsApp") }
+            }
+        }
+
+        if (onSkip != null && !state.connected) {
+            TextButton(onClick = onSkip) { Text("Skip for now") }
         }
     }
 }

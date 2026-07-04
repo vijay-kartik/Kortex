@@ -84,4 +84,7 @@ class KortexContainer(context: Context) {
     val toolRegistry by lazy {
         ToolRegistry(defaultTools() + whatsappTool(appContext))
     }
+
+    /** Native WhatsApp connection (QR pairing + message ingest), fed into the pipeline. */
+    val whatsApp by lazy { WhatsAppManager(appContext, coordinator) }
 }

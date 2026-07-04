@@ -6,10 +6,14 @@ import androidx.room.Room
 import dev.kortex.core.ambient.AmbientCoordinator
 import dev.kortex.wa.client.WAClient
 import dev.kortex.wa.signal.MessageDecryptor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * App-level owner of the native WhatsApp connection: builds the Room-backed stores, runs the
@@ -23,15 +27,38 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         val qrCodes: List<String> = emptyList(),
         val paired: Boolean = false,
         val connected: Boolean = false,
+        /** True until we've checked persisted creds — lets the UI avoid flashing onboarding. */
+        val initializing: Boolean = true,
+        /** Persisted creds existed at launch (returning user) — skip onboarding straight away. */
+        val alreadyLinked: Boolean = false,
     )
 
     private val db = Room.databaseBuilder(context.applicationContext, WaDatabase::class.java, "wa.db").build()
     private val keyValueStore = RoomKeyValueStore(db.kvDao())
     private val credentialStore = RoomCredentialStore(db.credentialsDao())
     private val gateway = WaGateway(coordinator)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
+
+    init {
+        // Resolve first-run vs. returning user: if a device JID was persisted at pairing, the
+        // onboarding gate skips straight to the app and we bring the connection back up. A fresh
+        // pairing (this session) is tracked via `paired`/`connected` so the onboarding screen can
+        // stay visible until login actually completes.
+        scope.launch {
+            val linked = runCatching { credentialStore.load()?.deviceJid != null }.getOrDefault(false)
+            _state.update {
+                it.copy(
+                    initializing = false,
+                    alreadyLinked = linked,
+                    status = if (linked) "Linked" else it.status,
+                )
+            }
+            if (linked) runCatching { connect() }
+        }
+    }
 
     private var client: WAClient? = null
     private var service: WaForegroundService? = null
@@ -76,7 +103,7 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         }
 
         override fun onMessage(messages: List<MessageDecryptor.Result>) {
-            gateway.onMessages(messages)
+            scope.launch { gateway.onMessages(messages) }
         }
 
         override fun onDisconnected(cause: Throwable?) {

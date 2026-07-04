@@ -27,6 +27,8 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         val qrCodes: List<String> = emptyList(),
         val paired: Boolean = false,
         val connected: Boolean = false,
+        /** True until we've checked persisted creds — lets the UI avoid flashing onboarding. */
+        val initializing: Boolean = true,
     )
 
     private val db = Room.databaseBuilder(context.applicationContext, WaDatabase::class.java, "wa.db").build()
@@ -37,6 +39,21 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
+
+    init {
+        // Resolve first-run vs. returning user: if a device JID was persisted at pairing, the
+        // onboarding gate should skip straight to the app instead of showing the QR again.
+        scope.launch {
+            val alreadyLinked = runCatching { credentialStore.load()?.deviceJid != null }.getOrDefault(false)
+            _state.update {
+                it.copy(
+                    initializing = false,
+                    paired = it.paired || alreadyLinked,
+                    status = if (alreadyLinked) "Linked" else it.status,
+                )
+            }
+        }
+    }
 
     private var client: WAClient? = null
     private var service: WaForegroundService? = null

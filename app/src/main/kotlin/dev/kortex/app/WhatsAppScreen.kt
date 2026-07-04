@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,7 +28,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 
 @Composable
-fun WhatsAppScreen(modifier: Modifier = Modifier) {
+fun WhatsAppScreen(modifier: Modifier = Modifier, onSkip: (() -> Unit)? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val manager = remember { (context.applicationContext as KortexApp).container.whatsApp }
     val state by manager.state.collectAsStateWithLifecycle()
@@ -63,6 +64,10 @@ fun WhatsAppScreen(modifier: Modifier = Modifier) {
             )
         } else if (!state.connected) {
             Button(onClick = { manager.connect() }) { Text("Connect WhatsApp") }
+        }
+
+        if (onSkip != null && !state.connected) {
+            TextButton(onClick = onSkip) { Text("Skip for now") }
         }
     }
 }

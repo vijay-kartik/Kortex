@@ -82,7 +82,7 @@ fun RootScreen() {
         wa.initializing -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
-        wa.paired || wa.connected || skipped -> MainTabs()
+        wa.connected || wa.alreadyLinked || skipped -> MainTabs()
         else -> WhatsAppScreen(onSkip = { skipped = true })
     }
 }

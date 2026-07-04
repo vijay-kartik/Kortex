@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -53,17 +54,25 @@ fun WhatsAppScreen(modifier: Modifier = Modifier, onSkip: (() -> Unit)? = null) 
             }
         }
         val qr = codes.getOrNull(index)
-        if (qr != null) {
-            val bitmap = remember(qr) { qrBitmap(qr, 640) }
-            bitmap?.let {
-                Image(it.asImageBitmap(), contentDescription = "WhatsApp pairing QR", modifier = Modifier.size(280.dp))
+        when {
+            qr != null -> {
+                val bitmap = remember(qr) { qrBitmap(qr, 640) }
+                bitmap?.let {
+                    Image(it.asImageBitmap(), contentDescription = "WhatsApp pairing QR", modifier = Modifier.size(280.dp))
+                }
+                Text(
+                    "Open WhatsApp → Settings → Linked devices → Link a device, then scan.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
-            Text(
-                "Open WhatsApp → Settings → Linked devices → Link a device, then scan.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        } else if (!state.connected) {
-            Button(onClick = { manager.connect() }) { Text("Connect WhatsApp") }
+            // Scanned: pairing done on the phone, finishing the companion login. Keep this open.
+            state.paired && !state.connected -> {
+                CircularProgressIndicator()
+                Text("Finishing sign-in… keep this screen open.", style = MaterialTheme.typography.bodySmall)
+            }
+            !state.connected -> {
+                Button(onClick = { manager.connect() }) { Text("Connect WhatsApp") }
+            }
         }
 
         if (onSkip != null && !state.connected) {

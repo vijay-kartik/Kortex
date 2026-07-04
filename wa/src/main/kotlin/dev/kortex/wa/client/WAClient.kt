@@ -114,6 +114,7 @@ class WAClient(
             "iq" -> handleIq(node)
             "success" -> {
                 runCatching { uploadPreKeysIfNeeded() }
+                runCatching { sendActive() }
                 listener.onLoggedIn()
             }
             "message" -> handleMessage(node)
@@ -312,6 +313,20 @@ class WAClient(
                 "iq",
                 mapOf("to" to SERVER_JID, "type" to "get", "xmlns" to "w:p", "id" to randomId()),
                 listOf(Node("ping")),
+            )
+        )
+    }
+
+    /**
+     * whatsmeow's `SetPassive(false)`, sent right after `success`. Without it the freshly linked
+     * device never announces itself as active, so the primary device stays stuck on "Logging in…".
+     */
+    private suspend fun sendActive() {
+        sendNode(
+            Node(
+                "iq",
+                mapOf("to" to SERVER_JID, "type" to "set", "xmlns" to "passive", "id" to randomId()),
+                listOf(Node("active")),
             )
         )
     }

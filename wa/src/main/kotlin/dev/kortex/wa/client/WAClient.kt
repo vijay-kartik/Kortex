@@ -1,5 +1,6 @@
 package dev.kortex.wa.client
 
+import android.util.Log
 import dev.kortex.wa.auth.AdvSignatures
 import dev.kortex.wa.auth.ClientPayloadFactory
 import dev.kortex.wa.auth.CredentialStore
@@ -81,7 +82,9 @@ class WAClient(
             ClientPayloadFactory.login(user, device)
         } ?: ClientPayloadFactory.registration(credentials)
 
+        Log.i(TAG, "connecting (${if (credentials.deviceJid != null) "login" else "register"})")
         noise = NoiseHandshake(WaCertVerifier).perform(t, credentials.noiseKey, payload)
+        Log.i(TAG, "handshake complete")
         startKeepAlive()
         readLoop(t, noise!!)
     }
@@ -100,6 +103,7 @@ class WAClient(
             // The post-pairing teardown can surface as a clean channel close, a stream:error 515,
             // or a bare TLS close (an SSLException from the read). Reconnect for all of them when a
             // reconnect is expected; only a genuine, unexpected drop is reported as disconnected.
+            Log.w(TAG, "read loop ended (expectReconnect=$expectReconnect): ${e.message}")
             if (expectReconnect) {
                 expectReconnect = false
                 connect() // reconnect with the login payload after pairing
@@ -110,18 +114,46 @@ class WAClient(
     }
 
     private suspend fun route(node: Node) {
+        Log.d(TAG, "recv <${node.tag}> ${node.attrs}")
         when (node.tag) {
             "iq" -> handleIq(node)
             "success" -> {
+                Log.i(TAG, "success — logged in")
                 runCatching { uploadPreKeysIfNeeded() }
                 runCatching { sendActive() }
                 listener.onLoggedIn()
             }
             "message" -> handleMessage(node)
-            "failure" -> listener.onDisconnected(IllegalStateException("stream failure: ${node.attr("reason")}"))
+            // The server pushes these after login (device/identity/account sync). It waits for our
+            // <ack> before it finishes linking, so acking is required to get past "Logging in…".
+            "receipt" -> sendAck(node)
+            "notification" -> sendAck(node)
+            "call" -> sendAck(node)
+            "failure" -> {
+                Log.w(TAG, "failure node: ${node.attrs}")
+                listener.onDisconnected(IllegalStateException("stream failure: ${node.attr("reason")}"))
+            }
             "stream:error" -> handleStreamError(node)
             else -> listener.onNode(node)
         }
+    }
+
+    /**
+     * Acknowledge a server stanza (whatsmeow `sendAck`): `<ack class=<tag> id=… to=<from> …/>`.
+     * Post-link the primary device blocks on these acks, so without them pairing hangs at
+     * "Logging in…".
+     */
+    private suspend fun sendAck(node: Node) {
+        val attrs = buildMap<String, Any?> {
+            put("class", node.tag)
+            node.attrs["id"]?.let { put("id", it) }
+            node.attrs["from"]?.let { put("to", it) }
+            node.attrs["participant"]?.let { put("participant", it) }
+            node.attrs["recipient"]?.let { put("recipient", it) }
+            if (node.tag != "message") node.attrs["type"]?.let { put("type", it) }
+        }
+        runCatching { sendNode(Node("ack", attrs)) }
+            .onFailure { Log.w(TAG, "ack failed for <${node.tag}>", it) }
     }
 
     /**
@@ -143,6 +175,7 @@ class WAClient(
 
     private suspend fun handleMessage(node: Node) {
         val msgId = node.attr("id") ?: return
+        sendAck(node)
 
         // Deduplication check
         if (keyValueStore.get(SEEN_NS, msgId) != null) return
@@ -190,6 +223,7 @@ class WAClient(
         )
         val refs = node.child("pair-device")?.childrenWithTag("ref").orEmpty()
         val codes = refs.mapNotNull { it.contentBytes()?.let(::makeQrData) }
+        Log.i(TAG, "pair-device: ${codes.size} QR refs")
         listener.onQr(codes)
     }
 
@@ -213,10 +247,13 @@ class WAClient(
         val jid = pairSuccess.child("device")?.jidAttr("jid")?.toString().orEmpty()
         val businessName = pairSuccess.child("biz")?.attr("name")
 
+        Log.i(TAG, "pair-success jid=$jid")
         try {
             handlePair(deviceIdentityBytes, reqId, jid, businessName)
+            Log.i(TAG, "paired & signed; awaiting reconnect for login")
             listener.onPaired(jid)
         } catch (e: Exception) {
+            Log.w(TAG, "pairing failed", e)
             listener.onDisconnected(e)
         }
     }
@@ -396,5 +433,6 @@ class WAClient(
         const val HEX = "0123456789abcdef"
         const val SEEN_NS = "wa_seen"
         const val KEEPALIVE_MS = 20_000L
+        const val TAG = "KortexWA"
     }
 }

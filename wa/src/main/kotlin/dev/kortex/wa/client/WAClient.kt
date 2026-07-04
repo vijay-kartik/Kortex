@@ -14,7 +14,17 @@ import dev.kortex.wa.noise.WaCertVerifier
 import dev.kortex.wa.signal.MessageDecryptor
 import dev.kortex.wa.signal.WaSignalStore
 import dev.kortex.wa.store.KeyValueStore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okio.ByteString.Companion.toByteString
 import org.whispersystems.libsignal.util.KeyHelper
 import proto.ADVDeviceIdentity
@@ -56,6 +66,9 @@ class WAClient(
     private var noise: NoiseTransport? = null
     private var expectReconnect = false
     private val rng = java.security.SecureRandom()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val sendMutex = Mutex()
+    private var keepAliveJob: Job? = null
 
     suspend fun connect() {
         credentials = credentialStore.load() ?: DeviceCredentials.generate().also { credentialStore.save(it) }
@@ -69,6 +82,7 @@ class WAClient(
         } ?: ClientPayloadFactory.registration(credentials)
 
         noise = NoiseHandshake(WaCertVerifier).perform(t, credentials.noiseKey, payload)
+        startKeepAlive()
         readLoop(t, noise!!)
     }
 
@@ -78,15 +92,20 @@ class WAClient(
                 val node = WaBinary.unmarshal(noise.decrypt(transport.receiveFrame()))
                 route(node)
             }
-        } catch (e: ClosedReceiveChannelException) {
+        } catch (e: CancellationException) {
+            keepAliveJob?.cancel()
+            throw e
+        } catch (e: Exception) {
+            keepAliveJob?.cancel()
+            // The post-pairing teardown can surface as a clean channel close, a stream:error 515,
+            // or a bare TLS close (an SSLException from the read). Reconnect for all of them when a
+            // reconnect is expected; only a genuine, unexpected drop is reported as disconnected.
             if (expectReconnect) {
                 expectReconnect = false
                 connect() // reconnect with the login payload after pairing
             } else {
-                listener.onDisconnected(null)
+                listener.onDisconnected(if (e is ClosedReceiveChannelException) null else e)
             }
-        } catch (e: Exception) {
-            listener.onDisconnected(e)
         }
     }
 
@@ -265,7 +284,36 @@ class WAClient(
     private suspend fun sendNode(node: Node) {
         val t = transport ?: error("not connected")
         val n = noise ?: error("handshake not complete")
-        t.sendFrame(n.encrypt(WaBinary.marshal(node)))
+        // Serialize sends: the Noise cipher uses a per-message nonce counter, so the keepalive
+        // pinger and the read loop's receipts/acks must not encrypt concurrently.
+        sendMutex.withLock {
+            t.sendFrame(n.encrypt(WaBinary.marshal(node)))
+        }
+    }
+
+    /**
+     * WhatsApp closes idle sockets, so mirror whatsmeow's keepalive: an `<iq xmlns="w:p"><ping/>`
+     * every [KEEPALIVE_MS]. Without it the server drops the connection while the user is switching
+     * to their phone to scan, which shows up as a TLS close (SSLV3_ALERT_CLOSE_NOTIFY).
+     */
+    private fun startKeepAlive() {
+        keepAliveJob?.cancel()
+        keepAliveJob = scope.launch {
+            while (isActive) {
+                delay(KEEPALIVE_MS)
+                runCatching { sendPing() }
+            }
+        }
+    }
+
+    private suspend fun sendPing() {
+        sendNode(
+            Node(
+                "iq",
+                mapOf("to" to SERVER_JID, "type" to "get", "xmlns" to "w:p", "id" to randomId()),
+                listOf(Node("ping")),
+            )
+        )
     }
 
     /** After login, publish one-time pre-keys so contacts can start Signal sessions with us. */
@@ -332,5 +380,6 @@ class WAClient(
         const val PREKEY_BATCH = 30
         const val HEX = "0123456789abcdef"
         const val SEEN_NS = "wa_seen"
+        const val KEEPALIVE_MS = 20_000L
     }
 }

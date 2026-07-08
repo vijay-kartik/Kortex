@@ -39,7 +39,9 @@ class LlamaCppProvider(
     override fun stream(req: LlmRequest): Flow<LlmChunk> = flow {
         // Simple non-streaming fallback for now. Real streaming requires a JNI callback.
         val prompt = formatPrompt(req.messages)
-        val result = generateNative(nativeContext, prompt)
+        val result = withContext(Dispatchers.IO) {
+            generateNative(nativeContext, prompt)
+        }
         emit(LlmChunk.Text(result))
         emit(LlmChunk.Done)
     }

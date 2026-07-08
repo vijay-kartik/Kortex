@@ -23,7 +23,7 @@ class DynamicLlmProvider(
     private var currentOllamaToken: String? = null
     private var currentMediaPipePath: String? = null
 
-    private suspend fun getActiveProvider(): LlmProvider {
+    private suspend fun getActiveProvider(): LlmProvider = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val providerType = store.activeProvider.first()
         if (providerType == "ollama") {
             val url = store.ollamaUrl.first()
@@ -34,7 +34,7 @@ class DynamicLlmProvider(
                 // Ollama natively supports the OpenAI /v1/chat/completions API since early 2024
                 ollamaProvider = OpenAiProvider(apiKey = token, baseUrl = url, logger = AndroidLogger)
             }
-            return ollamaProvider!!
+            return@withContext ollamaProvider!!
         }
         if (providerType == "mediapipe") {
             val path = store.mediaPipeModelPath.first()
@@ -49,7 +49,7 @@ class DynamicLlmProvider(
                     logger = AndroidLogger
                 )
             }
-            return mediaPipeProvider!!
+            return@withContext mediaPipeProvider!!
         }
         if (providerType == "llamacpp") {
             // For now, reuse the mediapipe model path or add a dedicated one later
@@ -60,9 +60,9 @@ class DynamicLlmProvider(
             if (llamaCppProvider == null) {
                 llamaCppProvider = dev.kortex.core.llm.LlamaCppProvider(modelPath = path)
             }
-            return llamaCppProvider!!
+            return@withContext llamaCppProvider!!
         }
-        return defaultProvider
+        defaultProvider
     }
 
     override suspend fun complete(req: LlmRequest, logger: Logger?): LlmResponse {

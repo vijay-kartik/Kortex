@@ -122,7 +122,8 @@ fun McpSettingsScreen(
                     onModelSelected = { vm.setActiveModel(it) },
                     onOllamaUrlChange = { vm.setOllamaUrl(it) },
                     onOllamaTokenChange = { vm.setOllamaToken(it) },
-                    onMediaPipeModelPathChange = { vm.setMediaPipeModelPath(it) }
+                    onMediaPipeModelPathChange = { vm.setMediaPipeModelPath(it) },
+                    onDownloadGguf = { ctx, url, name -> vm.downloadGgufModel(ctx, url, name) }
                 )
             }
 
@@ -580,7 +581,8 @@ private fun ModelSelector(
     onModelSelected: (String) -> Unit,
     onOllamaUrlChange: (String) -> Unit,
     onOllamaTokenChange: (String) -> Unit,
-    onMediaPipeModelPathChange: (String) -> Unit
+    onMediaPipeModelPathChange: (String) -> Unit,
+    onDownloadGguf: (android.content.Context, String, String) -> Unit
 ) {
     var expandedProvider by remember { mutableStateOf(false) }
     var expandedModel by remember { mutableStateOf(false) }
@@ -791,6 +793,39 @@ private fun ModelSelector(
                             colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
                         ) {
                             Text("Open Kaggle to Download Gemma 2B")
+                        }
+                    }
+
+                    if (activeProvider == "llamacpp") {
+                        Spacer(Modifier.height(16.dp))
+                        Text("Recommended Mobile Models (Direct Download)", style = MaterialTheme.typography.labelMedium, color = Synapse)
+                        Spacer(Modifier.height(8.dp))
+                        
+                        val recommendedModels = listOf(
+                            Triple("Gemma 2 2B Instruct", "1.6 GB", "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"),
+                            Triple("Llama 3 8B Instruct", "4.9 GB", "https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"),
+                            Triple("Phi-3 Mini 4K Instruct", "2.4 GB", "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"),
+                            Triple("Qwen2 1.5B Instruct", "1.0 GB", "https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF/resolve/main/qwen2-1_5b-instruct-q4_k_m.gguf")
+                        )
+                        
+                        recommendedModels.forEach { (name, size, url) ->
+                            val filename = url.substringAfterLast("/")
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                                    Text(size, style = MaterialTheme.typography.labelSmall, color = Muted)
+                                }
+                                TextButton(
+                                    onClick = { onDownloadGguf(context, url, filename) },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = Synapse)
+                                ) {
+                                    Text("Download")
+                                }
+                            }
                         }
                     }
                 }

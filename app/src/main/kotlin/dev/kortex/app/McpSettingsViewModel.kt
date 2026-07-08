@@ -179,7 +179,22 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-
+    fun downloadGgufModel(context: android.content.Context, url: String, filename: String) {
+        val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
+            .setTitle("Downloading $filename")
+            .setDescription("GGUF Model for Llama.cpp inference")
+            .setDestinationInExternalFilesDir(context, android.os.Environment.DIRECTORY_DOWNLOADS, filename)
+            .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(true)
+        
+        val dm = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+        dm.enqueue(request)
+        
+        // Assume the path where it will be downloaded to and auto-set it
+        val expectedPath = java.io.File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), filename).absolutePath
+        setMediaPipeModelPath(expectedPath)
+    }
 
     fun addServer(name: String, url: String, bearerToken: String?) {
         _flags.update { it.copy(showAddDialog = false) }

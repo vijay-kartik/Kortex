@@ -109,10 +109,15 @@ fun McpSettingsSheet(
                     supportedModels = ui.supportedModels,
                     ollamaUrl = ui.ollamaUrl,
                     ollamaToken = ui.ollamaToken,
+                    mediaPipeModelPath = ui.mediaPipeModelPath,
                     onProviderSelected = { vm.setActiveProvider(it) },
                     onModelSelected = { vm.setActiveModel(it) },
                     onOllamaUrlChange = { vm.setOllamaUrl(it) },
-                    onOllamaTokenChange = { vm.setOllamaToken(it) }
+                    onOllamaTokenChange = { vm.setOllamaToken(it) },
+                    onMediaPipeModelPathChange = { vm.setMediaPipeModelPath(it) },
+                    onDownloadGemma = { ctx -> 
+                        vm.downloadModel(ctx, "https://storage.googleapis.com/kaggle-data-sets/gemma-2b-it-gpu-int4.bin", "gemma-2b-it-gpu-int4.bin")
+                    }
                 )
             }
 
@@ -594,13 +599,17 @@ private fun ModelSelector(
     supportedModels: List<String>,
     ollamaUrl: String,
     ollamaToken: String,
+    mediaPipeModelPath: String,
     onProviderSelected: (String) -> Unit,
     onModelSelected: (String) -> Unit,
     onOllamaUrlChange: (String) -> Unit,
-    onOllamaTokenChange: (String) -> Unit
+    onOllamaTokenChange: (String) -> Unit,
+    onMediaPipeModelPathChange: (String) -> Unit,
+    onDownloadGemma: (android.content.Context) -> Unit
 ) {
     var expandedProvider by remember { mutableStateOf(false) }
     var expandedModel by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -626,7 +635,11 @@ private fun ModelSelector(
                         )
                     )
                     Text(
-                        if (activeProvider == "openai") "OpenAI" else "Ollama (Local/Cloud)",
+                        when (activeProvider) {
+                            "openai" -> "OpenAI"
+                            "mediapipe" -> "MediaPipe (On-Device GPU/CPU)"
+                            else -> "Ollama (Local/Cloud)"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = Synapse,
                     )
@@ -635,7 +648,7 @@ private fun ModelSelector(
             }
             AnimatedVisibility(visible = expandedProvider) {
                 Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
-                    listOf("openai" to "OpenAI", "ollama" to "Ollama (Local/Cloud)").forEach { (id, label) ->
+                    listOf("openai" to "OpenAI", "ollama" to "Ollama (Local/Cloud)", "mediapipe" to "MediaPipe (On-Device GPU/CPU)").forEach { (id, label) ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -760,6 +773,28 @@ private fun ModelSelector(
                             }
                         }
                     )
+                }
+            }
+
+            // MediaPipe Settings
+            if (activeProvider == "mediapipe") {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    var editPath by remember { mutableStateOf(mediaPipeModelPath) }
+                    SettingsTextField(
+                        value = editPath,
+                        onValueChange = { editPath = it; onMediaPipeModelPathChange(it) },
+                        label = "Absolute Path to .bin Model File",
+                        placeholder = "/storage/emulated/0/Download/gemma-2b-it-gpu-int4.bin"
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    ButtonDefaults.filledTonalButtonColors()
+                    FilledTonalButton(
+                        onClick = { onDownloadGemma(context) },
+                        modifier = Modifier.align(Alignment.End),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
+                    ) {
+                        Text("Download Gemma 2B (2GB)")
+                    }
                 }
             }
         }

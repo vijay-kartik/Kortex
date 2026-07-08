@@ -39,6 +39,7 @@ class McpStore(private val context: Context) {
         val KEY_ACTIVE_PROVIDER = stringPreferencesKey("active_provider")
         val KEY_OLLAMA_URL = stringPreferencesKey("ollama_url")
         val KEY_OLLAMA_TOKEN = stringPreferencesKey("ollama_token")
+        val KEY_MEDIAPIPE_MODEL_PATH = stringPreferencesKey("mediapipe_model_path")
     }
 
     val activeModel: Flow<String> = context.mcpDataStore.data.map { prefs ->
@@ -81,6 +82,20 @@ class McpStore(private val context: Context) {
                 prefs.remove(KEY_OLLAMA_TOKEN)
             } else {
                 prefs[KEY_OLLAMA_TOKEN] = token
+            }
+        }
+    }
+
+    val mediaPipeModelPath: Flow<String?> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_MEDIAPIPE_MODEL_PATH]
+    }
+
+    suspend fun setMediaPipeModelPath(path: String?) {
+        context.mcpDataStore.edit { prefs ->
+            if (path.isNullOrBlank()) {
+                prefs.remove(KEY_MEDIAPIPE_MODEL_PATH)
+            } else {
+                prefs[KEY_MEDIAPIPE_MODEL_PATH] = path
             }
         }
     }

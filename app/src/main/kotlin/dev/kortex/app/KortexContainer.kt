@@ -51,7 +51,7 @@ class KortexContainer(context: Context) {
         val defaultOpenAi = BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
             ?.let { OpenAiProvider(apiKey = it, logger = AndroidLogger) }
             ?: StubLlmProvider()
-        DynamicLlmProvider(store = mcpStore, defaultProvider = defaultOpenAi)
+        DynamicLlmProvider(context = appContext, store = mcpStore, defaultProvider = defaultOpenAi)
     }
 
     // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.

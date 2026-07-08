@@ -39,6 +39,8 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    implementation(libs.mediapipe.tasks.genai)
+
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotest.assertions)
     testImplementation(libs.coroutines.test)

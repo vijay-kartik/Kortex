@@ -65,12 +65,23 @@ class LlamaCppProvider(
     }
 
     private fun formatPrompt(messages: List<Message>): String {
-        val sb = StringBuilder()
-        for (msg in messages) {
-            sb.append("<|im_start|>").append(msg.role.name.lowercase()).append("\n")
-            sb.append(msg.content).append("<|im_end|>\n")
+        val pathLower = modelPath.lowercase()
+        return when {
+            pathLower.contains("gemma") -> {
+                messages.joinToString("") {
+                    "<start_of_turn>${if (it.role == Message.Role.USER) "user" else "model"}\n${it.content}<end_of_turn>\n"
+                } + "<start_of_turn>model\n"
+            }
+            pathLower.contains("llama-3") || pathLower.contains("llama3") -> {
+                messages.joinToString("") {
+                    "<|start_header_id|>${it.role.name.lowercase()}<|end_header_id|>\n\n${it.content}<|eot_id|>"
+                } + "<|start_header_id|>assistant<|end_header_id|>\n\n"
+            }
+            else -> { // Fallback to ChatML
+                messages.joinToString("") {
+                    "<|im_start|>${it.role.name.lowercase()}\n${it.content}<|im_end|>\n"
+                } + "<|im_start|>assistant\n"
+            }
         }
-        sb.append("<|im_start|>assistant\n")
-        return sb.toString()
     }
 }

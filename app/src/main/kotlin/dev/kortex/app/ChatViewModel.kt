@@ -22,11 +22,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import dev.kortex.app.store.ChatSessionEntity
+import java.util.UUID
 
 /** One line of the agent's internal reasoning (router decision, LLM call, tool call, reflection verdict). */
+@Serializable
 data class ReasoningLine(val level: Logger.Level, val tag: String, val message: String)
 
 /** Totals for one turn, shown in the reasoning panel's footer even when collapsed. */
+@Serializable
 data class ReasoningStats(
     val tokensUsed: Int = 0,
     val toolCalls: Int = 0,
@@ -34,6 +41,7 @@ data class ReasoningStats(
 )
 
 /** A rendered chat turn. [reasoning] is only populated for assistant turns that took multiple steps. */
+@Serializable
 data class ChatTurn(
     val message: Message,
     val reasoning: List<ReasoningLine> = emptyList(),
@@ -72,6 +80,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val provider: LlmProvider = container.llm
     private val tools: ToolRegistry = container.toolRegistry
     private val mcpStore: McpStore = container.mcpStore
+    private val sessionDao = container.chatSessionDao
+
+    val sessions = sessionDao.getAll()
+    private var currentSessionId: String = UUID.randomUUID().toString()
+    private val json = Json { ignoreUnknownKeys = true }
 
     private val approver = Approver { name, args ->
         _ui.update { it.copy(pendingApproval = "$name $args") }
@@ -122,6 +135,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _stagedAttachments.update { it.filterIndexed { i, _ -> i != index } }
     }
 
+    fun loadSession(sessionId: String) {
+        viewModelScope.launch {
+            val session = sessionDao.getById(sessionId)
+            if (session != null) {
+                currentSessionId = session.id
+                val loadedTurns = json.decodeFromString<List<ChatTurn>>(session.turnsJson)
+                _ui.update { it.copy(turns = loadedTurns, busy = false, status = null) }
+            }
+        }
+    }
+
+    fun startNewSession() {
+        currentSessionId = UUID.randomUUID().toString()
+        _ui.update { it.copy(turns = emptyList(), busy = false, status = null) }
+    }
+
     fun send(query: String) {
         val attachmentsToSend = _stagedAttachments.value
         _stagedAttachments.value = emptyList()
@@ -167,17 +196,30 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 },
             )
 
-            val result = Agent(turnCtx).ask(query, attachmentsToSend)
+            val historyMessages = _ui.value.turns.map { it.message }
+            val result = Agent(turnCtx).ask(query, attachmentsToSend, history = historyMessages)
             val answer = result.messages
                 .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
 
             _ui.update { cur ->
+                val newTurns = cur.turns + listOfNotNull(answer?.let { ChatTurn(it, liveLines.toList(), statsNow()) })
+                viewModelScope.launch {
+                    val title = if (newTurns.size <= 2) query.take(40) else sessionDao.getById(currentSessionId)?.title ?: query.take(40)
+                    sessionDao.upsert(
+                        ChatSessionEntity(
+                            id = currentSessionId,
+                            title = title,
+                            turnsJson = json.encodeToString(newTurns),
+                            updatedAtMillis = System.currentTimeMillis()
+                        )
+                    )
+                }
                 cur.copy(
                     // Only the final answer: reflection (pattern 4) may revise multiple times,
                     // leaving earlier drafts as non-blank ASSISTANT messages in result.messages.
                     // Its reasoning trail is everything logged across the whole run (routing,
                     // every ReAct iteration, every tool call, every reflection pass).
-                    turns = cur.turns + listOfNotNull(answer?.let { ChatTurn(it, liveLines.toList(), statsNow()) }),
+                    turns = newTurns,
                     liveReasoning = emptyList(),
                     liveStats = ReasoningStats(),
                     busy = false,

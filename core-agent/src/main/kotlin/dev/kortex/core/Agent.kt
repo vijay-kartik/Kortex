@@ -44,7 +44,7 @@ class Agent(private val ctx: AgentContext) {
         edge("reflect", END)
     }
 
-    suspend fun ask(query: String, attachments: List<dev.kortex.core.state.Attachment> = emptyList(), system: String = DEFAULT_SYSTEM): AgentState {
+    suspend fun ask(query: String, attachments: List<dev.kortex.core.state.Attachment> = emptyList(), history: List<Message> = emptyList(), system: String = DEFAULT_SYSTEM): AgentState {
         // Grounds the model in the real wall-clock time, computed fresh per call. A model's
         // training cutoff otherwise silently stands in for "today" (e.g. it'll search for
         // "richest person 2023" on a device where it's actually 2026) — the current_time
@@ -54,8 +54,7 @@ class Agent(private val ctx: AgentContext) {
             "interpret words like \"today\", \"current\", \"latest\", or a bare year correctly " +
             "— your training data has a cutoff well before this date, so never assume it is the present."
         val initial = AgentState(
-            messages = listOf(
-                Message(Message.Role.SYSTEM, grounded),
+            messages = listOf(Message(Message.Role.SYSTEM, grounded)) + history + listOf(
                 Message(Message.Role.USER, query, attachments),
             ),
             goal = Goal(query),

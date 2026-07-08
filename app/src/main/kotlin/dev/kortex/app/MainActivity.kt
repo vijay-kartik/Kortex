@@ -129,7 +129,8 @@ class MainActivity : ComponentActivity() {
 fun RootScreen() {
     var tab by remember { mutableIntStateOf(0) }
     var showMcpSettings by remember { mutableStateOf(false) }
-    val tabs = listOf("Chat", "Cards", "Context")
+    val tabs = listOf("Chat", "Cards", "Context", "History")
+    val vm: ChatViewModel = viewModel()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -171,9 +172,16 @@ fun RootScreen() {
     ) { innerPadding ->
         Box(Modifier.padding(innerPadding)) {
             when (tab) {
-                0 -> ChatScreen()
+                0 -> ChatScreen(vm = vm)
                 1 -> CardsScreen()
-                else -> ContextScreen()
+                2 -> ContextScreen()
+                else -> HistoryScreen(
+                    vm = vm,
+                    onSelectSession = { sessionId ->
+                        vm.loadSession(sessionId)
+                        tab = 0
+                    }
+                )
             }
         }
     }

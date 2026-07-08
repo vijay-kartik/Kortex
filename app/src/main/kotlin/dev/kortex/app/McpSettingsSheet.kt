@@ -617,6 +617,7 @@ private fun ModelSelector(
                         when (activeProvider) {
                             "openai" -> "OpenAI"
                             "mediapipe" -> "MediaPipe (On-Device GPU/CPU)"
+                            "llamacpp" -> "Llama.cpp (.gguf via NDK)"
                             else -> "Ollama (Local/Cloud)"
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -627,7 +628,12 @@ private fun ModelSelector(
             }
             AnimatedVisibility(visible = expandedProvider) {
                 Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
-                    listOf("openai" to "OpenAI", "ollama" to "Ollama (Local/Cloud)", "mediapipe" to "MediaPipe (On-Device GPU/CPU)").forEach { (id, label) ->
+                    listOf(
+                        "openai" to "OpenAI", 
+                        "ollama" to "Ollama (Local/Cloud)", 
+                        "mediapipe" to "MediaPipe (On-Device GPU/CPU)",
+                        "llamacpp" to "Llama.cpp (.gguf via NDK)"
+                    ).forEach { (id, label) ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -755,12 +761,15 @@ private fun ModelSelector(
                 }
             }
 
-            // MediaPipe Settings
-            if (activeProvider == "mediapipe") {
+            // MediaPipe & Llama.cpp Settings
+            if (activeProvider == "mediapipe" || activeProvider == "llamacpp") {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
                     var editPath by remember { mutableStateOf(mediaPipeModelPath) }
                     Text(
-                        "MediaPipe supports Gemma, Phi-2, Falcon, and StableLM. You can download the official Gemma 2B model below, or use the MediaPipe Python conversion script to convert other models and enter the absolute path to the .bin file.",
+                        if (activeProvider == "mediapipe")
+                            "MediaPipe supports Gemma, Phi-2, Falcon, and StableLM. You can download the official Gemma 2B model below, or use the MediaPipe Python conversion script to convert other models and enter the absolute path to the .bin file."
+                        else
+                            "Llama.cpp supports any .gguf file (Llama 3, Mistral, Qwen, etc). Download a .gguf file from HuggingFace to your device and enter its absolute path here.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Muted,
                         modifier = Modifier.padding(bottom = 12.dp)
@@ -768,17 +777,19 @@ private fun ModelSelector(
                     SettingsTextField(
                         value = editPath,
                         onValueChange = { editPath = it; onMediaPipeModelPathChange(it) },
-                        label = "Absolute Path to .bin Model File",
-                        placeholder = "/storage/emulated/0/Download/gemma-2b-it-gpu-int4.bin"
+                        label = if (activeProvider == "mediapipe") "Absolute Path to .bin Model File" else "Absolute Path to .gguf Model File",
+                        placeholder = if (activeProvider == "mediapipe") "/storage/emulated/0/Download/gemma-2b-it-gpu-int4.bin" else "/storage/emulated/0/Download/llama-3-8b.gguf"
                     )
                     Spacer(Modifier.height(12.dp))
-                    ButtonDefaults.filledTonalButtonColors()
-                    FilledTonalButton(
-                        onClick = { onDownloadGemma(context) },
-                        modifier = Modifier.align(Alignment.End),
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
-                    ) {
-                        Text("Download Gemma 2B (2GB)")
+                    if (activeProvider == "mediapipe") {
+                        ButtonDefaults.filledTonalButtonColors()
+                        FilledTonalButton(
+                            onClick = { onDownloadGemma(context) },
+                            modifier = Modifier.align(Alignment.End),
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
+                        ) {
+                            Text("Download Gemma 2B (2GB)")
+                        }
                     }
                 }
             }

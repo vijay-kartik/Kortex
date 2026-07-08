@@ -18,6 +18,7 @@ class DynamicLlmProvider(
 ) : LlmProvider {
     private var ollamaProvider: LlmProvider? = null
     private var mediaPipeProvider: LlmProvider? = null
+    private var llamaCppProvider: LlmProvider? = null
     private var currentOllamaUrl: String? = null
     private var currentOllamaToken: String? = null
     private var currentMediaPipePath: String? = null
@@ -49,6 +50,17 @@ class DynamicLlmProvider(
                 )
             }
             return mediaPipeProvider!!
+        }
+        if (providerType == "llamacpp") {
+            // For now, reuse the mediapipe model path or add a dedicated one later
+            val path = store.mediaPipeModelPath.first()
+            if (path.isNullOrBlank()) {
+                throw IllegalStateException("No .gguf model downloaded or selected")
+            }
+            if (llamaCppProvider == null) {
+                llamaCppProvider = dev.kortex.core.llm.LlamaCppProvider(modelPath = path)
+            }
+            return llamaCppProvider!!
         }
         return defaultProvider
     }

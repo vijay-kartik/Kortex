@@ -65,20 +65,26 @@ class LlamaCppProvider(
     }
 
     private fun formatPrompt(messages: List<Message>): String {
+        // For local models, strip the system prompt to save tokens — the verbose agentic
+        // instructions (tool-use, web_search, etc.) don't apply to a simple local completion.
+        val filtered = messages.filter { it.role != Message.Role.SYSTEM }
+
         val pathLower = modelPath.lowercase()
         return when {
             pathLower.contains("gemma") -> {
-                messages.joinToString("") {
-                    "<start_of_turn>${if (it.role == Message.Role.USER) "user" else "model"}\n${it.content}<end_of_turn>\n"
+                // Gemma uses <start_of_turn>user / <start_of_turn>model — no system role.
+                filtered.joinToString("") {
+                    val role = if (it.role == Message.Role.USER) "user" else "model"
+                    "<start_of_turn>$role\n${it.content}<end_of_turn>\n"
                 } + "<start_of_turn>model\n"
             }
             pathLower.contains("llama-3") || pathLower.contains("llama3") -> {
-                messages.joinToString("") {
+                filtered.joinToString("") {
                     "<|start_header_id|>${it.role.name.lowercase()}<|end_header_id|>\n\n${it.content}<|eot_id|>"
                 } + "<|start_header_id|>assistant<|end_header_id|>\n\n"
             }
             else -> { // Fallback to ChatML
-                messages.joinToString("") {
+                filtered.joinToString("") {
                     "<|im_start|>${it.role.name.lowercase()}\n${it.content}<|im_end|>\n"
                 } + "<|im_start|>assistant\n"
             }

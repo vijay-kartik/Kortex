@@ -36,10 +36,10 @@ Java_dev_kortex_core_llm_LlamaCppProvider_loadModelNative(JNIEnv* env, jobject, 
     }
     
     auto cparams = llama_context_default_params();
-    cparams.n_ctx = 2048; // Hardcoded context size for now
+    cparams.n_ctx = 512;   // Keep small for mobile — reduces KV cache memory dramatically
     cparams.n_threads = 4;
     cparams.n_threads_batch = 4;
-    cparams.n_batch = 2048;
+    cparams.n_batch = 512;
     llama_context* ctx = llama_init_from_model(model, cparams);
     
     if (!ctx) {

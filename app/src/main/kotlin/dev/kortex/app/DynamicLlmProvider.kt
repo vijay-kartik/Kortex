@@ -1,5 +1,6 @@
 package dev.kortex.app
 
+import android.content.Context
 import dev.kortex.core.llm.LlmChunk
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.LlmRequest
@@ -11,12 +12,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 
 class DynamicLlmProvider(
+    private val context: Context,
     private val store: McpStore,
     private val defaultProvider: LlmProvider,
 ) : LlmProvider {
     private var ollamaProvider: LlmProvider? = null
+    private var mediaPipeProvider: LlmProvider? = null
     private var currentOllamaUrl: String? = null
     private var currentOllamaToken: String? = null
+    private var currentMediaPipePath: String? = null
 
     private suspend fun getActiveProvider(): LlmProvider {
         val providerType = store.activeProvider.first()
@@ -30,6 +34,21 @@ class DynamicLlmProvider(
                 ollamaProvider = OpenAiProvider(apiKey = token, baseUrl = url, logger = AndroidLogger)
             }
             return ollamaProvider!!
+        }
+        if (providerType == "mediapipe") {
+            val path = store.mediaPipeModelPath.first()
+            if (path.isNullOrBlank()) {
+                throw IllegalStateException("No MediaPipe model downloaded or selected")
+            }
+            if (mediaPipeProvider == null || currentMediaPipePath != path) {
+                currentMediaPipePath = path
+                mediaPipeProvider = dev.kortex.core.llm.MediaPipeProvider(
+                    context = context,
+                    modelPath = path,
+                    logger = AndroidLogger
+                )
+            }
+            return mediaPipeProvider!!
         }
         return defaultProvider
     }

@@ -44,6 +44,7 @@ data class McpSettingsUi(
     val activeProvider: String = "openai",
     val ollamaUrl: String = "http://10.0.2.2:11434/v1",
     val ollamaToken: String = "",
+    val mediaPipeModelPath: String = "",
 )
 
 // ── Names of the four builtins, so we can partition them in the UI ──────
@@ -83,8 +84,9 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     val ui: StateFlow<McpSettingsUi> = combine(
         combine(store.disabledTools, store.customServers, _serverStatus) { a, b, c -> Triple(a, b, c) },
         combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
-        combine(store.activeProvider, store.ollamaUrl, store.ollamaToken) { p, u, t -> Triple(p, u, t ?: "") }
-    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken) ->
+        combine(store.activeProvider, store.ollamaUrl, store.ollamaToken) { p, u, t -> Triple(p, u, t ?: "") },
+        store.mediaPipeModelPath
+    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken), mediaPipePath ->
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -120,6 +122,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             activeProvider = activeProvider,
             ollamaUrl = ollamaUrl,
             ollamaToken = ollamaToken,
+            mediaPipeModelPath = mediaPipePath ?: "",
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), McpSettingsUi())
 
@@ -168,6 +171,29 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             store.setOllamaToken(token)
         }
+    }
+
+    fun setMediaPipeModelPath(path: String) {
+        viewModelScope.launch {
+            store.setMediaPipeModelPath(path)
+        }
+    }
+
+    fun downloadModel(context: android.content.Context, url: String, filename: String) {
+        val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
+            .setTitle("Downloading $filename")
+            .setDescription("LLM Model for on-device inference")
+            .setDestinationInExternalFilesDir(context, android.os.Environment.DIRECTORY_DOWNLOADS, filename)
+            .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(true)
+        
+        val dm = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+        dm.enqueue(request)
+        
+        // Assume the path where it will be downloaded to and auto-set it
+        val expectedPath = java.io.File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), filename).absolutePath
+        setMediaPipeModelPath(expectedPath)
     }
 
     fun addServer(name: String, url: String, bearerToken: String?) {

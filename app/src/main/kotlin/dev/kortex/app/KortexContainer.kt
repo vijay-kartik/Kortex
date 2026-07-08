@@ -15,6 +15,8 @@ import dev.kortex.core.ambient.SignalIngestor
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.OpenAiProvider
 import dev.kortex.core.store.KortexDatabase
+import dev.kortex.core.tool.ToolRegistry
+import dev.kortex.core.tool.builtin.defaultTools
 
 /**
  * Manual dependency container (no DI framework — fewer moving parts). Built once in
@@ -45,6 +47,12 @@ class KortexContainer(context: Context) {
             ?: StubLlmProvider()
     }
 
+    // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.
+    val toolRegistry: ToolRegistry by lazy { ToolRegistry(defaultTools()) }
+
+    // MCP settings persistence (user-added servers + disabled tool names).
+    val mcpStore: McpStore by lazy { McpStore(appContext) }
+
     // Pipeline collaborators
     private val retriever by lazy { MemoryRetriever(memoryDao) }
     private val resolver by lazy { IdentityResolver(contactDao) }
@@ -69,3 +77,4 @@ class KortexContainer(context: Context) {
 
     val contactSeeder by lazy { ContactSeeder(appContext, contactDao) }
 }
+

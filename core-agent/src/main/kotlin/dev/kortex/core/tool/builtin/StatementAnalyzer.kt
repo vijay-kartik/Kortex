@@ -20,25 +20,19 @@ fun analyzeStatementTool(): Tool = tool(
 ) {
     param(
         name = "transactions",
-        type = "string",
-        description = "A JSON string containing a list of transactions extracted from the attachment. Each transaction MUST have 'date', 'description', and 'amount' fields. Optional: 'category'.",
+        type = "array",
+        description = "A JSON array containing a list of transactions extracted from the attachment. Each object MUST have 'date', 'description', and 'amount' fields. Optional: 'category'.",
     )
     
     risk(RiskLevel.LOW)
     execute { args ->
-        val transactionsRaw = args["transactions"]?.jsonPrimitive?.content
+        val jsonElements = args["transactions"]?.jsonArray
         
-        if (transactionsRaw.isNullOrBlank()) {
-            return@execute ToolResult(false, "No transactions provided or extraction failed.")
+        if (jsonElements == null || jsonElements.isEmpty()) {
+            return@execute ToolResult(false, "No transactions provided or extraction failed. Ensure you pass a valid JSON array of objects.")
         }
 
         try {
-            // Parse the string as a JSON array
-            val jsonElements = kotlinx.serialization.json.Json.parseToJsonElement(transactionsRaw).jsonArray
-            
-            if (jsonElements.isEmpty()) {
-                return@execute ToolResult(false, "Transaction list is empty.")
-            }
 
             val sb = StringBuilder()
             sb.append("Here is the extracted statement data:\n\n")

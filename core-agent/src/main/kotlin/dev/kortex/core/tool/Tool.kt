@@ -26,9 +26,15 @@ interface Tool {
 /** Minimal JSON-schema model for function-calling parameters. */
 data class ToolParam(val name: String, val type: String, val description: String, val required: Boolean = true)
 
-data class ToolSchema(val params: List<ToolParam>) {
+data class ToolSchema(
+    val params: List<ToolParam>,
+    /** Verbatim JSON Schema override — MCP tools carry their server's schema (nested objects,
+     *  enums, arrays) which the flat [params] list can't express. [params] still lists the
+     *  top-level fields so the governor's required-param validation keeps working. */
+    val raw: JsonObject? = null,
+) {
     /** Render as the JSON schema shape providers expect for function calling. */
-    fun toJsonSchema(): JsonObject = buildJsonObject {
+    fun toJsonSchema(): JsonObject = raw ?: buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
             params.forEach { p ->

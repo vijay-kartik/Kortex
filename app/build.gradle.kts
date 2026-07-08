@@ -71,5 +71,6 @@ dependencies {
     implementation(libs.datastore.preferences)
     implementation(libs.security.crypto)
 
-    implementation(libs.markdown.renderer.m3)
+    implementation(libs.richtext.commonmark)
+    implementation(libs.richtext.material3)
 }

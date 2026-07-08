@@ -62,7 +62,8 @@ kotest-assertions = { module = "io.kotest:kotest-assertions-core", version.ref =
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 
-markdown-renderer-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version = "0.37.0" }
+richtext-commonmark = { module = "com.halilibo.compose-richtext:richtext-commonmark", version = "0.20.0" }
+richtext-material3 = { module = "com.halilibo.compose-richtext:richtext-ui-material3", version = "0.20.0" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

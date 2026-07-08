@@ -105,7 +105,8 @@ import dev.kortex.app.ui.SynapseDim
 import dev.kortex.app.ui.Void
 import dev.kortex.core.log.Logger
 import dev.kortex.core.state.Message
-import com.mikepenz.markdown.m3.Markdown
+import com.halilibo.richtext.markdown.Markdown
+import com.halilibo.richtext.ui.material3.RichText
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -437,10 +438,9 @@ private fun MessageBubble(turn: ChatTurn) {
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 } else {
-                    Markdown(
-                        content = msg.content,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                    )
+                    RichText(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Markdown(content = msg.content)
+                    }
                 }
             }
         }

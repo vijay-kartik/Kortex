@@ -36,6 +36,8 @@ class McpStore(private val context: Context) {
         val KEY_CUSTOM_SERVERS = stringPreferencesKey("custom_mcp_servers")
         val KEY_DISABLED_TOOLS = stringSetPreferencesKey("disabled_tools")
         val KEY_ACTIVE_MODEL = stringPreferencesKey("active_model")
+        val KEY_ACTIVE_PROVIDER = stringPreferencesKey("active_provider")
+        val KEY_OLLAMA_URL = stringPreferencesKey("ollama_url")
     }
 
     val activeModel: Flow<String> = context.mcpDataStore.data.map { prefs ->
@@ -45,6 +47,26 @@ class McpStore(private val context: Context) {
     suspend fun setActiveModel(model: String) {
         context.mcpDataStore.edit { prefs ->
             prefs[KEY_ACTIVE_MODEL] = model
+        }
+    }
+
+    val activeProvider: Flow<String> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_ACTIVE_PROVIDER] ?: "openai"
+    }
+
+    suspend fun setActiveProvider(provider: String) {
+        context.mcpDataStore.edit { prefs ->
+            prefs[KEY_ACTIVE_PROVIDER] = provider
+        }
+    }
+
+    val ollamaUrl: Flow<String> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_OLLAMA_URL] ?: "http://10.0.2.2:11434/v1"
+    }
+
+    suspend fun setOllamaUrl(url: String) {
+        context.mcpDataStore.edit { prefs ->
+            prefs[KEY_OLLAMA_URL] = url
         }
     }
 

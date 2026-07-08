@@ -46,11 +46,12 @@ class KortexContainer(context: Context) {
     }
     val chatSessionDao get() = appDatabase.chatSessionDao()
 
-    // LLM provider — OpenAI when a key is configured, else the stub (so the app still runs).
+    // LLM provider — Wraps the default OpenAI provider with a Dynamic provider that can switch to Ollama
     val llm: LlmProvider by lazy {
-        BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
+        val defaultOpenAi = BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
             ?.let { OpenAiProvider(apiKey = it, logger = AndroidLogger) }
             ?: StubLlmProvider()
+        DynamicLlmProvider(store = mcpStore, defaultProvider = defaultOpenAi)
     }
 
     // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.

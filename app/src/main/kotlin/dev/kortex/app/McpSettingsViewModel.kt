@@ -41,6 +41,8 @@ data class McpSettingsUi(
     val pendingDelete: String? = null,
     val activeModel: String = "gpt-4o",
     val supportedModels: List<String> = dev.kortex.core.llm.Models.supportedOpenAi,
+    val activeProvider: String = "openai",
+    val ollamaUrl: String = "http://10.0.2.2:11434/v1",
 )
 
 // ── Names of the four builtins, so we can partition them in the UI ──────
@@ -79,8 +81,9 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
 
     val ui: StateFlow<McpSettingsUi> = combine(
         combine(store.disabledTools, store.customServers, _serverStatus) { a, b, c -> Triple(a, b, c) },
-        combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) }
-    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel) ->
+        combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
+        combine(store.activeProvider, store.ollamaUrl) { p, u -> p to u }
+    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl) ->
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -113,6 +116,8 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             showAddDialog = flags.showAddDialog,
             pendingDelete = flags.pendingDelete,
             activeModel = activeModel,
+            activeProvider = activeProvider,
+            ollamaUrl = ollamaUrl,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), McpSettingsUi())
 
@@ -142,6 +147,18 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     fun setActiveModel(model: String) {
         viewModelScope.launch {
             store.setActiveModel(model)
+        }
+    }
+
+    fun setActiveProvider(provider: String) {
+        viewModelScope.launch {
+            store.setActiveProvider(provider)
+        }
+    }
+
+    fun setOllamaUrl(url: String) {
+        viewModelScope.launch {
+            store.setOllamaUrl(url)
         }
     }
 

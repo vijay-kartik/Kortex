@@ -1,6 +1,7 @@
 package dev.kortex.app
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.kortex.core.Agent
 import dev.kortex.core.graph.AgentContext
@@ -8,17 +9,17 @@ import dev.kortex.core.graph.Approver
 import dev.kortex.core.graph.LlmUsageListener
 import dev.kortex.core.graph.ProgressListener
 import dev.kortex.core.llm.LlmProvider
-import dev.kortex.core.llm.OpenAiProvider
 import dev.kortex.core.log.Logger
+import dev.kortex.core.mcp.McpServer
 import dev.kortex.core.mcp.McpToolConnector
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
-import dev.kortex.core.tool.builtin.defaultTools
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -54,22 +55,21 @@ data class ChatUi(
 /**
  * Wires the pure-Kotlin [Agent] to Compose. The [Approver] bridges the agent's
  * Human-in-the-Loop pause to a UI dialog: the agent suspends until [resolveApproval].
- * The agent runs against OpenAI (or the stub if no key) with the default tool set.
+ * The shared [ToolRegistry] from [KortexContainer] is used so that the MCP settings
+ * screen and this ViewModel operate on the same tool set.
  */
-class ChatViewModel : ViewModel() {
+class ChatViewModel(application: Application) : AndroidViewModel(application) {
+    private val container = (application as KortexApp).container
+
     private val _ui = MutableStateFlow(ChatUi())
     val ui: StateFlow<ChatUi> = _ui.asStateFlow()
 
     private var approvalGate: CompletableDeferred<Boolean>? = null
 
-    // OpenAI is the default provider. Falls back to the stub if no key is configured
-    // in local.properties (OPENAI_API_KEY=...), so the app still runs out of the box.
-    private val provider: LlmProvider =
-        BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
-            ?.let { OpenAiProvider(apiKey = it, logger = AndroidLogger) }
-            ?: StubLlmProvider()
+    private val provider: LlmProvider = container.llm
+    private val tools: ToolRegistry = container.toolRegistry
+    private val mcpStore: McpStore = container.mcpStore
 
-    private val tools = ToolRegistry(defaultTools())   // calculator, web_search, open_url, current_time
     private val approver = Approver { name, args ->
         _ui.update { it.copy(pendingApproval = "$name $args") }
         CompletableDeferred<Boolean>().also { approvalGate = it }.await()
@@ -77,12 +77,31 @@ class ChatViewModel : ViewModel() {
     private val progress = ProgressListener { s -> _ui.update { it.copy(status = s) } }
 
     init {
-        // Third-party MCP tools (see McpConfig.kt) attach asynchronously; the agent starts
-        // with the builtins immediately and gains MCP tools as each server responds.
-        if (mcpServers.isNotEmpty()) {
-            viewModelScope.launch {
-                McpToolConnector(tools, AndroidLogger).connectAll(mcpServers)
-            }
+        // Apply persisted disabled-tool set, then connect MCP servers (default + custom).
+        viewModelScope.launch {
+            val disabled = mcpStore.disabledTools.first()
+            tools.setDisabled(disabled)
+        }
+        viewModelScope.launch {
+            connectMcpServers()
+        }
+        // Keep the registry in sync whenever the user toggles tools from the settings sheet.
+        viewModelScope.launch {
+            mcpStore.disabledTools.collect { disabled -> tools.setDisabled(disabled) }
+        }
+    }
+
+    /**
+     * Connects the hardcoded default MCP servers plus any user-added custom servers.
+     * Called once at init; new custom servers added mid-session are connected by
+     * [McpSettingsViewModel] directly.
+     */
+    private suspend fun connectMcpServers() {
+        val allServers = mcpServers + mcpStore.customServers.first().map {
+            McpServer(name = it.name, url = it.url, bearerToken = it.bearerToken)
+        }
+        if (allServers.isNotEmpty()) {
+            McpToolConnector(tools, AndroidLogger).connectAll(allServers)
         }
     }
 

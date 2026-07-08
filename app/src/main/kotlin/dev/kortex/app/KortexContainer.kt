@@ -5,7 +5,6 @@ import androidx.room.Room
 import dev.kortex.core.ambient.AmbientAnalyzer
 import dev.kortex.core.ambient.AmbientCoordinator
 import dev.kortex.core.ambient.AmbientTriage
-import dev.kortex.core.ambient.CardActionExecutor
 import dev.kortex.core.ambient.CardGuardrails
 import dev.kortex.core.ambient.IdentityResolver
 import dev.kortex.core.ambient.LlmCardGenerator
@@ -18,7 +17,6 @@ import dev.kortex.core.llm.OpenAiProvider
 import dev.kortex.core.store.KortexDatabase
 import dev.kortex.core.tool.ToolRegistry
 import dev.kortex.core.tool.builtin.defaultTools
-import dev.kortex.app.tools.whatsappTool
 
 /**
  * Manual dependency container (no DI framework — fewer moving parts). Built once in
@@ -49,6 +47,12 @@ class KortexContainer(context: Context) {
             ?: StubLlmProvider()
     }
 
+    // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.
+    val toolRegistry: ToolRegistry by lazy { ToolRegistry(defaultTools()) }
+
+    // MCP settings persistence (user-added servers + disabled tool names).
+    val mcpStore: McpStore by lazy { McpStore(appContext) }
+
     // Pipeline collaborators
     private val retriever by lazy { MemoryRetriever(memoryDao) }
     private val resolver by lazy { IdentityResolver(contactDao) }
@@ -72,16 +76,5 @@ class KortexContainer(context: Context) {
     }
 
     val contactSeeder by lazy { ContactSeeder(appContext, contactDao) }
-
-    /** Executes card actions (governed + audited), with an intent-based handler. */
-    val cardActionExecutor by lazy {
-        CardActionExecutor(
-            handler = IntentActionHandler(appContext, contactDao),
-            onAudit = { /* TODO: persist audit trail */ },
-        )
-    }
-
-    val toolRegistry by lazy {
-        ToolRegistry(defaultTools() + whatsappTool(appContext))
-    }
 }
+

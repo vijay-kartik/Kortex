@@ -45,6 +45,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -114,6 +116,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun RootScreen() {
     var tab by remember { mutableIntStateOf(0) }
+    var showMcpSettings by remember { mutableStateOf(false) }
     val tabs = listOf("Cards", "Chat", "Context")
 
     Scaffold(
@@ -122,6 +125,17 @@ fun RootScreen() {
             Column {
                 TopAppBar(
                     title = { Wordmark() },
+                    actions = {
+                        if (tab == 1) {
+                            IconButton(onClick = { showMcpSettings = true }) {
+                                Icon(
+                                    painterResource(R.drawable.ic_tune),
+                                    contentDescription = "MCP Settings",
+                                    tint = Muted,
+                                )
+                            }
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background,
                     ),
@@ -150,6 +164,10 @@ fun RootScreen() {
                 else -> ContextScreen()
             }
         }
+    }
+
+    if (showMcpSettings) {
+        McpSettingsSheet(onDismiss = { showMcpSettings = false })
     }
 }
 

@@ -43,6 +43,7 @@ data class McpSettingsUi(
     val supportedModels: List<String> = dev.kortex.core.llm.Models.supportedOpenAi,
     val activeProvider: String = "openai",
     val ollamaUrl: String = "http://10.0.2.2:11434/v1",
+    val ollamaToken: String = "",
 )
 
 // ── Names of the four builtins, so we can partition them in the UI ──────
@@ -82,8 +83,8 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     val ui: StateFlow<McpSettingsUi> = combine(
         combine(store.disabledTools, store.customServers, _serverStatus) { a, b, c -> Triple(a, b, c) },
         combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
-        combine(store.activeProvider, store.ollamaUrl) { p, u -> p to u }
-    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl) ->
+        combine(store.activeProvider, store.ollamaUrl, store.ollamaToken) { p, u, t -> Triple(p, u, t ?: "") }
+    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken) ->
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -118,6 +119,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             activeModel = activeModel,
             activeProvider = activeProvider,
             ollamaUrl = ollamaUrl,
+            ollamaToken = ollamaToken,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), McpSettingsUi())
 
@@ -159,6 +161,12 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     fun setOllamaUrl(url: String) {
         viewModelScope.launch {
             store.setOllamaUrl(url)
+        }
+    }
+
+    fun setOllamaToken(token: String) {
+        viewModelScope.launch {
+            store.setOllamaToken(token)
         }
     }
 

@@ -38,6 +38,7 @@ class McpStore(private val context: Context) {
         val KEY_ACTIVE_MODEL = stringPreferencesKey("active_model")
         val KEY_ACTIVE_PROVIDER = stringPreferencesKey("active_provider")
         val KEY_OLLAMA_URL = stringPreferencesKey("ollama_url")
+        val KEY_OLLAMA_TOKEN = stringPreferencesKey("ollama_token")
     }
 
     val activeModel: Flow<String> = context.mcpDataStore.data.map { prefs ->
@@ -67,6 +68,20 @@ class McpStore(private val context: Context) {
     suspend fun setOllamaUrl(url: String) {
         context.mcpDataStore.edit { prefs ->
             prefs[KEY_OLLAMA_URL] = url
+        }
+    }
+
+    val ollamaToken: Flow<String?> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_OLLAMA_TOKEN]
+    }
+
+    suspend fun setOllamaToken(token: String?) {
+        context.mcpDataStore.edit { prefs ->
+            if (token.isNullOrBlank()) {
+                prefs.remove(KEY_OLLAMA_TOKEN)
+            } else {
+                prefs[KEY_OLLAMA_TOKEN] = token
+            }
         }
     }
 

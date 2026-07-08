@@ -100,13 +100,17 @@ fun McpSettingsSheet(
             // ── Header ──────────────────────────────────────────────
             item { SheetHeader() }
 
-            // ── LLM Model ───────────────────────────────────────────
-            item { SectionLabel("LLM MODEL (OpenAI)") }
+            // ── LLM Provider ───────────────────────────────────────────
+            item { SectionLabel("LLM PROVIDER") }
             item {
                 ModelSelector(
+                    activeProvider = ui.activeProvider,
                     activeModel = ui.activeModel,
                     supportedModels = ui.supportedModels,
-                    onModelSelected = { vm.setActiveModel(it) }
+                    ollamaUrl = ui.ollamaUrl,
+                    onProviderSelected = { vm.setActiveProvider(it) },
+                    onModelSelected = { vm.setActiveModel(it) },
+                    onOllamaUrlChange = { vm.setOllamaUrl(it) }
                 )
             }
 
@@ -583,11 +587,16 @@ private fun SettingsTextField(
 
 @Composable
 private fun ModelSelector(
+    activeProvider: String,
     activeModel: String,
     supportedModels: List<String>,
-    onModelSelected: (String) -> Unit
+    ollamaUrl: String,
+    onProviderSelected: (String) -> Unit,
+    onModelSelected: (String) -> Unit,
+    onOllamaUrlChange: (String) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var expandedProvider by remember { mutableStateOf(false) }
+    var expandedModel by remember { mutableStateOf(false) }
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -596,10 +605,59 @@ private fun ModelSelector(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column {
+            // Provider Selection
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
+                    .clickable { expandedProvider = !expandedProvider }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Provider",
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    )
+                    Text(
+                        if (activeProvider == "openai") "OpenAI" else "Ollama (Local/Cloud)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Synapse,
+                    )
+                }
+                Text(if (expandedProvider) "▲" else "▼", style = MaterialTheme.typography.labelSmall, color = Muted)
+            }
+            AnimatedVisibility(visible = expandedProvider) {
+                Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
+                    listOf("openai" to "OpenAI", "ollama" to "Ollama (Local/Cloud)").forEach { (id, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onProviderSelected(id)
+                                    expandedProvider = false
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (id == activeProvider) Synapse else Muted,
+                                fontWeight = if (id == activeProvider) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Model Selection
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expandedModel = !expandedModel }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -617,35 +675,67 @@ private fun ModelSelector(
                         color = Synapse,
                     )
                 }
-                Text(
-                    if (expanded) "▲" else "▼",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Muted,
-                )
+                Text(if (expandedModel) "▲" else "▼", style = MaterialTheme.typography.labelSmall, color = Muted)
             }
-            AnimatedVisibility(visible = expanded) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)
-                ) {
-                    supportedModels.forEach { model ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onModelSelected(model)
-                                    expanded = false
-                                }
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                model,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (model == activeModel) Synapse else Muted,
-                                fontWeight = if (model == activeModel) FontWeight.Bold else FontWeight.Normal
+            AnimatedVisibility(visible = expandedModel) {
+                Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
+                    if (activeProvider == "openai") {
+                        supportedModels.forEach { model ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onModelSelected(model)
+                                        expandedModel = false
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    model,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (model == activeModel) Synapse else Muted,
+                                    fontWeight = if (model == activeModel) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    } else {
+                        // For Ollama, users type the model name
+                        var customModel by remember { mutableStateOf(activeModel) }
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                            SettingsTextField(
+                                value = customModel,
+                                onValueChange = { customModel = it },
+                                label = "Model Name",
+                                placeholder = "llama3:latest"
                             )
+                            Spacer(Modifier.height(8.dp))
+                            ButtonDefaults.filledTonalButtonColors()
+                            FilledTonalButton(
+                                onClick = { 
+                                    onModelSelected(customModel)
+                                    expandedModel = false
+                                },
+                                modifier = Modifier.align(Alignment.End),
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
+                            ) {
+                                Text("Save Model")
+                            }
                         }
                     }
+                }
+            }
+
+            // Ollama URL (Only if Ollama)
+            if (activeProvider == "ollama") {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    var editUrl by remember { mutableStateOf(ollamaUrl) }
+                    SettingsTextField(
+                        value = editUrl,
+                        onValueChange = { editUrl = it; onOllamaUrlChange(it) },
+                        label = "Ollama Base URL",
+                        placeholder = "http://10.0.2.2:11434/v1"
+                    )
                 }
             }
         }

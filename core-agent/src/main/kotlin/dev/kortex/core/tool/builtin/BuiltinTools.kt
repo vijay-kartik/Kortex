@@ -24,4 +24,5 @@ fun defaultTools(): List<Tool> = listOf(
     webSearchTool(),
     openUrlTool(),
     clockTool(),
+    analyzeStatementTool(),
 )

@@ -115,7 +115,57 @@ class OpenAiProvider(
 
     private fun Message.toApiMessage(): JsonObject = buildJsonObject {
         put("role", role.name.lowercase())
-        put("content", content)
+        
+        if (attachments.isEmpty()) {
+            put("content", content)
+        } else {
+            putJsonArray("content") {
+                if (content.isNotEmpty()) {
+                    add(buildJsonObject {
+                        put("type", "text")
+                        put("text", content)
+                    })
+                }
+                attachments.forEach { attachment ->
+                    when {
+                        attachment.mimeType.startsWith("image/") -> {
+                            add(buildJsonObject {
+                                put("type", "image_url")
+                                putJsonObject("image_url") {
+                                    put("url", "data:${attachment.mimeType};base64,${attachment.dataBase64}")
+                                }
+                            })
+                        }
+                        attachment.mimeType == "application/pdf" -> {
+                            add(buildJsonObject {
+                                put("type", "file")
+                                putJsonObject("file") {
+                                    put("filename", attachment.filename ?: "document.pdf")
+                                    put("file_data", "data:application/pdf;base64,${attachment.dataBase64}")
+                                }
+                            })
+                        }
+                        attachment.mimeType.startsWith("audio/") -> {
+                            add(buildJsonObject {
+                                put("type", "input_audio")
+                                putJsonObject("input_audio") {
+                                    put("data", attachment.dataBase64)
+                                    put("format", attachment.mimeType.substringAfter("/"))
+                                }
+                            })
+                        }
+                        else -> {
+                            // Fallback for unsupported types if passed
+                            add(buildJsonObject {
+                                put("type", "text")
+                                put("text", "Attached file: ${attachment.filename ?: "unknown"} (${attachment.mimeType})")
+                            })
+                        }
+                    }
+                }
+            }
+        }
+
         if (toolCallId != null) put("tool_call_id", toolCallId)
         if (toolCalls.isNotEmpty()) {
             putJsonArray("tool_calls") {

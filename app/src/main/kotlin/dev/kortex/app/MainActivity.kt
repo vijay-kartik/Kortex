@@ -447,11 +447,34 @@ private fun MessageBubble(turn: ChatTurn) {
                     ),
             ) {
                 if (isUser) {
-                    Text(
-                        msg.content,
-                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        if (msg.attachments.isNotEmpty()) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(bottom = if (msg.content.isNotBlank()) 6.dp else 0.dp)
+                            ) {
+                                msg.attachments.forEach { att ->
+                                    Surface(
+                                        color = Void.copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(6.dp),
+                                    ) {
+                                        Text(
+                                            text = "\uD83D\uDCCE ${att.filename ?: "File"}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Void,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (msg.content.isNotBlank()) {
+                            Text(
+                                msg.content,
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                    }
                 } else {
                     Column {
                         if (parsed.text.isNotEmpty()) {

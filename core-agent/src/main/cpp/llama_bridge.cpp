@@ -36,6 +36,9 @@ Java_dev_kortex_core_llm_LlamaCppProvider_loadModelNative(JNIEnv* env, jobject, 
     
     auto cparams = llama_context_default_params();
     cparams.n_ctx = 2048; // Hardcoded context size for now
+    cparams.n_threads = 4;
+    cparams.n_threads_batch = 4;
+    cparams.n_batch = 2048;
     llama_context* ctx = llama_init_from_model(model, cparams);
     
     if (!ctx) {
@@ -86,8 +89,16 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
     // Clear previous KV cache so we can run multiple queries independently
     llama_memory_clear(llama_get_memory(state->ctx), true);
     
-    // 2. Prepare batch
-    llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
+    // 2. Prepare batch explicitly
+    llama_batch batch = llama_batch_init(n_prompt, 0, 1);
+    for (int i = 0; i < n_prompt; i++) {
+        batch.token[i] = prompt_tokens[i];
+        batch.pos[i] = i;
+        batch.seq_id[i][0] = 0;
+        batch.n_seq_id[i] = 1;
+        batch.logits[i] = (i == n_prompt - 1);
+    }
+    batch.n_tokens = n_prompt;
     
     // 3. Init Sampler
     auto sparams = llama_sampler_chain_default_params();
@@ -99,16 +110,18 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
     // 4. Decode loop
     std::string response = "";
     int n_predict = 1024; // max new tokens
-    llama_token new_token_id;
     
-    for (int n_pos = 0; n_pos + batch.n_tokens < n_prompt + n_predict; ) {
-        if (llama_decode(state->ctx, batch)) {
-            LOGE("failed to decode");
-            break;
-        }
-        n_pos += batch.n_tokens;
-        
-        new_token_id = llama_sampler_sample(smpl, state->ctx, -1);
+    if (llama_decode(state->ctx, batch)) {
+        LOGE("failed to decode prompt");
+        llama_batch_free(batch);
+        llama_sampler_free(smpl);
+        env->ReleaseStringUTFChars(jprompt, prompt);
+        return env->NewStringUTF("");
+    }
+    
+    int n_pos = n_prompt;
+    for (int i = 0; i < n_predict; i++) {
+        llama_token new_token_id = llama_sampler_sample(smpl, state->ctx, -1);
         llama_sampler_accept(smpl, new_token_id);
         if (llama_vocab_is_eog(vocab, new_token_id)) {
             break; // End of generation
@@ -125,9 +138,21 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
             }
         }
         
-        batch = llama_batch_get_one(&new_token_id, 1);
+        batch.n_tokens = 1;
+        batch.token[0] = new_token_id;
+        batch.pos[0] = n_pos;
+        batch.seq_id[0][0] = 0;
+        batch.n_seq_id[0] = 1;
+        batch.logits[0] = true;
+        
+        if (llama_decode(state->ctx, batch)) {
+            LOGE("failed to decode generation step");
+            break;
+        }
+        n_pos++;
     }
     
+    llama_batch_free(batch);    
     llama_sampler_free(smpl);
     env->ReleaseStringUTFChars(jprompt, prompt);
     return env->NewStringUTF(response.c_str());

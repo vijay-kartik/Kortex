@@ -112,6 +112,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.horizontalScroll
 import android.graphics.BitmapFactory
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 
@@ -135,62 +136,62 @@ fun RootScreen() {
     val tabs = listOf("Chat", "Cards", "Context", "History")
     val vm: ChatViewModel = viewModel()
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = { Wordmark() },
-                    actions = {
-                        if (tab == 0) {
-                            IconButton(onClick = { showMcpSettings = true }) {
-                                Icon(
-                                    painterResource(R.drawable.ic_tune),
-                                    contentDescription = "MCP Settings",
-                                    tint = Muted,
-                                )
+    if (showMcpSettings) {
+        McpSettingsScreen(onDismiss = { showMcpSettings = false })
+    } else {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                Column {
+                    TopAppBar(
+                        title = { Wordmark() },
+                        actions = {
+                            if (tab == 0) {
+                                IconButton(onClick = { showMcpSettings = true }) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_tune),
+                                        contentDescription = "MCP Settings",
+                                        tint = Muted,
+                                    )
+                                }
                             }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background,
+                        ),
+                    )
+                    TabRow(
+                        selectedTabIndex = tab,
                         containerColor = MaterialTheme.colorScheme.background,
-                    ),
-                )
-                TabRow(
-                    selectedTabIndex = tab,
-                    containerColor = MaterialTheme.colorScheme.background,
-                ) {
-                    tabs.forEachIndexed { i, title ->
-                        Tab(
-                            selected = tab == i,
-                            onClick = { tab = i },
-                            selectedContentColor = Synapse,
-                            unselectedContentColor = Muted,
-                            text = { Text(title, style = MaterialTheme.typography.labelLarge) },
-                        )
+                    ) {
+                        tabs.forEachIndexed { i, title ->
+                            Tab(
+                                selected = tab == i,
+                                onClick = { tab = i },
+                                selectedContentColor = Synapse,
+                                unselectedContentColor = Muted,
+                                text = { Text(title, style = MaterialTheme.typography.labelLarge) },
+                            )
+                        }
                     }
                 }
-            }
-        },
-    ) { innerPadding ->
-        Box(Modifier.padding(innerPadding)) {
-            when (tab) {
-                0 -> ChatScreen(vm = vm)
-                1 -> CardsScreen()
-                2 -> ContextScreen()
-                else -> HistoryScreen(
-                    vm = vm,
-                    onSelectSession = { sessionId ->
-                        vm.loadSession(sessionId)
-                        tab = 0
-                    }
-                )
+            },
+        ) { innerPadding ->
+            Box(Modifier.padding(innerPadding)) {
+                when (tab) {
+                    0 -> ChatScreen(vm = vm)
+                    1 -> CardsScreen()
+                    2 -> ContextScreen()
+                    else -> HistoryScreen(
+                        vm = vm,
+                        onSelectSession = { sessionId ->
+                            vm.loadSession(sessionId)
+                            tab = 0
+                        }
+                    )
+                }
             }
         }
-    }
-
-    if (showMcpSettings) {
-        McpSettingsSheet(onDismiss = { showMcpSettings = false })
     }
 }
 

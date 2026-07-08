@@ -31,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -74,31 +75,38 @@ private val StatusConnected = Color(0xFF4ADE80)
 private val StatusConnecting = Amber
 private val StatusError = Alarm
 
-// ── Bottom sheet ────────────────────────────────────────────────────────
+// ── Screen ────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun McpSettingsSheet(
+fun McpSettingsScreen(
     onDismiss: () -> Unit,
     vm: McpSettingsViewModel = viewModel(),
-    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
 ) {
     val ui by vm.ui.collectAsStateWithLifecycle()
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Void,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        dragHandle = { SheetDragHandle() },
-    ) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            androidx.compose.material3.TopAppBar(
+                title = { Text("Tools & Settings") },
+                navigationIcon = {
+                    IconButton(onClick = onDismiss) {
+                        Text("←", fontSize = 24.sp, color = Muted)
+                    }
+                },
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                )
+            )
+        }
+    ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            // ── Header ──────────────────────────────────────────────
-            item { SheetHeader() }
+
 
             // ── LLM Provider ───────────────────────────────────────────
             item { SectionLabel("LLM PROVIDER") }
@@ -229,36 +237,7 @@ fun McpSettingsSheet(
 
 // ── Composable pieces ───────────────────────────────────────────────────
 
-@Composable
-private fun SheetDragHandle() {
-    Box(Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .width(36.dp)
-                .height(4.dp)
-                .background(Edge, RoundedCornerShape(2.dp)),
-        )
-    }
-}
 
-@Composable
-private fun SheetHeader() {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp, top = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            "Tools & Servers",
-            style = MaterialTheme.typography.titleLarge,
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            "MCP",
-            style = MaterialTheme.typography.labelSmall,
-            color = Synapse,
-        )
-    }
-}
 
 @Composable
 private fun SectionLabel(text: String, modifier: Modifier = Modifier) {

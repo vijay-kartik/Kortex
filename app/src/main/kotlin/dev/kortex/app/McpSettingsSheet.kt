@@ -30,7 +30,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
@@ -40,7 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -759,6 +759,12 @@ private fun ModelSelector(
             if (activeProvider == "mediapipe") {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
                     var editPath by remember { mutableStateOf(mediaPipeModelPath) }
+                    Text(
+                        "MediaPipe supports Gemma, Phi-2, Falcon, and StableLM. You can download the official Gemma 2B model below, or use the MediaPipe Python conversion script to convert other models and enter the absolute path to the .bin file.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
                     SettingsTextField(
                         value = editPath,
                         onValueChange = { editPath = it; onMediaPipeModelPathChange(it) },

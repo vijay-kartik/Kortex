@@ -1,6 +1,8 @@
 package dev.kortex.core.graph
 
 import dev.kortex.core.llm.LlmProvider
+import dev.kortex.core.llm.LlmRequest
+import dev.kortex.core.llm.LlmResponse
 import dev.kortex.core.log.Logger
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
@@ -19,7 +21,26 @@ class AgentContext(
     val onProgress: ProgressListener = ProgressListener {},
     /** Structured logging for requests/responses/tool calls (pattern 19: Evaluation & Monitoring). */
     val logger: Logger = Logger.CONSOLE,
+    /** Structured token usage per LLM call (pattern 19) — drives live cost/stats UIs without
+     *  needing to parse log strings. Fired by [AgentContext.complete] after every call. */
+    val onLlmUsage: LlmUsageListener = LlmUsageListener {},
 )
+
+/**
+ * The one way nodes should call the LLM: threads the context's logger into the provider
+ * and reports structured usage. Calling `ctx.llm.complete` directly bypasses both.
+ */
+suspend fun AgentContext.complete(req: LlmRequest): LlmResponse =
+    llm.complete(req, logger).also {
+        onLlmUsage.report(LlmUsage(req.model, it.inputTokens, it.outputTokens))
+    }
+
+/** One LLM call's token usage. */
+data class LlmUsage(val model: String, val inputTokens: Int, val outputTokens: Int)
+
+fun interface LlmUsageListener {
+    fun report(usage: LlmUsage)
+}
 
 /** Returns true if the high-risk action is approved. The Android app shows a Compose sheet. */
 fun interface Approver {

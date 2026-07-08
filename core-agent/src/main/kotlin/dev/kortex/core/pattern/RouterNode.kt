@@ -2,6 +2,7 @@ package dev.kortex.core.pattern
 
 import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
+import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.Models
 import dev.kortex.core.log.d
@@ -34,7 +35,7 @@ class RouterNode(
             Request: $query
         """.trimIndent()
 
-        val resp = ctx.llm.complete(
+        val resp = ctx.complete(
             LlmRequest(
                 model = model,
                 messages = listOf(Message(Message.Role.USER, prompt)),
@@ -43,8 +44,12 @@ class RouterNode(
         )
         val route = routes.firstOrNull { resp.message.content.trim().contains(it) } ?: routes.first()
         ctx.logger.i(TAG, "routed to '$route'")
-        return state.copy(scratch = state.scratch + ("route" to route))
-            .trace("router", "route", route)
+        return state.copy(
+            scratch = state.scratch + ("route" to route),
+            budget = state.budget.copy(
+                tokensUsed = state.budget.tokensUsed + resp.inputTokens + resp.outputTokens,
+            ),
+        ).trace("router", "route", route)
     }
 
     companion object {

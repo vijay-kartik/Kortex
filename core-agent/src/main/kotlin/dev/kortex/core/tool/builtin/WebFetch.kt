@@ -67,12 +67,14 @@ private suspend fun fetchReadableText(client: HttpClient, url: String): String {
     return extractReadableText(response.body())
 }
 
-// Strip script/style/comments, then tags, then collapse whitespace — same lightweight,
-// dependency-free approach WebSearch.kt uses to parse DDG's HTML (no HTML parser library).
+// Strip script/style/comments plus page chrome (nav/header/footer/aside), then tags, then
+// collapse whitespace — same lightweight, dependency-free approach WebSearch.kt uses to
+// parse DDG's HTML (no HTML parser library). Dropping chrome matters because the result is
+// truncated to max_chars: a site's menu ("Home / Politics / Sports / …") can otherwise
+// consume the whole window before the article text starts.
 internal fun extractReadableText(html: String): String {
     val withoutNoise = html
-        .replace(Regex("(?is)<script.*?</script>"), " ")
-        .replace(Regex("(?is)<style.*?</style>"), " ")
+        .replace(Regex("(?is)<(script|style|noscript|svg|iframe|form|nav|header|footer|aside)[^>]*>.*?</\\1>"), " ")
         .replace(Regex("(?is)<!--.*?-->"), " ")
     val bodyOnly = Regex("(?is)<body[^>]*>(.*)</body>").find(withoutNoise)?.groupValues?.get(1) ?: withoutNoise
 

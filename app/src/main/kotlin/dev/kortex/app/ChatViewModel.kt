@@ -10,6 +10,7 @@ import dev.kortex.core.graph.ProgressListener
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.OpenAiProvider
 import dev.kortex.core.log.Logger
+import dev.kortex.core.mcp.McpToolConnector
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
@@ -74,6 +75,16 @@ class ChatViewModel : ViewModel() {
         CompletableDeferred<Boolean>().also { approvalGate = it }.await()
     }
     private val progress = ProgressListener { s -> _ui.update { it.copy(status = s) } }
+
+    init {
+        // Third-party MCP tools (see McpConfig.kt) attach asynchronously; the agent starts
+        // with the builtins immediately and gains MCP tools as each server responds.
+        if (mcpServers.isNotEmpty()) {
+            viewModelScope.launch {
+                McpToolConnector(tools, AndroidLogger).connectAll(mcpServers)
+            }
+        }
+    }
 
     fun resolveApproval(approved: Boolean) {
         _ui.update { it.copy(pendingApproval = null) }

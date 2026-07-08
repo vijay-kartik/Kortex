@@ -654,7 +654,8 @@ private fun ModelSelector(
             }
 
             // Model Selection
-            Row(
+            if (activeProvider == "openai" || activeProvider == "ollama") {
+                Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { expandedModel = !expandedModel }
@@ -723,6 +724,7 @@ private fun ModelSelector(
                             }
                         }
                     }
+                }
                 }
             }
 

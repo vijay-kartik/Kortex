@@ -2,6 +2,7 @@ package dev.kortex.core.pattern
 
 import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
+import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.Models
 import dev.kortex.core.log.d
@@ -47,11 +48,28 @@ class ReflectNode(
 
         ctx.logger.d(TAG, "reviewing answer (attempt ${count + 1}/$maxReflections)")
 
+        // The reviewer must share the agent's grounding. Without the conversation's SYSTEM
+        // message it falls back to its training-cutoff worldview and rejects correct answers
+        // as "impossible future information"; without the tool-call list it invents critiques
+        // like "the assistant did not search the web" when it demonstrably did.
+        val system = state.messages.firstOrNull { it.role == Message.Role.SYSTEM }?.content
+        val toolsUsed = state.messages
+            .flatMap { it.toolCalls }
+            .joinToString("\n") { "- ${it.name}(${it.argumentsJson})" }
+
         val prompt = """
             You are a strict reviewer. Decide whether the assistant's answer fully and
             correctly addresses the user's request.
-            - If it is good, reply with exactly: OK
+            The assistant has real, live tools (web search, opening URLs, the device clock);
+            facts in its answer may come from those tool results, which are current and
+            trustworthy even when they postdate your training data. Never reject an answer
+            because its dates are later than what you know, and never claim the assistant
+            cannot search the web or access real-time information — it can.
+            - If the answer is good, reply with exactly: OK
             - Otherwise reply: REVISE: <specific, actionable feedback>
+
+            Tool calls the assistant already made during this run:
+            ${toolsUsed.ifBlank { "(none)" }}
 
             User request:
             $request
@@ -60,10 +78,13 @@ class ReflectNode(
             $answer
         """.trimIndent()
 
-        val resp = ctx.llm.complete(
+        val resp = ctx.complete(
             LlmRequest(
                 model = model,
-                messages = listOf(Message(Message.Role.USER, prompt)),
+                messages = listOfNotNull(
+                    system?.let { Message(Message.Role.SYSTEM, it) },
+                    Message(Message.Role.USER, prompt),
+                ),
                 temperature = 0.0,
             )
         )

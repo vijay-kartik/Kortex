@@ -1,5 +1,6 @@
 package dev.kortex.core.llm
 
+import dev.kortex.core.log.Logger
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.Tool
 import kotlinx.coroutines.flow.Flow
@@ -10,7 +11,13 @@ import kotlinx.coroutines.flow.Flow
  * but Claude / Gemini / on-device (Gemini Nano) can implement the same contract.
  */
 interface LlmProvider {
-    suspend fun complete(req: LlmRequest): LlmResponse
+    /**
+     * [logger] overrides the provider's own logger for this one call. Graph nodes pass
+     * `ctx.logger` here so per-turn observers (e.g. the chat UI's reasoning panel and its
+     * token stats) see request/response logs; callers that omit it (the ambient pipeline)
+     * get the provider's constructor-configured logger.
+     */
+    suspend fun complete(req: LlmRequest, logger: Logger? = null): LlmResponse
     fun stream(req: LlmRequest): Flow<LlmChunk>
 }
 

@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test
  */
 private class ScriptedProvider : LlmProvider {
     private var step = 0
-    override suspend fun complete(req: LlmRequest): LlmResponse {
+    override suspend fun complete(req: LlmRequest, logger: dev.kortex.core.log.Logger?): LlmResponse {
         // Router classification call has no tools attached; just label it.
         if (req.tools.isEmpty()) return LlmResponse(Message(Message.Role.ASSISTANT, "tool_task"))
         return if (step++ == 0) {

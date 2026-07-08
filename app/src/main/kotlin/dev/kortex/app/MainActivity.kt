@@ -29,6 +29,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -135,6 +136,7 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
         if (ui.busy && ui.liveReasoning.isNotEmpty()) {
             ReasoningPanel(
                 lines = ui.liveReasoning,
+                stats = ui.liveStats,
                 initiallyExpanded = true,
                 modifier = Modifier.padding(bottom = 8.dp),
             )
@@ -206,17 +208,19 @@ private fun MessageBubble(turn: ChatTurn) {
         }
         if (turn.reasoning.isNotEmpty()) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                ReasoningPanel(turn.reasoning, modifier = Modifier.padding(top = 4.dp))
+                ReasoningPanel(turn.reasoning, turn.stats, modifier = Modifier.padding(top = 4.dp))
             }
         }
     }
 }
 
 /** Collapsible "chain of thought" — collapsed by default once a turn finishes, expanded
- *  by default while it's still streaming in live (see the `initiallyExpanded` call site). */
+ *  by default while it's still streaming in live (see the `initiallyExpanded` call site).
+ *  The stats footer (tokens, tool calls, duration) stays visible in both states. */
 @Composable
 private fun ReasoningPanel(
     lines: List<ReasoningLine>,
+    stats: ReasoningStats,
     modifier: Modifier = Modifier,
     initiallyExpanded: Boolean = false,
 ) {
@@ -267,6 +271,19 @@ private fun ReasoningPanel(
                     }
                 }
             }
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 6.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
+            )
+            Text(
+                listOf(
+                    "%,d tokens".format(stats.tokensUsed),
+                    "${stats.toolCalls} tool call${if (stats.toolCalls == 1) "" else "s"}",
+                    "%.1fs".format(stats.durationMs / 1000.0),
+                ).joinToString("  ·  "),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

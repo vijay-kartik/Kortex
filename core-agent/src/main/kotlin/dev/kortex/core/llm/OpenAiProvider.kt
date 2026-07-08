@@ -49,8 +49,9 @@ class OpenAiProvider(
     private val client: HttpClient = defaultClient()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-    override suspend fun complete(req: LlmRequest): LlmResponse {
-        logger.d(TAG, "POST /chat/completions model=${req.model} messages=${req.messages.size} tools=${req.tools.size}")
+    override suspend fun complete(req: LlmRequest, logger: Logger?): LlmResponse {
+        val log = logger ?: this.logger
+        log.d(TAG, "POST /chat/completions model=${req.model} messages=${req.messages.size} tools=${req.tools.size}")
         return runCatching {
             val response: JsonObject = client.post("$baseUrl/chat/completions") {
                 header("Authorization", "Bearer $apiKey")
@@ -75,9 +76,9 @@ class OpenAiProvider(
                     add("tool_calls=[${resp.message.toolCalls.joinToString { "${it.name}(${it.argumentsJson})" }}]")
                 }
             }
-            logger.d(TAG, "response: ${parts.joinToString(", ")}")
+            log.d(TAG, "response: ${parts.joinToString(", ")}")
         }.onFailure { err ->
-            logger.e(TAG, "request to $baseUrl failed: ${err.message}", err)
+            log.e(TAG, "request to $baseUrl failed: ${err.message}", err)
         }.getOrThrow()
     }
 

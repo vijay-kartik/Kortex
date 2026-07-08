@@ -17,6 +17,7 @@ import dev.kortex.core.llm.OpenAiProvider
 import dev.kortex.core.store.KortexDatabase
 import dev.kortex.core.tool.ToolRegistry
 import dev.kortex.core.tool.builtin.defaultTools
+import dev.kortex.app.store.AppDatabase
 
 /**
  * Manual dependency container (no DI framework — fewer moving parts). Built once in
@@ -39,6 +40,11 @@ class KortexContainer(context: Context) {
     val graphEntityDao get() = database.graphEntityDao()
     val mentionDao get() = database.mentionDao()
     val relationDao get() = database.relationDao()
+
+    val appDatabase: AppDatabase by lazy {
+        Room.databaseBuilder(appContext, AppDatabase::class.java, "app.db").build()
+    }
+    val chatSessionDao get() = appDatabase.chatSessionDao()
 
     // LLM provider — OpenAI when a key is configured, else the stub (so the app still runs).
     val llm: LlmProvider by lazy {

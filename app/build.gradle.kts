@@ -42,7 +42,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions { 
+        jvmTarget = "17" 
+        freeCompilerArgs += listOf("-Xskip-metadata-version-check")
+    }
 
     buildTypes {
         release {

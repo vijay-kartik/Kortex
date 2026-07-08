@@ -23,7 +23,10 @@ android {
     }
 
     ndkVersion = "30.0.14904198"
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions { 
+        jvmTarget = "17" 
+        freeCompilerArgs += listOf("-Xskip-metadata-version-check")
+    }
 
     // Existing unit tests use JUnit 5 (Jupiter); run them on the JVM unit-test path.
     testOptions {
@@ -51,7 +54,7 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
-    implementation(libs.mediapipe.tasks.genai)
+    implementation(libs.litertlm.android)
 
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotest.assertions)

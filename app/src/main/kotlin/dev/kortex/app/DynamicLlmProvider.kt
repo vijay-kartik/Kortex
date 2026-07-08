@@ -17,11 +17,11 @@ class DynamicLlmProvider(
     private val defaultProvider: LlmProvider,
 ) : LlmProvider {
     private var ollamaProvider: LlmProvider? = null
-    private var mediaPipeProvider: LlmProvider? = null
+    private var litertProvider: LlmProvider? = null
     private var llamaCppProvider: LlmProvider? = null
     private var currentOllamaUrl: String? = null
     private var currentOllamaToken: String? = null
-    private var currentMediaPipePath: String? = null
+    private var currentLiteRtPath: String? = null
 
     private suspend fun getActiveProvider(): LlmProvider = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val providerType = store.activeProvider.first()
@@ -39,17 +39,17 @@ class DynamicLlmProvider(
         if (providerType == "mediapipe") {
             val path = store.mediaPipeModelPath.first()
             if (path.isNullOrBlank()) {
-                throw IllegalStateException("No MediaPipe model downloaded or selected")
+                throw IllegalStateException("No LiteRT model downloaded or selected")
             }
-            if (mediaPipeProvider == null || currentMediaPipePath != path) {
-                currentMediaPipePath = path
-                mediaPipeProvider = dev.kortex.core.llm.MediaPipeProvider(
+            if (litertProvider == null || currentLiteRtPath != path) {
+                currentLiteRtPath = path
+                litertProvider = dev.kortex.core.llm.LiteRtProvider(
                     context = context,
                     modelPath = path,
                     logger = AndroidLogger
                 )
             }
-            return@withContext mediaPipeProvider!!
+            return@withContext litertProvider!!
         }
         if (providerType == "llamacpp") {
             // For now, reuse the mediapipe model path or add a dedicated one later

@@ -6,6 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -65,7 +68,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -99,6 +105,7 @@ import dev.kortex.app.ui.SynapseDim
 import dev.kortex.app.ui.Void
 import dev.kortex.core.log.Logger
 import dev.kortex.core.state.Message
+import com.mikepenz.markdown.m3.Markdown
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -117,7 +124,7 @@ class MainActivity : ComponentActivity() {
 fun RootScreen() {
     var tab by remember { mutableIntStateOf(0) }
     var showMcpSettings by remember { mutableStateOf(false) }
-    val tabs = listOf("Cards", "Chat", "Context")
+    val tabs = listOf("Chat", "Cards", "Context")
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -126,7 +133,7 @@ fun RootScreen() {
                 TopAppBar(
                     title = { Wordmark() },
                     actions = {
-                        if (tab == 1) {
+                        if (tab == 0) {
                             IconButton(onClick = { showMcpSettings = true }) {
                                 Icon(
                                     painterResource(R.drawable.ic_tune),
@@ -159,8 +166,8 @@ fun RootScreen() {
     ) { innerPadding ->
         Box(Modifier.padding(innerPadding)) {
             when (tab) {
-                0 -> CardsScreen()
-                1 -> ChatScreen()
+                0 -> ChatScreen()
+                1 -> CardsScreen()
                 else -> ContextScreen()
             }
         }
@@ -195,6 +202,41 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+
+    val stagedAttachments by vm.stagedAttachments.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val contentResolver = context.contentResolver
+    val coroutineScope = rememberCoroutineScope()
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        coroutineScope.launch(Dispatchers.IO) {
+            uris.forEach { uri ->
+                val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes != null) {
+                    val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    var filename: String? = null
+                    contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            if (nameIndex >= 0) {
+                                filename = cursor.getString(nameIndex)
+                            }
+                        }
+                    }
+                    vm.stageAttachment(
+                        dev.kortex.core.state.Attachment(
+                            mimeType = mimeType,
+                            dataBase64 = base64,
+                            filename = filename
+                        )
+                    )
+                }
+            }
+        }
+    }
 
     LaunchedEffect(ui.turns.size) {
         if (ui.turns.isNotEmpty()) listState.animateScrollToItem(ui.turns.lastIndex)
@@ -255,11 +297,45 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
             }
         }
 
+        if (stagedAttachments.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                stagedAttachments.forEachIndexed { index, att ->
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Panel,
+                        border = BorderStroke(1.dp, Edge),
+                        modifier = Modifier.clickable { vm.removeStagedAttachment(index) }
+                    ) {
+                        Text(
+                            text = (att.filename ?: "File") + " ✕",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            color = Muted
+                        )
+                    }
+                }
+            }
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            IconButton(
+                onClick = { filePickerLauncher.launch("*/*") },
+                enabled = !ui.busy,
+                modifier = Modifier.size(52.dp)
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_attach_file),
+                    contentDescription = "Attach file",
+                    tint = Muted
+                )
+            }
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = Panel,
@@ -287,7 +363,7 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
             }
             FilledIconButton(
                 onClick = { vm.send(input); input = "" },
-                enabled = !ui.busy && input.isNotBlank(),
+                enabled = !ui.busy && (input.isNotBlank() || stagedAttachments.isNotEmpty()),
                 shape = CircleShape,
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = Synapse,
@@ -354,11 +430,18 @@ private fun MessageBubble(turn: ChatTurn) {
                         },
                     ),
             ) {
-                Text(
-                    msg.content,
-                    Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
+                if (isUser) {
+                    Text(
+                        msg.content,
+                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                } else {
+                    Markdown(
+                        content = msg.content,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    )
+                }
             }
         }
         if (turn.reasoning.isNotEmpty()) {

@@ -70,4 +70,6 @@ dependencies {
 
     implementation(libs.datastore.preferences)
     implementation(libs.security.crypto)
+
+    implementation(libs.markdown.renderer.m3)
 }

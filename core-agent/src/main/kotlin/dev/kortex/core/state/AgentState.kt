@@ -2,11 +2,20 @@ package dev.kortex.core.state
 
 import kotlinx.serialization.Serializable
 
+/** A file or media attachment added to a message. */
+@Serializable
+data class Attachment(
+    val mimeType: String,
+    val dataBase64: String,
+    val filename: String? = null,
+)
+
 /** A single conversational turn or step result that flows through the graph. */
 @Serializable
 data class Message(
     val role: Role,
     val content: String,
+    val attachments: List<Attachment> = emptyList(),
     val toolCalls: List<ToolCall> = emptyList(),
     val toolCallId: String? = null,
 ) {

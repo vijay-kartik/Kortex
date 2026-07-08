@@ -64,6 +64,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _ui = MutableStateFlow(ChatUi())
     val ui: StateFlow<ChatUi> = _ui.asStateFlow()
 
+    private val _stagedAttachments = MutableStateFlow<List<dev.kortex.core.state.Attachment>>(emptyList())
+    val stagedAttachments: StateFlow<List<dev.kortex.core.state.Attachment>> = _stagedAttachments.asStateFlow()
+
     private var approvalGate: CompletableDeferred<Boolean>? = null
 
     private val provider: LlmProvider = container.llm
@@ -111,11 +114,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         approvalGate = null
     }
 
+    fun stageAttachment(attachment: dev.kortex.core.state.Attachment) {
+        _stagedAttachments.update { it + attachment }
+    }
+
+    fun removeStagedAttachment(index: Int) {
+        _stagedAttachments.update { it.filterIndexed { i, _ -> i != index } }
+    }
+
     fun send(query: String) {
-        if (query.isBlank()) return
+        val attachmentsToSend = _stagedAttachments.value
+        _stagedAttachments.value = emptyList()
+
+        if (query.isBlank() && attachmentsToSend.isEmpty()) return
         _ui.update {
             it.copy(
-                turns = it.turns + ChatTurn(Message(Message.Role.USER, query)),
+                turns = it.turns + ChatTurn(Message(Message.Role.USER, query, attachmentsToSend)),
                 busy = true,
                 status = "Thinking…",
                 liveReasoning = emptyList(),
@@ -153,7 +167,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 },
             )
 
-            val result = Agent(turnCtx).ask(query)
+            val result = Agent(turnCtx).ask(query, attachmentsToSend)
             val answer = result.messages
                 .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
 

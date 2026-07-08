@@ -587,6 +587,11 @@ private fun MessageBubble(turn: ChatTurn) {
                             } else {
                                 Text("Failed to load image.", color = Alarm)
                             }
+                        } else if (att.mimeType == "application/pdf") {
+                            PdfViewer(
+                                base64 = att.dataBase64,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         } else {
                             Text("Preview not supported for ${att.mimeType}.", color = Muted)
                         }

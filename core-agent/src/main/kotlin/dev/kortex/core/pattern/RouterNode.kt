@@ -4,6 +4,8 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.Models
+import dev.kortex.core.log.d
+import dev.kortex.core.log.i
 import dev.kortex.core.state.AgentState
 import dev.kortex.core.state.Message
 
@@ -21,6 +23,7 @@ class RouterNode(
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
         ctx.onProgress.report("Analyzing your request…")
         val query = state.messages.lastOrNull { it.role == Message.Role.USER }?.content.orEmpty()
+        ctx.logger.d(TAG, "classifying request: \"$query\"")
         val prompt = """
             Classify the user request into exactly one of: ${routes.joinToString(", ")}.
             - simple_qa: answerable directly with general knowledge, no tools, no multi-step work.
@@ -39,7 +42,12 @@ class RouterNode(
             )
         )
         val route = routes.firstOrNull { resp.message.content.trim().contains(it) } ?: routes.first()
+        ctx.logger.i(TAG, "routed to '$route'")
         return state.copy(scratch = state.scratch + ("route" to route))
             .trace("router", "route", route)
+    }
+
+    companion object {
+        private const val TAG = "RouterNode"
     }
 }

@@ -4,6 +4,8 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.Models
+import dev.kortex.core.log.d
+import dev.kortex.core.log.w
 import dev.kortex.core.state.AgentState
 import dev.kortex.core.state.Message
 import kotlinx.serialization.json.Json
@@ -20,11 +22,14 @@ class ReActNode(
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
         var s = state
-        repeat(maxIterations) {
+        repeat(maxIterations) { iteration ->
             ctx.onProgress.report("Thinking…")
+            ctx.logger.d(TAG, "iteration ${iteration + 1}/$maxIterations: $model, ${s.messages.size} messages, ${ctx.tools.all().size} tools available")
             val resp = ctx.llm.complete(
                 LlmRequest(model = model, messages = s.messages, tools = ctx.tools.all())
             )
+            // The exact response content/tool-call args are logged by the LlmProvider itself
+            // (e.g. OpenAiProvider) right above this — this node only marks progression.
             s = s.withMessage(resp.message).copy(
                 budget = s.budget.copy(tokensUsed = s.budget.tokensUsed + resp.outputTokens + resp.inputTokens)
             ).trace("react", "llm", "tools=${resp.message.toolCalls.size}")
@@ -35,11 +40,12 @@ class ReActNode(
                 ctx.onProgress.report("Tool usage: ${call.name}")
                 val tool = ctx.tools.get(call.name)
                 val result = if (tool == null) {
+                    ctx.logger.w(TAG, "unknown tool requested: '${call.name}'")
                     dev.kortex.core.tool.ToolResult(false, "Unknown tool '${call.name}'")
                 } else {
                     val args = runCatching { Json.parseToJsonElement(call.argumentsJson) as JsonObject }
                         .getOrDefault(JsonObject(emptyMap()))
-                    ctx.governor.run(tool, args, s.budget, ctx.approver)
+                    ctx.governor.run(tool, args, s.budget, ctx.approver, ctx.logger)
                 }
                 s = s.copy(budget = s.budget.copy(toolCallsMade = s.budget.toolCallsMade + 1))
                     .withMessage(Message(Message.Role.TOOL, result.content, toolCallId = call.id))
@@ -48,5 +54,9 @@ class ReActNode(
             if (s.budget.exhausted) return s.copy(done = true)
         }
         return s.copy(done = true)
+    }
+
+    companion object {
+        private const val TAG = "ReActNode"
     }
 }

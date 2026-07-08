@@ -8,6 +8,7 @@ import dev.kortex.core.graph.Approver
 import dev.kortex.core.graph.ProgressListener
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.OpenAiProvider
+import dev.kortex.core.log.Logger
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
@@ -19,9 +20,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** One line of the agent's internal reasoning (router decision, LLM call, tool call, reflection verdict). */
+data class ReasoningLine(val level: Logger.Level, val tag: String, val message: String)
+
+/** A rendered chat turn. [reasoning] is only populated for assistant turns that took multiple steps. */
+data class ChatTurn(val message: Message, val reasoning: List<ReasoningLine> = emptyList())
+
 data class ChatUi(
-    val turns: List<Message> = emptyList(),
-    val trace: List<String> = emptyList(),
+    val turns: List<ChatTurn> = emptyList(),
+    /** Reasoning for the turn currently in flight, streamed live while [busy]. */
+    val liveReasoning: List<ReasoningLine> = emptyList(),
     val busy: Boolean = false,
     /** Live, human-readable status of the current step (e.g. "Tool usage: web_search"). */
     val status: String? = null,
@@ -44,19 +52,16 @@ class ChatViewModel : ViewModel() {
     // in local.properties (OPENAI_API_KEY=...), so the app still runs out of the box.
     private val provider: LlmProvider =
         BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
-            ?.let { OpenAiProvider(apiKey = it) }
+            ?.let { OpenAiProvider(apiKey = it, logger = AndroidLogger) }
             ?: StubLlmProvider()
 
-    private val ctx = AgentContext(
-        llm = provider,
-        tools = ToolRegistry(defaultTools()),   // calculator, web_search, current_time
-        governor = ToolGovernor(onAudit = { /* TODO Phase 3: persist to Room */ }),
-        approver = Approver { name, args ->
-            _ui.update { it.copy(pendingApproval = "$name $args") }
-            CompletableDeferred<Boolean>().also { approvalGate = it }.await()
-        },
-        onProgress = ProgressListener { s -> _ui.update { it.copy(status = s) } },
-    )
+    private val tools = ToolRegistry(defaultTools())   // calculator, web_search, current_time
+    private val governor = ToolGovernor(onAudit = { /* TODO Phase 3: persist to Room */ })
+    private val approver = Approver { name, args ->
+        _ui.update { it.copy(pendingApproval = "$name $args") }
+        CompletableDeferred<Boolean>().also { approvalGate = it }.await()
+    }
+    private val progress = ProgressListener { s -> _ui.update { it.copy(status = s) } }
 
     fun resolveApproval(approved: Boolean) {
         _ui.update { it.copy(pendingApproval = null) }
@@ -67,14 +72,44 @@ class ChatViewModel : ViewModel() {
     fun send(query: String) {
         if (query.isBlank()) return
         _ui.update {
-            it.copy(turns = it.turns + Message(Message.Role.USER, query), busy = true, status = "Thinking…")
+            it.copy(
+                turns = it.turns + ChatTurn(Message(Message.Role.USER, query)),
+                busy = true,
+                status = "Thinking…",
+                liveReasoning = emptyList(),
+            )
         }
         viewModelScope.launch {
-            val result = Agent(ctx).ask(query)
+            // Scoped to this turn: mirrors every log line to Logcat (via AndroidLogger) and
+            // also streams it into the UI in real time, so the collapsible reasoning panel
+            // fills in as the agent works instead of only appearing once it's done.
+            val liveLines = mutableListOf<ReasoningLine>()
+            val turnLogger = Logger { level, tag, message, error ->
+                AndroidLogger.log(level, tag, message, error)
+                liveLines += ReasoningLine(level, tag, message)
+                _ui.update { it.copy(liveReasoning = liveLines.toList()) }
+            }
+            val turnCtx = AgentContext(
+                llm = provider,
+                tools = tools,
+                governor = governor,
+                approver = approver,
+                onProgress = progress,
+                logger = turnLogger,
+            )
+
+            val result = Agent(turnCtx).ask(query)
+            val answer = result.messages
+                .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
+
             _ui.update { cur ->
                 cur.copy(
-                    turns = cur.turns + result.messages.filter { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() },
-                    trace = result.trace.map { "${it.node}:${it.kind} ${it.detail}" },
+                    // Only the final answer: reflection (pattern 4) may revise multiple times,
+                    // leaving earlier drafts as non-blank ASSISTANT messages in result.messages.
+                    // Its reasoning trail is everything logged across the whole run (routing,
+                    // every ReAct iteration, every tool call, every reflection pass).
+                    turns = cur.turns + listOfNotNull(answer?.let { ChatTurn(it, liveLines.toList()) }),
+                    liveReasoning = emptyList(),
                     busy = false,
                     status = null,
                 )

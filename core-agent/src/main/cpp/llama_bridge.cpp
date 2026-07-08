@@ -14,7 +14,7 @@ struct LlamaState {
     
     ~LlamaState() {
         if (ctx) llama_free(ctx);
-        if (model) llama_free_model(model);
+        if (model) llama_model_free(model);
     }
 };
 
@@ -26,7 +26,7 @@ Java_dev_kortex_core_llm_LlamaCppProvider_loadModelNative(JNIEnv* env, jobject, 
     llama_backend_init();
     
     auto mparams = llama_model_default_params();
-    llama_model* model = llama_load_model_from_file(path, mparams);
+    llama_model* model = llama_model_load_from_file(path, mparams);
     env->ReleaseStringUTFChars(jpath, path);
     
     if (!model) {
@@ -36,11 +36,11 @@ Java_dev_kortex_core_llm_LlamaCppProvider_loadModelNative(JNIEnv* env, jobject, 
     
     auto cparams = llama_context_default_params();
     cparams.n_ctx = 2048; // Hardcoded context size for now
-    llama_context* ctx = llama_new_context_with_model(model, cparams);
+    llama_context* ctx = llama_init_from_model(model, cparams);
     
     if (!ctx) {
         LOGE("Failed to create context");
-        llama_free_model(model);
+        llama_model_free(model);
         return 0;
     }
     
@@ -58,12 +58,65 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
     const char* prompt = env->GetStringUTFChars(jprompt, nullptr);
     LOGI("Generating for prompt: %s", prompt);
     
-    // Very basic generation loop placeholder
-    // A proper implementation requires tokenization, sampler initialization, 
-    // context batch decoding, and token-to-string mapping.
-    // For now, we return a dummy string to prove the JNI bridge compiles.
-    std::string response = "Hello from llama.cpp JNI! A proper inference loop needs to be implemented here.";
+    const llama_vocab* vocab = llama_model_get_vocab(state->model);
     
+    // 1. Tokenize prompt
+    int prompt_len = strlen(prompt);
+    int max_tokens = prompt_len + 128; // safe guess
+    std::vector<llama_token> prompt_tokens(max_tokens);
+    int n_prompt = llama_tokenize(vocab, prompt, prompt_len, prompt_tokens.data(), prompt_tokens.size(), true, true);
+    if (n_prompt < 0) {
+        // resize and try again
+        prompt_tokens.resize(-n_prompt);
+        n_prompt = llama_tokenize(vocab, prompt, prompt_len, prompt_tokens.data(), prompt_tokens.size(), true, true);
+    }
+    if (n_prompt < 0) {
+        LOGE("Failed to tokenize");
+        env->ReleaseStringUTFChars(jprompt, prompt);
+        return env->NewStringUTF("");
+    }
+    prompt_tokens.resize(n_prompt);
+    
+    // Clear previous KV cache so we can run multiple queries independently
+    llama_memory_clear(llama_get_memory(state->ctx), true);
+    
+    // 2. Prepare batch
+    llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
+    
+    // 3. Init Sampler
+    auto sparams = llama_sampler_chain_default_params();
+    sparams.no_perf = true;
+    llama_sampler* smpl = llama_sampler_chain_init(sparams);
+    // Use simple greedy sampling for stability
+    llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+    
+    // 4. Decode loop
+    std::string response = "";
+    int n_predict = 1024; // max new tokens
+    llama_token new_token_id;
+    
+    for (int n_pos = 0; n_pos + batch.n_tokens < n_prompt + n_predict; ) {
+        if (llama_decode(state->ctx, batch)) {
+            LOGE("failed to decode");
+            break;
+        }
+        n_pos += batch.n_tokens;
+        
+        new_token_id = llama_sampler_sample(smpl, state->ctx, -1);
+        if (llama_vocab_is_eog(vocab, new_token_id)) {
+            break; // End of generation
+        }
+        
+        char buf[128];
+        int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
+        if (n > 0) {
+            response.append(buf, n);
+        }
+        
+        batch = llama_batch_get_one(&new_token_id, 1);
+    }
+    
+    llama_sampler_free(smpl);
     env->ReleaseStringUTFChars(jprompt, prompt);
     return env->NewStringUTF(response.c_str());
 }

@@ -24,6 +24,13 @@ android {
     testOptions {
         unitTests.all { it.useJUnitPlatform() }
     }
+
+    externalNativeBuild {
+        cmake {
+            path("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 }
 
 dependencies {

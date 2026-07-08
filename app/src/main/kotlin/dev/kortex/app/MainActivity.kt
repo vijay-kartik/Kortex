@@ -107,6 +107,9 @@ import dev.kortex.core.log.Logger
 import dev.kortex.core.state.Message
 import com.halilibo.richtext.markdown.Markdown
 import com.halilibo.richtext.ui.material3.RichText
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.horizontalScroll
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -408,6 +411,9 @@ private fun MessageBubble(turn: ChatTurn) {
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
 
+    val parsed = remember(msg.content) { parseMarkdownTables(msg.content) }
+    var selectedTable by remember { mutableStateOf<String?>(null) }
+
     Column(Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -438,8 +444,22 @@ private fun MessageBubble(turn: ChatTurn) {
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 } else {
-                    RichText(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Markdown(content = msg.content)
+                    Column {
+                        if (parsed.text.isNotEmpty()) {
+                            RichText(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                                Markdown(content = parsed.text)
+                            }
+                        }
+                        if (parsed.tables.isNotEmpty()) {
+                            parsed.tables.forEachIndexed { index, table ->
+                                TextButton(
+                                    onClick = { selectedTable = table },
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
+                                ) {
+                                    Text("Show Table ${if (parsed.tables.size > 1) index + 1 else ""}", color = Synapse)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -450,6 +470,48 @@ private fun MessageBubble(turn: ChatTurn) {
                 stats = turn.stats,
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
+        }
+    }
+    
+    selectedTable?.let { table ->
+        Dialog(
+            onDismissRequest = { selectedTable = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Panel
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { selectedTable = null }) {
+                            Text("Close", color = Synapse)
+                        }
+                        Text("Data Table", style = MaterialTheme.typography.titleMedium, color = Void)
+                        TextButton(onClick = { 
+                            val tsv = convertTableToTsv(table)
+                            clipboard.setText(AnnotatedString(tsv))
+                            Toast.makeText(context, "Copied for Sheets/Excel", Toast.LENGTH_SHORT).show()
+                        }) {
+                            Text("Copy CSV", color = Synapse)
+                        }
+                    }
+                    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                        RichText(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                                .horizontalScroll(rememberScrollState())
+                        ) {
+                            Markdown(content = table)
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -18,6 +18,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    ndkVersion = "30.0.14904198"
     kotlinOptions { jvmTarget = "17" }
 
     // Existing unit tests use JUnit 5 (Jupiter); run them on the JVM unit-test path.
@@ -25,12 +27,12 @@ android {
         unitTests.all { it.useJUnitPlatform() }
     }
 
-    // externalNativeBuild {
-    //     cmake {
-    //         path("src/main/cpp/CMakeLists.txt")
-    //         version = "3.22.1"
-    //     }
-    // }
+    externalNativeBuild {
+        cmake {
+            path("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 }
 
 dependencies {

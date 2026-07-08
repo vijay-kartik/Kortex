@@ -7,6 +7,8 @@
     <application
         android:name=".KortexApp"
         android:label="Kortex"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.Kortex"
         android:supportsRtl="true">
 

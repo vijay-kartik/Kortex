@@ -16,15 +16,18 @@ class DynamicLlmProvider(
 ) : LlmProvider {
     private var ollamaProvider: LlmProvider? = null
     private var currentOllamaUrl: String? = null
+    private var currentOllamaToken: String? = null
 
     private suspend fun getActiveProvider(): LlmProvider {
         val providerType = store.activeProvider.first()
         if (providerType == "ollama") {
             val url = store.ollamaUrl.first()
-            if (ollamaProvider == null || currentOllamaUrl != url) {
+            val token = store.ollamaToken.first() ?: "ollama"
+            if (ollamaProvider == null || currentOllamaUrl != url || currentOllamaToken != token) {
                 currentOllamaUrl = url
+                currentOllamaToken = token
                 // Ollama natively supports the OpenAI /v1/chat/completions API since early 2024
-                ollamaProvider = OpenAiProvider(apiKey = "ollama", baseUrl = url, logger = AndroidLogger)
+                ollamaProvider = OpenAiProvider(apiKey = token, baseUrl = url, logger = AndroidLogger)
             }
             return ollamaProvider!!
         }

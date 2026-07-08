@@ -108,9 +108,11 @@ fun McpSettingsSheet(
                     activeModel = ui.activeModel,
                     supportedModels = ui.supportedModels,
                     ollamaUrl = ui.ollamaUrl,
+                    ollamaToken = ui.ollamaToken,
                     onProviderSelected = { vm.setActiveProvider(it) },
                     onModelSelected = { vm.setActiveModel(it) },
-                    onOllamaUrlChange = { vm.setOllamaUrl(it) }
+                    onOllamaUrlChange = { vm.setOllamaUrl(it) },
+                    onOllamaTokenChange = { vm.setOllamaToken(it) }
                 )
             }
 
@@ -591,9 +593,11 @@ private fun ModelSelector(
     activeModel: String,
     supportedModels: List<String>,
     ollamaUrl: String,
+    ollamaToken: String,
     onProviderSelected: (String) -> Unit,
     onModelSelected: (String) -> Unit,
-    onOllamaUrlChange: (String) -> Unit
+    onOllamaUrlChange: (String) -> Unit,
+    onOllamaTokenChange: (String) -> Unit
 ) {
     var expandedProvider by remember { mutableStateOf(false) }
     var expandedModel by remember { mutableStateOf(false) }
@@ -726,7 +730,7 @@ private fun ModelSelector(
                 }
             }
 
-            // Ollama URL (Only if Ollama)
+            // Ollama settings (Only if Ollama)
             if (activeProvider == "ollama") {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
                     var editUrl by remember { mutableStateOf(ollamaUrl) }
@@ -734,7 +738,27 @@ private fun ModelSelector(
                         value = editUrl,
                         onValueChange = { editUrl = it; onOllamaUrlChange(it) },
                         label = "Ollama Base URL",
-                        placeholder = "http://10.0.2.2:11434/v1"
+                        placeholder = "http://10.0.2.2:11434/v1",
+                        keyboardType = KeyboardType.Uri
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    var editToken by remember { mutableStateOf(ollamaToken) }
+                    var showToken by remember { mutableStateOf(false) }
+                    SettingsTextField(
+                        value = editToken,
+                        onValueChange = { editToken = it; onOllamaTokenChange(it) },
+                        label = "API Key (optional, for Cloud/Groq/Together)",
+                        placeholder = "sk-...",
+                        isPassword = !showToken,
+                        trailingContent = {
+                            TextButton(onClick = { showToken = !showToken }) {
+                                Text(
+                                    if (showToken) "hide" else "show",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Synapse,
+                                )
+                            }
+                        }
                     )
                 }
             }

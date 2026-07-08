@@ -111,6 +111,9 @@ import com.halilibo.richtext.ui.material3.RichText
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.horizontalScroll
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -422,6 +425,7 @@ private fun MessageBubble(turn: ChatTurn) {
 
     val parsed = remember(msg.content) { parseMarkdownTables(msg.content) }
     var selectedTable by remember { mutableStateOf<String?>(null) }
+    var selectedAttachment by remember { mutableStateOf<dev.kortex.core.state.Attachment?>(null) }
 
     Column(Modifier.fillMaxWidth()) {
         Row(
@@ -457,6 +461,7 @@ private fun MessageBubble(turn: ChatTurn) {
                                     Surface(
                                         color = Void.copy(alpha = 0.2f),
                                         shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.clickable { selectedAttachment = att }
                                     ) {
                                         Text(
                                             text = "\uD83D\uDCCE ${att.filename ?: "File"}",
@@ -540,6 +545,50 @@ private fun MessageBubble(turn: ChatTurn) {
                                 .padding(16.dp)
                         ) {
                             Markdown(content = table)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    selectedAttachment?.let { att ->
+        Dialog(
+            onDismissRequest = { selectedAttachment = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize().systemBarsPadding(),
+                color = Panel
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { selectedAttachment = null }) {
+                            Text("Close", color = Synapse)
+                        }
+                        Text(att.filename ?: "Attachment", style = MaterialTheme.typography.titleMedium, color = Void)
+                        Spacer(modifier = Modifier.width(64.dp)) // Balance the title
+                    }
+                    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+                        if (att.mimeType.startsWith("image/")) {
+                            val bytes = android.util.Base64.decode(att.dataBase64, android.util.Base64.DEFAULT)
+                            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = att.filename,
+                                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else {
+                                Text("Failed to load image.", color = Alarm)
+                            }
+                        } else {
+                            Text("Preview not supported for ${att.mimeType}.", color = Muted)
                         }
                     }
                 }

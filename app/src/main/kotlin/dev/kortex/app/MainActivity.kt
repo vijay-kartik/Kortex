@@ -505,7 +505,6 @@ private fun MessageBubble(turn: ChatTurn) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp)
-                                .horizontalScroll(rememberScrollState())
                         ) {
                             Markdown(content = table)
                         }

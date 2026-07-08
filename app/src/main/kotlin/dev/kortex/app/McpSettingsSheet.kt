@@ -100,8 +100,18 @@ fun McpSettingsSheet(
             // ── Header ──────────────────────────────────────────────
             item { SheetHeader() }
 
+            // ── LLM Model ───────────────────────────────────────────
+            item { SectionLabel("LLM MODEL (OpenAI)") }
+            item {
+                ModelSelector(
+                    activeModel = ui.activeModel,
+                    supportedModels = ui.supportedModels,
+                    onModelSelected = { vm.setActiveModel(it) }
+                )
+            }
+
             // ── Built-in tools ──────────────────────────────────────
-            item { SectionLabel("BUILT-IN TOOLS") }
+            item { SectionLabel("BUILT-IN TOOLS", Modifier.padding(top = 16.dp)) }
             items(ui.builtinTools, key = { it.name }) { tool ->
                 ToolRow(
                     name = tool.name,
@@ -568,5 +578,76 @@ private fun SettingsTextField(
             trailingIcon = trailingContent,
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+@Composable
+private fun ModelSelector(
+    activeModel: String,
+    supportedModels: List<String>,
+    onModelSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Panel,
+        border = BorderStroke(1.dp, Edge),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Active Model",
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    )
+                    Text(
+                        activeModel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Synapse,
+                    )
+                }
+                Text(
+                    if (expanded) "▲" else "▼",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Muted,
+                )
+            }
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)
+                ) {
+                    supportedModels.forEach { model ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onModelSelected(model)
+                                    expanded = false
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                model,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (model == activeModel) Synapse else Muted,
+                                fontWeight = if (model == activeModel) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

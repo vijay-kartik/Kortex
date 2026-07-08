@@ -105,6 +105,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             mcpStore.disabledTools.collect { disabled -> tools.setDisabled(disabled) }
         }
+        // Update the active reasoning model globally whenever it changes.
+        viewModelScope.launch {
+            mcpStore.activeModel.collect { model -> dev.kortex.core.llm.Models.REASONING = model }
+        }
     }
 
     /**

@@ -39,6 +39,8 @@ data class McpSettingsUi(
     val showAddDialog: Boolean = false,
     /** Non-null when a deletion confirmation is pending. */
     val pendingDelete: String? = null,
+    val activeModel: String = "gpt-4o",
+    val supportedModels: List<String> = dev.kortex.core.llm.Models.supportedOpenAi,
 )
 
 // ── Names of the four builtins, so we can partition them in the UI ──────
@@ -76,12 +78,9 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     )
 
     val ui: StateFlow<McpSettingsUi> = combine(
-        store.disabledTools,
-        store.customServers,
-        _serverStatus,
-        _serverTools,
-        _flags,
-    ) { disabled, customServers, statuses, serverTools, flags ->
+        combine(store.disabledTools, store.customServers, _serverStatus) { a, b, c -> Triple(a, b, c) },
+        combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) }
+    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel) ->
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -113,6 +112,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             servers = defaultEntries + customEntries,
             showAddDialog = flags.showAddDialog,
             pendingDelete = flags.pendingDelete,
+            activeModel = activeModel,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), McpSettingsUi())
 
@@ -138,6 +138,12 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
 
     fun showAddDialog() { _flags.update { it.copy(showAddDialog = true) } }
     fun dismissAddDialog() { _flags.update { it.copy(showAddDialog = false) } }
+
+    fun setActiveModel(model: String) {
+        viewModelScope.launch {
+            store.setActiveModel(model)
+        }
+    }
 
     fun addServer(name: String, url: String, bearerToken: String?) {
         _flags.update { it.copy(showAddDialog = false) }

@@ -58,6 +58,8 @@ data class ChatUi(
     val status: String? = null,
     /** Set when a HIGH-risk tool is awaiting approval (pattern 13). */
     val pendingApproval: String? = null,
+    val activeProvider: String? = null,
+    val activeModel: String? = null,
 )
 
 /**
@@ -160,15 +162,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _stagedAttachments.value = emptyList()
 
         if (query.isBlank() && attachmentsToSend.isEmpty()) return
-        _ui.update {
-            it.copy(
-                turns = it.turns + ChatTurn(Message(Message.Role.USER, query, attachmentsToSend)),
-                busy = true,
-                status = "Thinking…",
-                liveReasoning = emptyList(),
-            )
-        }
         viewModelScope.launch {
+            val activeProviderName = mcpStore.activeProvider.first()
+            val model = when (activeProviderName) {
+                "ollama" -> mcpStore.activeModel.first()
+                "mediapipe", "llamacpp" -> mcpStore.mediaPipeModelPath.first()?.substringAfterLast('/')
+                else -> "gpt-4o"
+            }
+            _ui.update {
+                it.copy(
+                    turns = it.turns + ChatTurn(Message(Message.Role.USER, query, attachmentsToSend)),
+                    busy = true,
+                    status = "Thinking…",
+                    liveReasoning = emptyList(),
+                    activeProvider = activeProviderName,
+                    activeModel = model ?: "unknown model",
+                )
+            }
             // Scoped to this turn: the logger mirrors every line to Logcat (via AndroidLogger)
             // and streams it into the reasoning panel; the structured callbacks (onLlmUsage,
             // the governor's onAudit) drive the stats footer, so the numbers come from the

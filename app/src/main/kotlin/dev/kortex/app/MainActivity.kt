@@ -307,7 +307,15 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
             ) {
                 PulsingDot(7.dp)
                 Text(
-                    (ui.status ?: "working…").lowercase(),
+                    buildString {
+                        append((ui.status ?: "working…").lowercase())
+                        if (ui.activeProvider != null) {
+                            append(" • ${ui.activeProvider}")
+                            if (ui.activeModel != null) {
+                                append(" / ${ui.activeModel}")
+                            }
+                        }
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = Muted,
                 )

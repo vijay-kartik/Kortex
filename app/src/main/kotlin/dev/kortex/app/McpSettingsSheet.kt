@@ -122,10 +122,7 @@ fun McpSettingsScreen(
                     onModelSelected = { vm.setActiveModel(it) },
                     onOllamaUrlChange = { vm.setOllamaUrl(it) },
                     onOllamaTokenChange = { vm.setOllamaToken(it) },
-                    onMediaPipeModelPathChange = { vm.setMediaPipeModelPath(it) },
-                    onDownloadGemma = { ctx -> 
-                        vm.downloadModel(ctx, "https://storage.googleapis.com/kaggle-data-sets/gemma-2b-it-gpu-int4.bin", "gemma-2b-it-gpu-int4.bin")
-                    }
+                    onMediaPipeModelPathChange = { vm.setMediaPipeModelPath(it) }
                 )
             }
 
@@ -583,8 +580,7 @@ private fun ModelSelector(
     onModelSelected: (String) -> Unit,
     onOllamaUrlChange: (String) -> Unit,
     onOllamaTokenChange: (String) -> Unit,
-    onMediaPipeModelPathChange: (String) -> Unit,
-    onDownloadGemma: (android.content.Context) -> Unit
+    onMediaPipeModelPathChange: (String) -> Unit
 ) {
     var expandedProvider by remember { mutableStateOf(false) }
     var expandedModel by remember { mutableStateOf(false) }
@@ -784,11 +780,17 @@ private fun ModelSelector(
                     if (activeProvider == "mediapipe") {
                         ButtonDefaults.filledTonalButtonColors()
                         FilledTonalButton(
-                            onClick = { onDownloadGemma(context) },
+                            onClick = { 
+                                val intent = android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW, 
+                                    android.net.Uri.parse("https://www.kaggle.com/models/google/gemma/tfLite/gemma-2b-it-gpu-int4")
+                                )
+                                context.startActivity(intent)
+                            },
                             modifier = Modifier.align(Alignment.End),
                             colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
                         ) {
-                            Text("Download Gemma 2B (2GB)")
+                            Text("Open Kaggle to Download Gemma 2B")
                         }
                     }
                 }

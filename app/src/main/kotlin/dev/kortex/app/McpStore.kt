@@ -35,6 +35,17 @@ class McpStore(private val context: Context) {
     private companion object {
         val KEY_CUSTOM_SERVERS = stringPreferencesKey("custom_mcp_servers")
         val KEY_DISABLED_TOOLS = stringSetPreferencesKey("disabled_tools")
+        val KEY_ACTIVE_MODEL = stringPreferencesKey("active_model")
+    }
+
+    val activeModel: Flow<String> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_ACTIVE_MODEL] ?: "gpt-4o"
+    }
+
+    suspend fun setActiveModel(model: String) {
+        context.mcpDataStore.edit { prefs ->
+            prefs[KEY_ACTIVE_MODEL] = model
+        }
     }
 
     // ── custom servers ──────────────────────────────────────────────────

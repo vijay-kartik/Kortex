@@ -43,8 +43,18 @@ sealed interface LlmChunk {
     data object Done : LlmChunk
 }
 
-/** Catalog of model ids we route between (OpenAI defaults — change in one place). */
+/** Catalog of model ids we route between. */
 object Models {
-    const val REASONING = "gpt-4o"
-    const val FAST = "gpt-4o-mini"
+    var REASONING = "gpt-4o"
+    var FAST = "gpt-4o-mini"
+    
+    val supportedOpenAi = listOf(
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4-turbo",
+        "gpt-4",
+        "gpt-3.5-turbo",
+        "o1-preview",
+        "o1-mini"
+    )
 }

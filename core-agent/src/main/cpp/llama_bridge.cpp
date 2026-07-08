@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <android/log.h>
+#include <chrono>
 #include "llama.h"
 
 #define TAG "llama_jni"
@@ -109,10 +110,19 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
     
     // 4. Decode loop
     std::string response = "";
-    int n_predict = 1024; // max new tokens
+    int n_predict = 256; // max new tokens (reduced for mobile)
     
-    if (llama_decode(state->ctx, batch)) {
-        LOGE("failed to decode prompt");
+    LOGI("Starting prompt eval with %d tokens...", n_prompt);
+    auto t_start = std::chrono::high_resolution_clock::now();
+    
+    int decode_status = llama_decode(state->ctx, batch);
+    
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double elapsed_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+    LOGI("Prompt eval finished in %.1f ms (status=%d)", elapsed_ms, decode_status);
+    
+    if (decode_status) {
+        LOGE("failed to decode prompt (status=%d)", decode_status);
         llama_batch_free(batch);
         llama_sampler_free(smpl);
         env->ReleaseStringUTFChars(jprompt, prompt);

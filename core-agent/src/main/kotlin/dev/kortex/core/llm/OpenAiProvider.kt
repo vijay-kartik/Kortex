@@ -1,5 +1,8 @@
 package dev.kortex.core.llm
 
+import dev.kortex.core.log.Logger
+import dev.kortex.core.log.d
+import dev.kortex.core.log.e
 import dev.kortex.core.state.Message
 import dev.kortex.core.state.ToolCall
 import io.ktor.client.HttpClient
@@ -40,27 +43,42 @@ import kotlinx.serialization.json.putJsonObject
 class OpenAiProvider(
     private val apiKey: String,
     private val baseUrl: String = "https://api.openai.com/v1",
+    private val logger: Logger = Logger.CONSOLE,
 ) : LlmProvider {
 
     private val client: HttpClient = defaultClient()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     override suspend fun complete(req: LlmRequest): LlmResponse {
-        val response: JsonObject = client.post("$baseUrl/chat/completions") {
-            header("Authorization", "Bearer $apiKey")
-            contentType(ContentType.Application.Json)
-            setBody(buildRequestBody(req, stream = false).toString())
-        }.body<String>().let { json.parseToJsonElement(it).jsonObject }
+        logger.d(TAG, "POST /chat/completions model=${req.model} messages=${req.messages.size} tools=${req.tools.size}")
+        return runCatching {
+            val response: JsonObject = client.post("$baseUrl/chat/completions") {
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(buildRequestBody(req, stream = false).toString())
+            }.body<String>().let { json.parseToJsonElement(it).jsonObject }
 
-        val choice = response["choices"]!!.jsonArray.first().jsonObject
-        val msg = choice["message"]!!.jsonObject
-        val usage = response["usage"]?.jsonObject
+            val choice = response["choices"]!!.jsonArray.first().jsonObject
+            val msg = choice["message"]!!.jsonObject
+            val usage = response["usage"]?.jsonObject
 
-        return LlmResponse(
-            message = msg.toDomainMessage(),
-            inputTokens = usage?.get("prompt_tokens")?.jsonPrimitive?.int ?: 0,
-            outputTokens = usage?.get("completion_tokens")?.jsonPrimitive?.int ?: 0,
-        )
+            LlmResponse(
+                message = msg.toDomainMessage(),
+                inputTokens = usage?.get("prompt_tokens")?.jsonPrimitive?.int ?: 0,
+                outputTokens = usage?.get("completion_tokens")?.jsonPrimitive?.int ?: 0,
+            )
+        }.onSuccess { resp ->
+            val parts = buildList {
+                add("${resp.inputTokens}in/${resp.outputTokens}out tokens")
+                if (resp.message.content.isNotBlank()) add("content=\"${resp.message.content}\"")
+                if (resp.message.toolCalls.isNotEmpty()) {
+                    add("tool_calls=[${resp.message.toolCalls.joinToString { "${it.name}(${it.argumentsJson})" }}]")
+                }
+            }
+            logger.d(TAG, "response: ${parts.joinToString(", ")}")
+        }.onFailure { err ->
+            logger.e(TAG, "request to $baseUrl failed: ${err.message}", err)
+        }.getOrThrow()
     }
 
     /** Minimal streaming: for now we complete() and emit the text once. Real SSE in a later pass. */
@@ -133,6 +151,8 @@ class OpenAiProvider(
     }
 
     companion object {
+        private const val TAG = "OpenAiProvider"
+
         fun defaultClient(): HttpClient = HttpClient(OkHttp) {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
             install(HttpTimeout) {

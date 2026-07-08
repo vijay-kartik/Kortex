@@ -10,6 +10,7 @@ import dev.kortex.core.pattern.RouterNode
 import dev.kortex.core.state.AgentState
 import dev.kortex.core.state.Goal
 import dev.kortex.core.state.Message
+import java.time.ZonedDateTime
 
 /**
  * Top-level entry point. Builds the agent graph and runs a query. Patterns compose here:
@@ -44,9 +45,17 @@ class Agent(private val ctx: AgentContext) {
     }
 
     suspend fun ask(query: String, system: String = DEFAULT_SYSTEM): AgentState {
+        // Grounds the model in the real wall-clock time, computed fresh per call. A model's
+        // training cutoff otherwise silently stands in for "today" (e.g. it'll search for
+        // "richest person 2023" on a device where it's actually 2026) — the current_time
+        // tool alone doesn't fix this because nothing forces the model to call it before
+        // deciding how to phrase a time-sensitive query.
+        val grounded = "$system\n\nCurrent date and time: ${ZonedDateTime.now()}. Use this to " +
+            "interpret words like \"today\", \"current\", \"latest\", or a bare year correctly " +
+            "— your training data has a cutoff well before this date, so never assume it is the present."
         val initial = AgentState(
             messages = listOf(
-                Message(Message.Role.SYSTEM, system),
+                Message(Message.Role.SYSTEM, grounded),
                 Message(Message.Role.USER, query),
             ),
             goal = Goal(query),
@@ -59,6 +68,11 @@ class Agent(private val ctx: AgentContext) {
             "You are Kortex, a capable on-device agent. When you need to take an action " +
                 "(send a message, create an event, etc.), use the appropriate tool immediately. " +
                 "Do NOT ask the user for permission in text; the system will automatically " +
-                "prompt the user for approval when you call a tool. Explain your reasoning briefly."
+                "prompt the user for approval when you call a tool. Explain your reasoning briefly. " +
+                "web_search only returns short snippets. If a result's snippet is incomplete, " +
+                "references a page with more detail, or is a live/real-time page (e.g. a " +
+                "'real-time billionaires list' or a news archive), call open_url on that result's " +
+                "URL and read the actual page — never tell the user to visit a link yourself when " +
+                "you're able to open it and answer directly."
     }
 }

@@ -55,7 +55,7 @@ fun webSearchTool(client: HttpClient = defaultHttpClient()): Tool = tool(
 
 internal data class SearchResult(val title: String, val snippet: String, val url: String)
 
-private const val USER_AGENT =
+internal const val USER_AGENT =
     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) " +
         "Chrome/124.0 Mobile Safari/537.36"
 

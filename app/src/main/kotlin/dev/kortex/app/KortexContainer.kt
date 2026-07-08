@@ -45,7 +45,7 @@ class KortexContainer(context: Context) {
     // LLM provider — OpenAI when a key is configured, else the stub (so the app still runs).
     val llm: LlmProvider by lazy {
         BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
-            ?.let { OpenAiProvider(apiKey = it) }
+            ?.let { OpenAiProvider(apiKey = it, logger = AndroidLogger) }
             ?: StubLlmProvider()
     }
 

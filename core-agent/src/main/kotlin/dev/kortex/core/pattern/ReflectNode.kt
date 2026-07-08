@@ -4,6 +4,8 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.Models
+import dev.kortex.core.log.d
+import dev.kortex.core.log.i
 import dev.kortex.core.state.AgentState
 import dev.kortex.core.state.Message
 
@@ -24,6 +26,7 @@ class ReflectNode(
         const val COUNT = "reflections"
         const val OK = "ok"
         const val REVISE = "revise"
+        private const val TAG = "ReflectNode"
     }
 
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
@@ -38,8 +41,11 @@ class ReflectNode(
 
         // Nothing to review, or we've revised enough — accept and finish.
         if (answer.isBlank() || count >= maxReflections) {
+            ctx.logger.d(TAG, "skipping review (blank=${answer.isBlank()}, count=$count/$maxReflections)")
             return state.withVerdict(OK).trace("reflect", "verdict", "stop")
         }
+
+        ctx.logger.d(TAG, "reviewing answer (attempt ${count + 1}/$maxReflections)")
 
         val prompt = """
             You are a strict reviewer. Decide whether the assistant's answer fully and
@@ -69,6 +75,7 @@ class ReflectNode(
         // Default to OK on anything ambiguous, so we never loop on a malformed critique.
         val needsRevision = verdict.contains("REVISE", ignoreCase = true) &&
             !verdict.equals("OK", ignoreCase = true)
+        ctx.logger.i(TAG, "verdict: ${if (needsRevision) "REVISE" else "OK"}")
 
         return if (!needsRevision) {
             state.copy(budget = budget).withVerdict(OK).trace("reflect", "verdict", "ok")

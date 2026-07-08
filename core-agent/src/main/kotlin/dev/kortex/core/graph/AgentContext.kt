@@ -1,6 +1,7 @@
 package dev.kortex.core.graph
 
 import dev.kortex.core.llm.LlmProvider
+import dev.kortex.core.log.Logger
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
 
@@ -16,6 +17,8 @@ class AgentContext(
     val approver: Approver = Approver { _, _ -> true },
     /** Live progress hook so the UI can show what the agent is doing right now. */
     val onProgress: ProgressListener = ProgressListener {},
+    /** Structured logging for requests/responses/tool calls (pattern 19: Evaluation & Monitoring). */
+    val logger: Logger = Logger.CONSOLE,
 )
 
 /** Returns true if the high-risk action is approved. The Android app shows a Compose sheet. */

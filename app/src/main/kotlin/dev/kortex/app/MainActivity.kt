@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,10 +52,10 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.kortex.core.log.Logger
 import dev.kortex.core.state.Message
 
 class MainActivity : ComponentActivity() {
@@ -125,22 +126,18 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            items(ui.turns) { msg -> MessageBubble(msg) }
+            items(ui.turns) { turn -> MessageBubble(turn) }
         }
 
-        if (ui.trace.isNotEmpty()) {
-            Text("trace", style = MaterialTheme.typography.labelSmall)
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 100.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 8.dp),
-            ) {
-                ui.trace.forEach { line ->
-                    Text(line, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
+        // The agent's live train of thought (routing, LLM calls, tool calls, reflection
+        // revisions) streams in here as it happens, then gets folded into the finished
+        // answer's own collapsible panel once the turn completes (see MessageBubble).
+        if (ui.busy && ui.liveReasoning.isNotEmpty()) {
+            ReasoningPanel(
+                lines = ui.liveReasoning,
+                initiallyExpanded = true,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
         }
 
         if (ui.busy) {
@@ -177,32 +174,99 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(msg: Message) {
+private fun MessageBubble(turn: ChatTurn) {
+    val msg = turn.message
     val isUser = msg.role == Message.Role.USER
     val clipboard = LocalClipboardManager.current
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-    ) {
-        Surface(
-            color = if (isUser) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant,
-            shape = MaterialTheme.shapes.medium,
-            modifier = Modifier
-                .widthIn(max = 320.dp)
-                .combinedClickable(
-                    onClick = {},
-                    onLongClick = {
-                        clipboard.setText(AnnotatedString(msg.content))
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
-                    },
-                ),
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
         ) {
-            Text(msg.content, Modifier.padding(12.dp))
+            Surface(
+                color = if (isUser) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier
+                    .widthIn(max = 320.dp)
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = {
+                            clipboard.setText(AnnotatedString(msg.content))
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                        },
+                    ),
+            ) {
+                Text(msg.content, Modifier.padding(12.dp))
+            }
+        }
+        if (turn.reasoning.isNotEmpty()) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                ReasoningPanel(turn.reasoning, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+    }
+}
+
+/** Collapsible "chain of thought" — collapsed by default once a turn finishes, expanded
+ *  by default while it's still streaming in live (see the `initiallyExpanded` call site). */
+@Composable
+private fun ReasoningPanel(
+    lines: List<ReasoningLine>,
+    modifier: Modifier = Modifier,
+    initiallyExpanded: Boolean = false,
+) {
+    var expanded by remember { mutableStateOf(initiallyExpanded) }
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = MaterialTheme.shapes.small,
+        modifier = modifier.widthIn(max = 320.dp),
+    ) {
+        Column(Modifier.padding(8.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Reasoning · ${lines.size} step${if (lines.size == 1) "" else "s"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    if (expanded) "Hide ▲" else "Show ▼",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 220.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(top = 4.dp),
+                ) {
+                    lines.forEach { line ->
+                        Text(
+                            "${line.tag}: ${line.message}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = when (line.level) {
+                                Logger.Level.ERROR -> MaterialTheme.colorScheme.error
+                                Logger.Level.WARN -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.padding(vertical = 2.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }

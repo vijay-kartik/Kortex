@@ -49,7 +49,7 @@ Java_dev_kortex_core_llm_LlamaCppProvider_loadModelNative(JNIEnv* env, jobject, 
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, jlong ptr, jstring jprompt) {
+Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, jlong ptr, jstring jprompt, jobject jcallback) {
     LlamaState* state = reinterpret_cast<LlamaState*>(ptr);
     if (!state || !state->ctx || !state->model) {
         return env->NewStringUTF("");
@@ -57,6 +57,12 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
     
     const char* prompt = env->GetStringUTFChars(jprompt, nullptr);
     LOGI("Generating for prompt: %s", prompt);
+    
+    jmethodID onTokenMethod = nullptr;
+    if (jcallback) {
+        jclass cbClass = env->GetObjectClass(jcallback);
+        onTokenMethod = env->GetMethodID(cbClass, "onToken", "(Ljava/lang/String;)V");
+    }
     
     const llama_vocab* vocab = llama_model_get_vocab(state->model);
     
@@ -103,6 +109,7 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
         n_pos += batch.n_tokens;
         
         new_token_id = llama_sampler_sample(smpl, state->ctx, -1);
+        llama_sampler_accept(smpl, new_token_id);
         if (llama_vocab_is_eog(vocab, new_token_id)) {
             break; // End of generation
         }
@@ -111,6 +118,11 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
         int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
         if (n > 0) {
             response.append(buf, n);
+            if (jcallback && onTokenMethod) {
+                jstring jstr = env->NewStringUTF(std::string(buf, n).c_str());
+                env->CallVoidMethod(jcallback, onTokenMethod, jstr);
+                env->DeleteLocalRef(jstr);
+            }
         }
         
         batch = llama_batch_get_one(&new_token_id, 1);

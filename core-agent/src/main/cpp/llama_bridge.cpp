@@ -90,7 +90,7 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
     llama_memory_clear(llama_get_memory(state->ctx), true);
     
     // 2. Prepare batch explicitly
-    llama_batch batch = llama_batch_init(n_prompt, 0, 1);
+    llama_batch batch = llama_batch_init(std::max(n_prompt, 1), 0, 1);
     for (int i = 0; i < n_prompt; i++) {
         batch.token[i] = prompt_tokens[i];
         batch.pos[i] = i;
@@ -130,9 +130,20 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
         char buf[128];
         int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
         if (n > 0) {
-            response.append(buf, n);
+            std::string piece(buf, n);
+            // Debug log to ensure it's not actually frozen
+            if (i % 5 == 0) {
+                LOGI("Decoding token %d...", i);
+            }
+            if (piece.find("<end_of_turn>") != std::string::npos || 
+                piece.find("<|eot_id|>") != std::string::npos ||
+                piece.find("<|im_end|>") != std::string::npos ||
+                piece.find("<|endoftext|>") != std::string::npos) {
+                break;
+            }
+            response.append(piece);
             if (jcallback && onTokenMethod) {
-                jstring jstr = env->NewStringUTF(std::string(buf, n).c_str());
+                jstring jstr = env->NewStringUTF(piece.c_str());
                 env->CallVoidMethod(jcallback, onTokenMethod, jstr);
                 env->DeleteLocalRef(jstr);
             }
@@ -151,6 +162,8 @@ Java_dev_kortex_core_llm_LlamaCppProvider_generateNative(JNIEnv* env, jobject, j
         }
         n_pos++;
     }
+    
+    LOGI("Generation loop complete. Generated %d tokens.", n_pos - n_prompt);
     
     llama_batch_free(batch);    
     llama_sampler_free(smpl);

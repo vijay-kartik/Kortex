@@ -39,6 +39,8 @@ class McpStore(private val context: Context) {
         val KEY_ACTIVE_PROVIDER = stringPreferencesKey("active_provider")
         val KEY_OLLAMA_URL = stringPreferencesKey("ollama_url")
         val KEY_OLLAMA_TOKEN = stringPreferencesKey("ollama_token")
+        val KEY_COMPOSIO_API_KEY = stringPreferencesKey("composio_api_key")
+        val KEY_COMPOSIO_USER_ID = stringPreferencesKey("composio_user_id")
     }
 
     val activeModel: Flow<String> = context.mcpDataStore.data.map { prefs ->
@@ -82,6 +84,29 @@ class McpStore(private val context: Context) {
             } else {
                 prefs[KEY_OLLAMA_TOKEN] = token
             }
+        }
+    }
+
+    // ── Composio (Gmail via Tool Router session) ──────────────────────────
+
+    val composioApiKey: Flow<String?> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_COMPOSIO_API_KEY]
+    }
+
+    suspend fun setComposioApiKey(key: String?) {
+        context.mcpDataStore.edit { prefs ->
+            if (key.isNullOrBlank()) prefs.remove(KEY_COMPOSIO_API_KEY) else prefs[KEY_COMPOSIO_API_KEY] = key
+        }
+    }
+
+    /** Must match the user_id the Gmail toolkit was authorized under in Composio. */
+    val composioUserId: Flow<String?> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_COMPOSIO_USER_ID]
+    }
+
+    suspend fun setComposioUserId(userId: String?) {
+        context.mcpDataStore.edit { prefs ->
+            if (userId.isNullOrBlank()) prefs.remove(KEY_COMPOSIO_USER_ID) else prefs[KEY_COMPOSIO_USER_ID] = userId
         }
     }
 

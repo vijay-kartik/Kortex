@@ -44,6 +44,8 @@ data class McpSettingsUi(
     val activeProvider: String = "openai",
     val ollamaUrl: String = "http://10.0.2.2:11434/v1",
     val ollamaToken: String = "",
+    val composioApiKey: String = "",
+    val composioUserId: String = "",
 )
 
 // ── Names of the four builtins, so we can partition them in the UI ──────
@@ -84,7 +86,8 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         combine(store.disabledTools, store.customServers, _serverStatus) { a, b, c -> Triple(a, b, c) },
         combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
         combine(store.activeProvider, store.ollamaUrl, store.ollamaToken) { p, u, t -> Triple(p, u, t ?: "") },
-    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken) ->
+        combine(store.composioApiKey, store.composioUserId) { k, u -> k to u },
+    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken), (composioApiKey, composioUserId) ->
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -110,16 +113,31 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
                 status = statuses[srv.name] ?: ServerStatus.CONNECTING,
             )
         }
+        // Composio (Gmail) shows up once an API key + user id are configured, even before
+        // the first successful connect — the card then reflects CONNECTING/ERROR/CONNECTED.
+        val composioEntries = if (!composioApiKey.isNullOrBlank() && !composioUserId.isNullOrBlank()) {
+            listOf(
+                ServerEntry(
+                    name = COMPOSIO_GMAIL_SERVER_NAME,
+                    url = "Composio Tool Router — Gmail",
+                    isDefault = false,
+                    tools = serverTools[COMPOSIO_GMAIL_SERVER_NAME]?.map { it.copy(enabled = it.name !in disabled) } ?: emptyList(),
+                    status = statuses[COMPOSIO_GMAIL_SERVER_NAME] ?: ServerStatus.CONNECTING,
+                )
+            )
+        } else emptyList()
 
         McpSettingsUi(
             builtinTools = builtins,
-            servers = defaultEntries + customEntries,
+            servers = defaultEntries + customEntries + composioEntries,
             showAddDialog = flags.showAddDialog,
             pendingDelete = flags.pendingDelete,
             activeModel = activeModel,
             activeProvider = activeProvider,
             ollamaUrl = ollamaUrl,
             ollamaToken = ollamaToken,
+            composioApiKey = composioApiKey ?: "",
+            composioUserId = composioUserId ?: "",
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), McpSettingsUi())
 
@@ -167,6 +185,32 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     fun setOllamaToken(token: String) {
         viewModelScope.launch {
             store.setOllamaToken(token)
+        }
+    }
+
+    fun setComposioApiKey(key: String) {
+        viewModelScope.launch {
+            store.setComposioApiKey(key.trim())
+        }
+    }
+
+    fun setComposioUserId(userId: String) {
+        viewModelScope.launch {
+            store.setComposioUserId(userId.trim())
+        }
+    }
+
+    /** Mints a fresh Composio Tool Router session and (re)connects it — call after editing
+     *  the API key/user id, since [ChatViewModel] only resolves one at startup. */
+    fun reconnectComposio() {
+        viewModelScope.launch {
+            _serverStatus.update { it + (COMPOSIO_GMAIL_SERVER_NAME to ServerStatus.CONNECTING) }
+            val server = resolveComposioGmailServer(store, AndroidLogger)
+            if (server == null) {
+                _serverStatus.update { it + (COMPOSIO_GMAIL_SERVER_NAME to ServerStatus.ERROR) }
+                return@launch
+            }
+            connectServer(server)
         }
     }
 

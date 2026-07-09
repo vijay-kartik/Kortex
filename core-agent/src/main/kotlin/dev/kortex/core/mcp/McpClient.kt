@@ -45,6 +45,7 @@ data class McpToolDescriptor(
 class McpClient(
     private val serverUrl: String,
     private val bearerToken: String? = null,
+    private val extraHeaders: Map<String, String> = emptyMap(),
     private val client: HttpClient = defaultMcpHttpClient(),
     private val logger: Logger = Logger.CONSOLE,
 ) {
@@ -141,6 +142,7 @@ class McpClient(
         header("MCP-Protocol-Version", protocolVersion)
         sessionId?.let { header("Mcp-Session-Id", it) }
         bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+        extraHeaders.forEach { (k, v) -> header(k, v) }
     }
 
     companion object {

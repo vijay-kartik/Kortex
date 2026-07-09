@@ -24,6 +24,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -31,6 +32,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+
+class LlmException(message: String) : RuntimeException(message)
 
 /**
  * Default LLM provider: OpenAI Chat Completions API with function calling.
@@ -59,8 +62,14 @@ class OpenAiProvider(
                 setBody(buildRequestBody(req, stream = false).toString())
             }.body<String>().let { json.parseToJsonElement(it).jsonObject }
 
-            val choice = response["choices"]!!.jsonArray.first().jsonObject
-            val msg = choice["message"]!!.jsonObject
+            (response["error"] as? JsonObject)?.let { err ->
+                val text = err["message"]?.jsonPrimitive?.contentOrNull ?: err.toString()
+                throw LlmException("OpenAI request failed: $text")
+            }
+            val choice = response["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+                ?: throw LlmException("OpenAI response had no choices: $response")
+            val msg = choice["message"]?.jsonObject
+                ?: throw LlmException("OpenAI choice had no message: $choice")
             val usage = response["usage"]?.jsonObject
 
             LlmResponse(

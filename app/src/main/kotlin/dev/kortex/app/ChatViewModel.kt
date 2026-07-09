@@ -154,6 +154,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Deletes a past conversation. If it's the one currently open, starts a fresh one so
+     *  the chat screen isn't left pointing at a session that no longer exists. */
+    fun deleteSession(sessionId: String) {
+        viewModelScope.launch {
+            sessionDao.deleteById(sessionId)
+            if (sessionId == currentSessionId) startNewSession()
+        }
+    }
+
     fun startNewSession() {
         currentSessionId = UUID.randomUUID().toString()
         _ui.update { it.copy(turns = emptyList(), busy = false, status = null) }

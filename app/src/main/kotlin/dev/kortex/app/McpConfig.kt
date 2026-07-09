@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.first
  *       bearerToken = BuildConfig.LINEAR_TOKEN,   // wire secrets via local.properties, never hard-code
  *   ),
  */
-val mcpServers: List<McpServer> = listOf(McpServer(url = "https://youtube-transcript-mcp.ergut.workers.dev/sse", name = "youtube-transcript"))
+val mcpServers: List<McpServer> = listOf(McpServer(url = "https://youtube-transcript-mcp.youtube-mcp-server.workers.dev/sse", name = "youtube-transcript-mcp"))
 
 const val COMPOSIO_GMAIL_SERVER_NAME = "composio-gmail"
 

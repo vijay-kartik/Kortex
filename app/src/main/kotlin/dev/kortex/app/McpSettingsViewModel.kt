@@ -328,13 +328,20 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     /**
      * Scans the shared [ToolRegistry] and groups non-builtin tools by their server-name
      * prefix (the `server_tool` naming convention from [McpToolConnector]).
+     *
+     * Matches against the *actual* set of known server names (defaults + persisted custom
+     * servers + Composio, if configured) rather than servers already tracked in
+     * [_serverStatus] — that map only gets entries from [connectServer] calls made by this
+     * ViewModel, so a server connected by [ChatViewModel]'s separate startup pass (the
+     * normal case for anything saved from a prior session) would otherwise never be
+     * discoverable here and would sit on "Connecting…" forever despite being live.
      */
-    private fun refreshToolEntries() {
-        val allServers = mcpServers.map { it.name } +
-            (_serverTools.value.keys) // include any we already know about
-
-        // Also include names from current custom servers snapshot
-        val currentStatuses = _serverStatus.value
+    private suspend fun refreshToolEntries() {
+        val composioConfigured = !store.composioApiKey.first().isNullOrBlank() &&
+            !store.composioUserId.first().isNullOrBlank()
+        val knownServerNames = mcpServers.map { it.name } +
+            store.customServers.first().map { it.name } +
+            listOfNotNull(COMPOSIO_GMAIL_SERVER_NAME.takeIf { composioConfigured })
 
         val grouped = mutableMapOf<String, MutableList<ToolEntry>>()
         val disabled = tools.disabledNames()
@@ -342,7 +349,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         for (tool in tools.allIncludingDisabled()) {
             if (tool.name in BUILTIN_NAMES) continue
             // Find which server this tool belongs to by prefix match
-            val serverName = currentStatuses.keys.firstOrNull { srvName ->
+            val serverName = knownServerNames.firstOrNull { srvName ->
                 tool.name.startsWith(sanitize(srvName) + "_")
             }
             if (serverName != null) {
@@ -352,6 +359,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         // Update statuses for servers that connected successfully but we haven't tracked yet
+        val currentStatuses = _serverStatus.value
         val newStatuses = mutableMapOf<String, ServerStatus>()
         for (srvName in grouped.keys) {
             if (srvName !in currentStatuses) {

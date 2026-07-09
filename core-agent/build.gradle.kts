@@ -60,4 +60,5 @@ dependencies {
     testImplementation(libs.kotest.assertions)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.turbine)
+    testImplementation(libs.ktor.client.mock)
 }

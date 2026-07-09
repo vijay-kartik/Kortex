@@ -1,6 +1,8 @@
 package dev.kortex.core.graph
 
 import dev.kortex.core.state.AgentState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * The book's central lesson (Appendix C): real agents need cyclic, stateful graphs,
@@ -37,7 +39,9 @@ class AgentGraph internal constructor(
         var state = initial
         while (current != END) {
             val node = nodes[current] ?: error("No node '$current' in graph")
-            state = node.run(ctx, state).let { it.copy(budget = it.budget.copy(steps = it.budget.steps + 1)) }
+            withContext(Dispatchers.Default) {
+                state = node.run(ctx, state).let { it.copy(budget = it.budget.copy(steps = it.budget.steps + 1)) }
+            }
             // `done` is informational (a final answer is ready); flow to termination is
             // controlled by edges to END so downstream nodes (e.g. Reflection) can still run.
             // Budget is the hard safety stop against runaway loops.

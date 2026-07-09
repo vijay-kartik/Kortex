@@ -1,0 +1,3 @@
+[
+  { "content": "Priya was promoted to Senior Engineer at TCS (July 2026)", "kind": "EVENT", "salience": 0.8, "tags": ["career", "tcs"] }
+]

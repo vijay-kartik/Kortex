@@ -57,6 +57,8 @@ dependencies {
     implementation(libs.litertlm.android)
 
     testImplementation(libs.junit.jupiter)
+    // Gradle 9 no longer puts the JUnit Platform launcher on the test runtime classpath itself.
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.3")
     testImplementation(libs.kotest.assertions)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.turbine)

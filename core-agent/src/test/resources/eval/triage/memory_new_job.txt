@@ -1,0 +1,2 @@
+STORE_MEMORY
+Good news about a new job; nothing for the user to act on right now.

@@ -3,6 +3,7 @@ package dev.kortex.core.ambient
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.Models
+import dev.kortex.core.prompt.CardPrompts
 import dev.kortex.core.state.Message
 import java.util.UUID
 import kotlinx.serialization.Serializable
@@ -48,52 +49,11 @@ class LlmCardGenerator(
         val resp = llm.complete(
             LlmRequest(
                 model = generatorModel,
-                messages = listOf(Message(Message.Role.USER, generatePrompt(context, feedback))),
+                messages = listOf(Message(Message.Role.USER, CardPrompts.generate(context, feedback))),
                 temperature = 0.4,
             )
         )
         return parseObject(resp.message.content)
-    }
-
-    private fun generatePrompt(ctx: TriageContext, feedback: String?): String {
-        val activity = ctx.newSignals.joinToString("\n") { "- via ${it.source.appLabel}: ${it.content}" }
-        val known = ctx.recentMemory.takeIf { it.isNotEmpty() }?.joinToString("\n") { "- $it" } ?: "(none)"
-        val revision = feedback?.let { "\nRevise your previous card using this reviewer feedback:\n$it\n" } ?: ""
-
-        return """
-            You build a single actionable "card" for a personal assistant about the contact
-            "${ctx.contactName}", summarizing what's been shared across all messaging apps and
-            suggesting what the user can do next. Base everything ONLY on the activity and
-            known facts below — never invent details.
-            $revision
-            Conversation summary so far:
-            ${ctx.conversationSummary ?: "(none yet)"}
-
-            What we already know:
-            $known
-
-            New activity (across mediums):
-            $activity
-
-            Return ONLY a JSON object:
-            {
-              "makeCard": true,
-              "title": "<short title>",
-              "summary": "<combined, medium-agnostic summary of what was shared>",
-              "priority": "LOW|MEDIUM|HIGH|URGENT",
-              "actions": [
-                { "type": "reply_text|share_location|share_media|set_reminder|schedule_checkin|create_event|call",
-                  "label": "<button text>", "text": "<message/draft/title if relevant>",
-                  "atMillis": <epoch ms if time-based>, "live": false, "mediaType": "IMAGE|FILE|...",
-                  "startMillis": <epoch ms for events> }
-              ],
-              "entities": [ { "type": "PERSON|PLACE|DATE_TIME|EVENT|COMMITMENT|ORGANIZATION|TOPIC|OTHER",
-                              "name": "<canonical>", "surfaceText": "<as written>" } ],
-              "memories": [ { "content": "<durable fact>", "kind": "FACT|PREFERENCE|EVENT|COMMITMENT|RELATIONSHIP|OTHER",
-                              "salience": 0.5, "tags": ["..."] } ]
-            }
-            Set "makeCard": false if, on reflection, nothing is truly card-worthy.
-        """.trimIndent()
     }
 
     // --- reflection (pattern 4) ---
@@ -101,23 +61,12 @@ class LlmCardGenerator(
     private data class Verdict(val ok: Boolean, val feedback: String)
 
     private suspend fun reflect(context: TriageContext, draft: CardDraft): Verdict {
-        val activity = context.newSignals.joinToString("\n") { "- ${it.content}" }
-        val prompt = """
-            You are a strict reviewer of a proposed assistant card. Check that it is:
-            - grounded ONLY in the activity below (no invented facts),
-            - genuinely useful/actionable for the user,
-            - appropriate (actions don't overreach or assume consent the user didn't give).
-
-            Reply with exactly "OK" if it's good, otherwise "REVISE: <specific feedback>".
-
-            Activity:
-            $activity
-
-            Proposed card:
-            title: ${draft.title}
-            summary: ${draft.summary}
-            actions: ${draft.actions.joinToString { it.type + (it.text?.let { t -> " ($t)" } ?: "") }}
-        """.trimIndent()
+        val prompt = CardPrompts.reflect(
+            ctx = context,
+            title = draft.title,
+            summary = draft.summary,
+            actions = draft.actions.joinToString { it.type + (it.text?.let { t -> " ($t)" } ?: "") },
+        )
 
         val resp = llm.complete(
             LlmRequest(model = criticModel, messages = listOf(Message(Message.Role.USER, prompt)), temperature = 0.0)

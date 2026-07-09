@@ -679,7 +679,7 @@ private fun ReasoningPanel(
 
 /** Short lowercase source tags keep the trace legible: `llm`, `tool`, `react`, `reflect`… */
 private fun traceTag(tag: String) = when (tag) {
-    "OpenAiProvider" -> "llm"
+    "OpenAiProvider", "DeepseekProvider" -> "llm"
     "ToolGovernor" -> "tool"
     else -> tag.removeSuffix("Node").lowercase()
 }

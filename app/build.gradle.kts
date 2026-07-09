@@ -31,6 +31,11 @@ android {
             "OPENAI_API_KEY",
             "\"${localProps.getProperty("OPENAI_API_KEY", "")}\"",
         )
+        buildConfigField(
+            "String",
+            "DEEPSEEK_API_KEY",
+            "\"${localProps.getProperty("DEEPSEEK_API_KEY", "")}\"",
+        )
     }
 
     buildFeatures {

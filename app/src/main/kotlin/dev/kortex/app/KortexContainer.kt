@@ -14,6 +14,7 @@ import dev.kortex.core.ambient.OutcomeWriter
 import dev.kortex.core.ambient.SignalIngestor
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.OpenAiProvider
+import dev.kortex.core.llm.DeepseekProvider
 import dev.kortex.core.store.KortexDatabase
 import dev.kortex.core.tool.ToolRegistry
 import dev.kortex.core.tool.builtin.defaultTools
@@ -46,10 +47,12 @@ class KortexContainer(context: Context) {
     }
     val chatSessionDao get() = appDatabase.chatSessionDao()
 
-    // LLM provider — Wraps the default OpenAI provider with a Dynamic provider that can switch to Ollama
+    // LLM provider — OpenAI when a key is configured, else Deepseek, else the stub.
     val llm: LlmProvider by lazy {
         val defaultOpenAi = BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
             ?.let { OpenAiProvider(apiKey = it, logger = AndroidLogger) }
+            ?: BuildConfig.DEEPSEEK_API_KEY.takeIf { it.isNotBlank() }
+            ?.let { DeepseekProvider(apiKey = it, logger = AndroidLogger) }
             ?: StubLlmProvider()
         DynamicLlmProvider(context = appContext, store = mcpStore, defaultProvider = defaultOpenAi)
     }

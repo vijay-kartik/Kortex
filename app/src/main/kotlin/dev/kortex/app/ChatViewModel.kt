@@ -166,7 +166,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val activeProviderName = mcpStore.activeProvider.first()
             val model = when (activeProviderName) {
                 "ollama" -> mcpStore.activeModel.first()
-                "mediapipe", "llamacpp" -> mcpStore.mediaPipeModelPath.first()?.substringAfterLast('/')
                 else -> "gpt-4o"
             }
             _ui.update {
@@ -193,90 +192,47 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 liveLines += ReasoningLine(level, tag, message)
                 _ui.update { it.copy(liveReasoning = liveLines.toList(), liveStats = statsNow()) }
             }
-            val isLocalProvider = activeProviderName in listOf("llamacpp", "mediapipe")
+            val turnCtx = AgentContext(
+                llm = provider,
+                tools = tools,
+                governor = ToolGovernor(onAudit = {
+                    toolCalls++
+                    _ui.update { it.copy(liveStats = statsNow()) }
+                }),
+                approver = approver,
+                onProgress = progress,
+                logger = turnLogger,
+                onLlmUsage = LlmUsageListener { usage ->
+                    tokens += usage.inputTokens + usage.outputTokens
+                    _ui.update { it.copy(liveStats = statsNow()) }
+                },
+            )
 
-            if (isLocalProvider) {
-                // Local models are too slow for the multi-pass agent graph
-                // (Router → DirectAnswer → Reflect = 3+ separate inference passes).
-                // Do a single direct completion instead.
-                _ui.update { it.copy(status = "Generating…") }
-                val historyMessages = _ui.value.turns.map { it.message }
-                val allMessages = listOf(
-                    Message(Message.Role.SYSTEM, Agent.DEFAULT_SYSTEM)
-                ) + historyMessages
-                val req = dev.kortex.core.llm.LlmRequest(
-                    model = model ?: "local",
-                    messages = allMessages,
-                    temperature = 0.7,
-                )
-                val resp = provider.complete(req, turnLogger)
-                val answer = resp.message
+            val historyMessages = _ui.value.turns.map { it.message }
+            val result = Agent(turnCtx).ask(query, attachmentsToSend, history = historyMessages)
+            val answer = result.messages
+                .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
 
-                _ui.update { cur ->
-                    val newTurns = cur.turns + ChatTurn(answer, liveLines.toList(), statsNow())
-                    viewModelScope.launch {
-                        val title = if (newTurns.size <= 2) query.take(40) else sessionDao.getById(currentSessionId)?.title ?: query.take(40)
-                        sessionDao.upsert(
-                            ChatSessionEntity(
-                                id = currentSessionId,
-                                title = title,
-                                turnsJson = json.encodeToString(newTurns),
-                                updatedAtMillis = System.currentTimeMillis()
-                            )
+            _ui.update { cur ->
+                val newTurns = cur.turns + listOfNotNull(answer?.let { ChatTurn(it, liveLines.toList(), statsNow()) })
+                viewModelScope.launch {
+                    val title = if (newTurns.size <= 2) query.take(40) else sessionDao.getById(currentSessionId)?.title ?: query.take(40)
+                    sessionDao.upsert(
+                        ChatSessionEntity(
+                            id = currentSessionId,
+                            title = title,
+                            turnsJson = json.encodeToString(newTurns),
+                            updatedAtMillis = System.currentTimeMillis()
                         )
-                    }
-                    cur.copy(
-                        turns = newTurns,
-                        liveReasoning = emptyList(),
-                        liveStats = ReasoningStats(),
-                        busy = false,
-                        status = null,
                     )
                 }
-            } else {
-                // Cloud providers: use the full agent graph with routing + reflection
-                val turnCtx = AgentContext(
-                    llm = provider,
-                    tools = tools,
-                    governor = ToolGovernor(onAudit = {
-                        toolCalls++
-                        _ui.update { it.copy(liveStats = statsNow()) }
-                    }),
-                    approver = approver,
-                    onProgress = progress,
-                    logger = turnLogger,
-                    onLlmUsage = LlmUsageListener { usage ->
-                        tokens += usage.inputTokens + usage.outputTokens
-                        _ui.update { it.copy(liveStats = statsNow()) }
-                    },
+                cur.copy(
+                    turns = newTurns,
+                    liveReasoning = emptyList(),
+                    liveStats = ReasoningStats(),
+                    busy = false,
+                    status = null,
                 )
-
-                val historyMessages = _ui.value.turns.map { it.message }
-                val result = Agent(turnCtx).ask(query, attachmentsToSend, history = historyMessages)
-                val answer = result.messages
-                    .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
-
-                _ui.update { cur ->
-                    val newTurns = cur.turns + listOfNotNull(answer?.let { ChatTurn(it, liveLines.toList(), statsNow()) })
-                    viewModelScope.launch {
-                        val title = if (newTurns.size <= 2) query.take(40) else sessionDao.getById(currentSessionId)?.title ?: query.take(40)
-                        sessionDao.upsert(
-                            ChatSessionEntity(
-                                id = currentSessionId,
-                                title = title,
-                                turnsJson = json.encodeToString(newTurns),
-                                updatedAtMillis = System.currentTimeMillis()
-                            )
-                        )
-                    }
-                    cur.copy(
-                        turns = newTurns,
-                        liveReasoning = emptyList(),
-                        liveStats = ReasoningStats(),
-                        busy = false,
-                        status = null,
-                    )
-                }
             }
         }
     }

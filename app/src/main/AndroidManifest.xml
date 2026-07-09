@@ -20,18 +20,6 @@
         android:theme="@style/Theme.Kortex"
         android:supportsRtl="true">
 
-        <!-- On Android 12+ apps can't load vendor OpenCL without declaring it; the
-             LiteRT-LM GPU backend needs it. required=false so install works everywhere. -->
-        <uses-native-library
-            android:name="libOpenCL.so"
-            android:required="false" />
-        <uses-native-library
-            android:name="libOpenCL-car.so"
-            android:required="false" />
-        <uses-native-library
-            android:name="libOpenCL-pixel.so"
-            android:required="false" />
-
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -12,9 +12,6 @@ android {
     defaultConfig {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
     }
 
     compileOptions {
@@ -22,22 +19,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    ndkVersion = "30.0.14904198"
-    kotlinOptions { 
-        jvmTarget = "17" 
+    kotlinOptions {
+        jvmTarget = "17"
         freeCompilerArgs += listOf("-Xskip-metadata-version-check")
     }
 
     // Existing unit tests use JUnit 5 (Jupiter); run them on the JVM unit-test path.
     testOptions {
         unitTests.all { it.useJUnitPlatform() }
-    }
-
-    externalNativeBuild {
-        cmake {
-            path("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
     }
 }
 
@@ -53,8 +42,6 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
-
-    implementation(libs.litertlm.android)
 
     testImplementation(libs.junit.jupiter)
     // Gradle 9 no longer puts the JUnit Platform launcher on the test runtime classpath itself.

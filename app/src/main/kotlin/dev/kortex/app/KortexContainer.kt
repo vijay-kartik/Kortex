@@ -54,7 +54,7 @@ class KortexContainer(context: Context) {
             ?: BuildConfig.DEEPSEEK_API_KEY.takeIf { it.isNotBlank() }
             ?.let { DeepseekProvider(apiKey = it, logger = AndroidLogger) }
             ?: StubLlmProvider()
-        DynamicLlmProvider(context = appContext, store = mcpStore, defaultProvider = defaultOpenAi)
+        DynamicLlmProvider(store = mcpStore, defaultProvider = defaultOpenAi)
     }
 
     // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.

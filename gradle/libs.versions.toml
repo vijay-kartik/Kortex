@@ -66,8 +66,6 @@ coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", ve
 richtext-commonmark = { module = "com.halilibo.compose-richtext:richtext-commonmark", version = "0.20.0" }
 richtext-material3 = { module = "com.halilibo.compose-richtext:richtext-ui-material3", version = "0.20.0" }
 
-litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version = "latest.release" }
-
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }

@@ -154,6 +154,15 @@ class OpenAiProvider(
                                 }
                             })
                         }
+                        // Dictated voice notes carry a transcript and no audio bytes; send the
+                        // text so any chat model can read it (input_audio needs audio-capable
+                        // models and real bytes).
+                        attachment.mimeType.startsWith("audio/") && attachment.transcript != null -> {
+                            add(buildJsonObject {
+                                put("type", "text")
+                                put("text", "[Voice message transcript]: ${attachment.transcript}")
+                            })
+                        }
                         attachment.mimeType.startsWith("audio/") -> {
                             add(buildJsonObject {
                                 put("type", "input_audio")

@@ -117,13 +117,10 @@ fun McpSettingsScreen(
                     supportedModels = ui.supportedModels,
                     ollamaUrl = ui.ollamaUrl,
                     ollamaToken = ui.ollamaToken,
-                    mediaPipeModelPath = ui.mediaPipeModelPath,
                     onProviderSelected = { vm.setActiveProvider(it) },
                     onModelSelected = { vm.setActiveModel(it) },
                     onOllamaUrlChange = { vm.setOllamaUrl(it) },
                     onOllamaTokenChange = { vm.setOllamaToken(it) },
-                    onMediaPipeModelPathChange = { vm.setMediaPipeModelPath(it) },
-                    onDownloadGguf = { ctx, url, name -> vm.downloadGgufModel(ctx, url, name) }
                 )
             }
 
@@ -576,17 +573,13 @@ private fun ModelSelector(
     supportedModels: List<String>,
     ollamaUrl: String,
     ollamaToken: String,
-    mediaPipeModelPath: String,
     onProviderSelected: (String) -> Unit,
     onModelSelected: (String) -> Unit,
     onOllamaUrlChange: (String) -> Unit,
     onOllamaTokenChange: (String) -> Unit,
-    onMediaPipeModelPathChange: (String) -> Unit,
-    onDownloadGguf: (android.content.Context, String, String) -> Unit
 ) {
     var expandedProvider by remember { mutableStateOf(false) }
     var expandedModel by remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -614,8 +607,6 @@ private fun ModelSelector(
                     Text(
                         when (activeProvider) {
                             "openai" -> "OpenAI"
-                            "mediapipe" -> "MediaPipe (On-Device GPU/CPU)"
-                            "llamacpp" -> "Llama.cpp (.gguf via NDK)"
                             else -> "Ollama (Local/Cloud)"
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -627,10 +618,8 @@ private fun ModelSelector(
             AnimatedVisibility(visible = expandedProvider) {
                 Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
                     listOf(
-                        "openai" to "OpenAI", 
-                        "ollama" to "Ollama (Local/Cloud)", 
-                        "mediapipe" to "MediaPipe (On-Device GPU/CPU)",
-                        "llamacpp" to "Llama.cpp (.gguf via NDK)"
+                        "openai" to "OpenAI",
+                        "ollama" to "Ollama (Local/Cloud)",
                     ).forEach { (id, label) ->
                         Row(
                             modifier = Modifier
@@ -758,78 +747,6 @@ private fun ModelSelector(
                             }
                         }
                     )
-                }
-            }
-
-            // MediaPipe & Llama.cpp Settings
-            if (activeProvider == "mediapipe" || activeProvider == "llamacpp") {
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    var editPath by remember { mutableStateOf(mediaPipeModelPath) }
-                    Text(
-                        if (activeProvider == "mediapipe")
-                            "MediaPipe supports Gemma, Phi-2, Falcon, and StableLM. You can download the official Gemma 2B model below, or use the MediaPipe Python conversion script to convert other models and enter the absolute path to the .bin file."
-                        else
-                            "Llama.cpp supports any .gguf file (Llama 3, Mistral, Qwen, etc). Download a .gguf file from HuggingFace to your device and enter its absolute path here.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Muted,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    SettingsTextField(
-                        value = editPath,
-                        onValueChange = { editPath = it; onMediaPipeModelPathChange(it) },
-                        label = if (activeProvider == "mediapipe") "Absolute Path to .bin Model File" else "Absolute Path to .gguf Model File",
-                        placeholder = if (activeProvider == "mediapipe") "/storage/emulated/0/Download/gemma-2b-it-gpu-int4.bin" else "/storage/emulated/0/Download/llama-3-8b.gguf"
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    if (activeProvider == "mediapipe") {
-                        ButtonDefaults.filledTonalButtonColors()
-                        FilledTonalButton(
-                            onClick = { 
-                                val intent = android.content.Intent(
-                                    android.content.Intent.ACTION_VIEW, 
-                                    android.net.Uri.parse("https://www.kaggle.com/models/google/gemma/tfLite/gemma-2b-it-gpu-int4")
-                                )
-                                context.startActivity(intent)
-                            },
-                            modifier = Modifier.align(Alignment.End),
-                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
-                        ) {
-                            Text("Open Kaggle to Download Gemma 2B")
-                        }
-                    }
-
-                    if (activeProvider == "llamacpp") {
-                        Spacer(Modifier.height(16.dp))
-                        Text("Recommended Mobile Models (Direct Download)", style = MaterialTheme.typography.labelMedium, color = Synapse)
-                        Spacer(Modifier.height(8.dp))
-                        
-                        val recommendedModels = listOf(
-                            Triple("Gemma 2 2B Instruct", "1.6 GB", "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"),
-                            Triple("Llama 3 8B Instruct", "4.9 GB", "https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"),
-                            Triple("Phi-3 Mini 4K Instruct", "2.4 GB", "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"),
-                            Triple("Qwen2 1.5B Instruct", "1.0 GB", "https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF/resolve/main/qwen2-1_5b-instruct-q4_k_m.gguf")
-                        )
-                        
-                        recommendedModels.forEach { (name, size, url) ->
-                            val filename = url.substringAfterLast("/")
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                                    Text(size, style = MaterialTheme.typography.labelSmall, color = Muted)
-                                }
-                                TextButton(
-                                    onClick = { onDownloadGguf(context, url, filename) },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = Synapse)
-                                ) {
-                                    Text("Download")
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }

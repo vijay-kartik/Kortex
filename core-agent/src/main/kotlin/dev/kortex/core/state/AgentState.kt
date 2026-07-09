@@ -8,6 +8,12 @@ data class Attachment(
     val mimeType: String,
     val dataBase64: String,
     val filename: String? = null,
+    /** For voice input: the on-device speech-to-text transcript. When set on an audio
+     *  attachment, providers send this text to the LLM instead of raw audio bytes (which
+     *  only audio-capable models accept, and which dictation doesn't produce anyway). */
+    val transcript: String? = null,
+    /** Length of the recording, for display (e.g. "0:07") — not sent to the LLM. */
+    val durationMs: Long? = null,
 )
 
 /** A single conversational turn or step result that flows through the graph. */

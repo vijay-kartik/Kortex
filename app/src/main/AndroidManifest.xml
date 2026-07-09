@@ -3,13 +3,14 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
-    <uses-permission android:name="android.permission.EXECUTE_APP_FUNCTIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Android 11+ package visibility: lets SpeechRecognizer find the device's
+         speech-recognition service for on-device voice input. -->
     <queries>
-        <package android:name="com.whatsapp" />
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
     </queries>
 
     <application
@@ -22,15 +23,10 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTop">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.ASSIST" />
-                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
             <!-- Phase 8: "process this with Kortex" share-sheet entry -->
             <intent-filter>
@@ -39,35 +35,5 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
-
-        <service
-            android:name=".AssistantService"
-            android:permission="android.permission.BIND_VOICE_INTERACTION"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.service.voice.VoiceInteractionService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.voice_interaction"
-                android:resource="@xml/assistant_config" />
-        </service>
-
-        <service
-            android:name=".AssistantSessionService"
-            android:permission="android.permission.BIND_VOICE_INTERACTION"
-            android:exported="true" />
-
-        <service
-            android:name=".AssistantRecognitionService"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.speech.RecognitionService" />
-            </intent-filter>
-        </service>
-
-        <service
-            android:name=".WaForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

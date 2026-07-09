@@ -1,5 +1,8 @@
 package dev.kortex.app
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -10,6 +13,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -64,6 +68,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -88,6 +93,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -115,6 +121,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -255,6 +262,26 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
         }
     }
 
+    val voice by vm.voice.collectAsStateWithLifecycle()
+    val voiceError by vm.voiceError.collectAsStateWithLifecycle()
+
+    LaunchedEffect(voiceError) {
+        voiceError?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            vm.consumeVoiceError()
+        }
+    }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            vm.startVoiceInput()
+        } else {
+            Toast.makeText(context, "Microphone permission is required for voice input.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     LaunchedEffect(ui.turns.size) {
         if (ui.turns.isNotEmpty()) listState.animateScrollToItem(ui.turns.lastIndex)
     }
@@ -328,80 +355,228 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 stagedAttachments.forEachIndexed { index, att ->
+                    val isVoice = att.mimeType.startsWith("audio/") && att.transcript != null
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Panel,
-                        border = BorderStroke(1.dp, Edge),
+                        color = if (isVoice) SynapseDim else Panel,
+                        border = BorderStroke(1.dp, if (isVoice) Synapse.copy(alpha = 0.4f) else Edge),
                         modifier = Modifier.clickable { vm.removeStagedAttachment(index) }
                     ) {
-                        Text(
-                            text = (att.filename ?: "File") + " ✕",
-                            style = MaterialTheme.typography.labelSmall,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                            color = Muted
-                        )
+                        ) {
+                            if (isVoice) {
+                                Icon(
+                                    painterResource(R.drawable.ic_mic),
+                                    contentDescription = null,
+                                    tint = Synapse,
+                                    modifier = Modifier.size(12.dp),
+                                )
+                            }
+                            Text(
+                                text = if (isVoice) {
+                                    val t = att.transcript.orEmpty()
+                                    t.take(24) + (if (t.length > 24) "…" else "") +
+                                        (att.durationMs?.let { " · ${formatVoiceDuration(it)}" } ?: "") + " ✕"
+                                } else {
+                                    (att.filename ?: "File") + " ✕"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isVoice) Synapse else Muted,
+                            )
+                        }
                     }
                 }
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            IconButton(
-                onClick = { filePickerLauncher.launch("*/*") },
-                enabled = !ui.busy,
-                modifier = Modifier.size(52.dp)
+        if (voice !is VoiceState.Idle) {
+            ListeningBar(
+                state = voice,
+                onCancel = { vm.cancelVoiceInput() },
+                onDone = { vm.stopVoiceInput() },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Icon(
-                    painterResource(R.drawable.ic_attach_file),
-                    contentDescription = "Attach file",
-                    tint = Muted
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = Panel,
-                border = BorderStroke(1.dp, Edge),
-                modifier = Modifier.weight(1f),
-            ) {
-                TextField(
-                    value = input,
-                    onValueChange = { input = it },
-                    placeholder = { Text("Message Kortex…", color = Muted) },
+                IconButton(
+                    onClick = { filePickerLauncher.launch("*/*") },
                     enabled = !ui.busy,
-                    maxLines = 4,
-                    textStyle = MaterialTheme.typography.bodyLarge,
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                        cursorColor = Synapse,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            FilledIconButton(
-                onClick = { vm.send(input); input = "" },
-                enabled = !ui.busy && (input.isNotBlank() || stagedAttachments.isNotEmpty()),
-                shape = CircleShape,
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = Synapse,
-                    contentColor = Void,
-                    disabledContainerColor = Panel,
-                    disabledContentColor = Muted,
-                ),
-                modifier = Modifier.size(52.dp),
-            ) {
-                Text("↑", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    modifier = Modifier.size(52.dp)
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_attach_file),
+                        contentDescription = "Attach file",
+                        tint = Muted
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Panel,
+                    border = BorderStroke(1.dp, Edge),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    TextField(
+                        value = input,
+                        onValueChange = { input = it },
+                        placeholder = { Text("Message Kortex…", color = Muted) },
+                        enabled = !ui.busy,
+                        maxLines = 4,
+                        textStyle = MaterialTheme.typography.bodyLarge,
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            cursorColor = Synapse,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                // The trailing action morphs: mic when there's nothing to send (dictation is
+                // an offer, in the dimmer accent), solid send once text or attachments exist.
+                val canSend = input.isNotBlank() || stagedAttachments.isNotEmpty()
+                if (canSend) {
+                    FilledIconButton(
+                        onClick = { vm.send(input); input = "" },
+                        enabled = !ui.busy,
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = Synapse,
+                            contentColor = Void,
+                            disabledContainerColor = Panel,
+                            disabledContentColor = Muted,
+                        ),
+                        modifier = Modifier.size(52.dp),
+                    ) {
+                        Text("↑", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    FilledIconButton(
+                        onClick = {
+                            if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                vm.startVoiceInput()
+                            } else {
+                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                        enabled = !ui.busy,
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = SynapseDim,
+                            contentColor = Synapse,
+                            disabledContainerColor = Panel,
+                            disabledContentColor = Muted,
+                        ),
+                        modifier = Modifier.size(52.dp),
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_mic),
+                            contentDescription = "Voice input",
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
             }
         }
     }
+}
+
+/**
+ * The composer's listening face — same silhouette as the text field so dictation reads as
+ * the composer changing state, not a new widget. The Synapse dot is scaled by the live mic
+ * level (real telemetry, like the reasoning trace), the clock speaks mono, and the partial
+ * transcript streams in the conversation face.
+ */
+@Composable
+private fun ListeningBar(
+    state: VoiceState,
+    onCancel: () -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = Panel,
+        border = BorderStroke(1.dp, Edge),
+        modifier = modifier,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.heightIn(min = 56.dp).padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+        ) {
+            when (state) {
+                is VoiceState.Listening -> {
+                    // rms arrives in dB (~ -2..10); normalize to a 1x–1.9x dot scale.
+                    val level = ((state.rms + 2f) / 12f).coerceIn(0f, 1f)
+                    val scale by animateFloatAsState(1f + level * 0.9f, label = "micLevel")
+                    Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .size(9.dp)
+                                .graphicsLayer { scaleX = scale; scaleY = scale }
+                                .background(Synapse, CircleShape)
+                        )
+                    }
+                    Text(
+                        formatVoiceDuration(state.elapsedMs),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Synapse,
+                    )
+                    Text(
+                        state.partial.ifBlank { "Listening…" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (state.partial.isBlank()) Muted else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = onCancel, modifier = Modifier.size(44.dp)) {
+                        Text("✕", fontSize = 18.sp, color = Muted)
+                    }
+                    FilledIconButton(
+                        onClick = onDone,
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = Synapse,
+                            contentColor = Void,
+                        ),
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Text("✓", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                VoiceState.Transcribing -> {
+                    PulsingDot(8.dp)
+                    Text(
+                        "transcribing…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Muted,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = onCancel, modifier = Modifier.size(44.dp)) {
+                        Text("✕", fontSize = 18.sp, color = Muted)
+                    }
+                }
+                VoiceState.Idle -> {}
+            }
+        }
+    }
+}
+
+/** 67_000ms -> "1:07". */
+private fun formatVoiceDuration(ms: Long): String {
+    val totalSec = ms / 1000
+    return "%d:%02d".format(totalSec / 60, totalSec % 60)
 }
 
 @Composable
@@ -453,20 +628,32 @@ private fun MessageBubble(turn: ChatTurn) {
                     .combinedClickable(
                         onClick = {},
                         onLongClick = {
-                            clipboard.setText(AnnotatedString(msg.content))
+                            // Voice-only messages have blank content; copy the transcript instead.
+                            val copyText = msg.content.ifBlank {
+                                msg.attachments.mapNotNull { it.transcript }.joinToString("\n")
+                            }
+                            clipboard.setText(AnnotatedString(copyText))
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
                         },
                     ),
             ) {
                 if (isUser) {
+                    val voiceNotes = msg.attachments.filter { it.mimeType.startsWith("audio/") }
+                    val fileAttachments = msg.attachments - voiceNotes.toSet()
                     Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        if (msg.attachments.isNotEmpty()) {
+                        voiceNotes.forEachIndexed { i, att ->
+                            VoiceNoteContent(
+                                att = att,
+                                modifier = Modifier.padding(top = if (i > 0) 8.dp else 0.dp),
+                            )
+                        }
+                        if (fileAttachments.isNotEmpty()) {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.padding(bottom = if (msg.content.isNotBlank()) 6.dp else 0.dp)
+                                modifier = Modifier.padding(top = if (voiceNotes.isNotEmpty()) 8.dp else 0.dp)
                             ) {
-                                msg.attachments.forEach { att ->
+                                fileAttachments.forEach { att ->
                                     Surface(
                                         color = Void.copy(alpha = 0.2f),
                                         shape = RoundedCornerShape(6.dp),
@@ -483,6 +670,15 @@ private fun MessageBubble(turn: ChatTurn) {
                             }
                         }
                         if (msg.content.isNotBlank()) {
+                            if (msg.attachments.isNotEmpty()) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp)
+                                        .height(1.dp)
+                                        .background(Void.copy(alpha = 0.2f))
+                                )
+                            }
                             Text(
                                 msg.content,
                                 style = MaterialTheme.typography.bodyLarge,
@@ -607,6 +803,91 @@ private fun MessageBubble(turn: ChatTurn) {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * A voice message inside a user bubble: a mono "VOICE · 0:07" eyebrow over the transcript
+ * in the conversation face. Dictated notes carry only a transcript; audio files picked
+ * from storage carry real bytes and get a play/pause control instead of the mic glyph.
+ */
+@Composable
+private fun VoiceNoteContent(
+    att: dev.kortex.core.state.Attachment,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (att.dataBase64.isNotBlank()) {
+                AudioPlayButton(att)
+            } else {
+                Icon(
+                    painterResource(R.drawable.ic_mic),
+                    contentDescription = null,
+                    tint = Void.copy(alpha = 0.7f),
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+            Text(
+                buildString {
+                    append("VOICE")
+                    att.durationMs?.let { append(" · ${formatVoiceDuration(it)}") }
+                        ?: att.filename?.let { append(" · $it") }
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = Void.copy(alpha = 0.7f),
+            )
+        }
+        att.transcript?.let {
+            Spacer(Modifier.height(4.dp))
+            Text(it, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+/** Plays a byte-carrying audio attachment via MediaPlayer (base64 -> cache file). */
+@Composable
+private fun AudioPlayButton(att: dev.kortex.core.state.Attachment) {
+    val context = LocalContext.current
+    var playing by remember { mutableStateOf(false) }
+    val player = remember { MediaPlayer() }
+    DisposableEffect(Unit) {
+        onDispose { player.release() }
+    }
+    Surface(
+        color = Void.copy(alpha = 0.2f),
+        shape = CircleShape,
+        modifier = Modifier
+            .size(26.dp)
+            .clickable {
+                if (playing) {
+                    player.stop()
+                    player.reset()
+                    playing = false
+                } else {
+                    runCatching {
+                        val bytes = android.util.Base64.decode(att.dataBase64, android.util.Base64.DEFAULT)
+                        val ext = att.mimeType.substringAfter("/").ifBlank { "bin" }
+                        val file = File(context.cacheDir, "audio_${att.dataBase64.hashCode()}.$ext")
+                        if (!file.exists()) file.writeBytes(bytes)
+                        player.reset()
+                        player.setDataSource(file.absolutePath)
+                        player.setOnCompletionListener { playing = false }
+                        player.prepare()
+                        player.start()
+                        playing = true
+                    }.onFailure {
+                        Toast.makeText(context, "Can't play this audio.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(if (playing) "■" else "▶", fontSize = 11.sp, color = Void)
         }
     }
 }

@@ -20,6 +20,9 @@ data class McpServer(
     val name: String,
     val url: String,
     val bearerToken: String? = null,
+    /** Extra headers sent on every request, for servers that authenticate with something
+     *  other than `Authorization: Bearer` (e.g. Composio's `x-api-key`). */
+    val extraHeaders: Map<String, String> = emptyMap(),
     /** Third-party code answers these calls, so default to MEDIUM: the governor then routes
      *  every invocation through user approval (pattern 13). Lower to LOW only for servers
      *  you trust to be side-effect-free. */
@@ -40,7 +43,7 @@ class McpToolConnector(
     suspend fun connectAll(servers: List<McpServer>): Int = servers.sumOf { connect(it) }
 
     suspend fun connect(server: McpServer): Int = runCatching {
-        val client = McpClient(server.url, server.bearerToken, logger = logger)
+        val client = McpClient(server.url, server.bearerToken, server.extraHeaders, logger = logger)
         val tools = client.listTools()
         tools.forEach { registry.register(mcpTool(client, it, server)) }
         logger.i(TAG, "'${server.name}': ${tools.size} tool(s) registered [${tools.joinToString { it.name }}]")

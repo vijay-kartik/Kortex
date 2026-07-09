@@ -124,6 +124,18 @@ fun McpSettingsScreen(
                 )
             }
 
+            // ── Composio (Gmail) ─────────────────────────────────────
+            item { SectionLabel("COMPOSIO (GMAIL)", Modifier.padding(top = 16.dp)) }
+            item {
+                ComposioSettings(
+                    apiKey = ui.composioApiKey,
+                    userId = ui.composioUserId,
+                    onApiKeyChange = { vm.setComposioApiKey(it) },
+                    onUserIdChange = { vm.setComposioUserId(it) },
+                    onConnect = { vm.reconnectComposio() },
+                )
+            }
+
             // ── Built-in tools ──────────────────────────────────────
             item { SectionLabel("BUILT-IN TOOLS", Modifier.padding(top = 16.dp)) }
             items(ui.builtinTools, key = { it.name }) { tool ->
@@ -563,6 +575,74 @@ private fun SettingsTextField(
             trailingIcon = trailingContent,
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+/**
+ * Composio has no fixed MCP server: a Tool Router session is minted per connection from an
+ * API key + user_id, scoped to whatever toolkits (here, Gmail) were authorized under that
+ * user_id in Composio. Both fields are required before a session can be created.
+ */
+@Composable
+private fun ComposioSettings(
+    apiKey: String,
+    userId: String,
+    onApiKeyChange: (String) -> Unit,
+    onUserIdChange: (String) -> Unit,
+    onConnect: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Panel,
+        border = BorderStroke(1.dp, Edge),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(
+                "Requires a Composio API key and the user_id whose Gmail connection you " +
+                    "already authorized in Composio (dashboard or session.authorize('gmail', ...)) " +
+                    "— tools are only visible to the session that matches that user_id.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Muted,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+
+            var editKey by remember { mutableStateOf(apiKey) }
+            var showKey by remember { mutableStateOf(false) }
+            SettingsTextField(
+                value = editKey,
+                onValueChange = { editKey = it; onApiKeyChange(it) },
+                label = "Composio API Key",
+                placeholder = "ak_...",
+                isPassword = !showKey,
+                trailingContent = {
+                    TextButton(onClick = { showKey = !showKey }) {
+                        Text(
+                            if (showKey) "hide" else "show",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Synapse,
+                        )
+                    }
+                },
+            )
+            Spacer(Modifier.height(12.dp))
+            var editUserId by remember { mutableStateOf(userId) }
+            SettingsTextField(
+                value = editUserId,
+                onValueChange = { editUserId = it; onUserIdChange(it) },
+                label = "User ID (must match the Gmail connection in Composio)",
+                placeholder = "user123",
+            )
+            Spacer(Modifier.height(12.dp))
+            FilledTonalButton(
+                onClick = onConnect,
+                enabled = editKey.isNotBlank() && editUserId.isNotBlank(),
+                modifier = Modifier.align(Alignment.End),
+                colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse),
+            ) {
+                Text("Connect")
+            }
+        }
     }
 }
 

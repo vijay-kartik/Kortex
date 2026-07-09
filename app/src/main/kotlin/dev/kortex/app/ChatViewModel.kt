@@ -114,14 +114,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Connects the hardcoded default MCP servers plus any user-added custom servers.
-     * Called once at init; new custom servers added mid-session are connected by
-     * [McpSettingsViewModel] directly.
+     * Connects the hardcoded default MCP servers plus any user-added custom servers and,
+     * if configured, a fresh Composio Gmail Tool Router session. Called once at init; new
+     * custom servers added mid-session are connected by [McpSettingsViewModel] directly.
      */
     private suspend fun connectMcpServers() {
-        val allServers = mcpServers + mcpStore.customServers.first().map {
+        val customServers = mcpStore.customServers.first().map {
             McpServer(name = it.name, url = it.url, bearerToken = it.bearerToken)
         }
+        val composioServer = resolveComposioGmailServer(mcpStore, AndroidLogger)
+        val allServers = mcpServers + customServers + listOfNotNull(composioServer)
         if (allServers.isNotEmpty()) {
             McpToolConnector(tools, AndroidLogger).connectAll(allServers)
         }

@@ -4,8 +4,11 @@ import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.LlmResponse
 import dev.kortex.core.log.Logger
+import dev.kortex.core.log.e
+import dev.kortex.core.state.Message
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
+import kotlinx.coroutines.CancellationException
 
 /**
  * Shared services a node may use while running. Kept out of [dev.kortex.core.state.AgentState]
@@ -29,11 +32,27 @@ class AgentContext(
 /**
  * The one way nodes should call the LLM: threads the context's logger into the provider
  * and reports structured usage. Calling `ctx.llm.complete` directly bypasses both.
+ *
+ * A provider failure (network error, malformed response, rate limit, ...) is turned into
+ * a plain assistant message describing the failure rather than propagating — every node
+ * (Router, ReAct, Reflect, ...) already degrades gracefully on unexpected message content
+ * (see e.g. RouterNode's `?: routes.first()` fallback), so this ends the turn cleanly
+ * instead of crashing the whole app the way an uncaught exception here used to.
  */
-suspend fun AgentContext.complete(req: LlmRequest): LlmResponse =
-    llm.complete(req, logger).also {
-        onLlmUsage.report(LlmUsage(req.model, it.inputTokens, it.outputTokens))
+suspend fun AgentContext.complete(req: LlmRequest): LlmResponse {
+    val response = try {
+        llm.complete(req, logger)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        logger.e(TAG, "LLM call failed: ${e.message}", e)
+        LlmResponse(message = Message(Message.Role.ASSISTANT, "I ran into an error talking to the model (${e.message ?: e::class.simpleName}). Please try again."))
     }
+    onLlmUsage.report(LlmUsage(req.model, response.inputTokens, response.outputTokens))
+    return response
+}
+
+private const val TAG = "AgentContext"
 
 /** One LLM call's token usage. */
 data class LlmUsage(val model: String, val inputTokens: Int, val outputTokens: Int)

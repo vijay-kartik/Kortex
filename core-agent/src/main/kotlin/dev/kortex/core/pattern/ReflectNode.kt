@@ -36,8 +36,8 @@ class ReflectNode(
         val answer = state.messages
             .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
             ?.content.orEmpty()
-        val request = state.messages.firstOrNull { it.role == Message.Role.USER }?.content
-            ?: state.goal?.description.orEmpty()
+        val request = state.goal?.description
+            ?: state.messages.lastOrNull { it.role == Message.Role.USER }?.content.orEmpty()
         val count = state.scratch[COUNT]?.toIntOrNull() ?: 0
 
         // Nothing to review, or we've revised enough — accept and finish.

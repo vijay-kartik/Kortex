@@ -4,6 +4,7 @@ import android.content.Context
 
 import com.google.ai.edge.litertlm.*
 import dev.kortex.core.log.Logger
+import dev.kortex.core.log.i
 import dev.kortex.core.state.Message
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -30,9 +31,18 @@ class LiteRtProvider(
             throw IllegalStateException("Model file not found at $modelPath")
         }
 
+        // The GPU backend requires OpenCL; many devices don't ship libOpenCL.so and the
+        // failure only surfaces asynchronously mid-conversation, so probe for it up front.
+        val hasOpenCl = listOf(
+            "/vendor/lib64/libOpenCL.so",
+            "/system/vendor/lib64/libOpenCL.so",
+            "/system/lib64/libOpenCL.so"
+        ).any { File(it).exists() }
+        logger?.i("LiteRtProvider", "OpenCL available=$hasOpenCl, using ${if (hasOpenCl) "GPU" else "CPU"} backend")
+
         val engineConfig = EngineConfig(
             modelPath = modelPath,
-            backend = Backend.GPU() // Default to GPU
+            backend = if (hasOpenCl) Backend.GPU() else Backend.CPU()
         )
 
         return@withContext Engine(engineConfig).also {

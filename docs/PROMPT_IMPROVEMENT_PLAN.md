@@ -5,8 +5,7 @@
 
 ---
 
-## 1. Assessment (verified against code)
-
+## 1. Assessment (verified against code
 All feedback points were confirmed against the current source:
 
 | # | Finding | Evidence | Severity |
@@ -36,6 +35,8 @@ The plan therefore invests early in a tiny amount of infrastructure (Phase 0) th
 
 ## 2. Guiding principles
 
+> **Design direction (decided 2026-07-09):** Kortex is a **tool-execution agent**, not a conversational companion. Priorities: expert multi-*step* tool work within a single run, token efficiency, and straightforward direct answers. Conversational features (chitchat handling, follow-up interpretation like "yes do that", conversation-aware routing/review) are explicitly **out of scope** — the feedback items F3, F5, and F10 are acknowledged but intentionally not addressed.
+
 - **Prompts are code.** Centralize them, generate dynamic sections (tool list, date) from the source of truth, and cover behavior with tests where the behavior is parseable (routing labels, JSON schemas).
 - **Measure before and after.** Each phase lands with a small eval set (10–30 cases) so regressions are caught, not felt.
 - **Cheap paths stay cheap.** Router/triage improvements must not grow FAST-model prompts unboundedly; reflection changes must *reduce* net token spend.
@@ -48,8 +49,8 @@ The plan therefore invests early in a tiny amount of infrastructure (Phase 0) th
 | Phase | Theme | Outcome | Effort |
 |-------|-------|---------|--------|
 | 0 | Prompt infrastructure + evals | ✅ **Done (2026-07-09)** — prompts centralized, tool inventory injectable, eval harness exists | ~3 tasks |
-| 1 | Quick wins (high value, low risk) | Router context + chitchat route, conditional reflection, enriched system prompt | ~5 tasks |
-| 2 | Grounded reflection & rubrics | Reflect sees tool results, explicit rubric, conversation-aware | ~3 tasks |
+| 1 | Quick wins (high value, low risk) | Enriched system prompt, conditional reflection, router cleanup + tool awareness | ~4 tasks |
+| 2 | Grounded reflection & rubrics | Reflect sees tool results, explicit rubric | ~2 tasks |
 | 3 | Ambient pipeline hardening | Few-shots for triage/memory, split card generation | ~3 tasks |
 | 4 | Longer-term architecture | Real PlanNode (or drop route), safety policy layer, prompt versioning/telemetry | ~4 tasks |
 
@@ -84,27 +85,25 @@ A JUnit-based (or standalone `main`) harness in `core-agent/src/test/` that runs
 
 ### T1.1 — Enrich the main system prompt (F1)
 Rewrite `DEFAULT_SYSTEM` (in the new `SystemPrompt.kt`) with clearly separated sections:
-1. **Identity & tone** — Kortex, an on-device personal agent; helpful, direct, warm but not chatty.
-2. **Output format** — concise by default; markdown; headers/lists only for genuinely long answers; lead with the answer, not the process.
-3. **Multi-turn awareness** — "You are in an ongoing conversation. Use earlier turns to resolve references; don't repeat information already given."
+1. **Identity & tone** — Kortex, an on-device tool-execution agent; direct and matter-of-fact. No filler, no pleasantries, no restating the question. Straightforward answers are respected more.
+2. **Output format** — concise by default; lead with the answer, not the process; markdown headers/lists only for genuinely long answers. Short factual results in one line.
+3. **Multi-step execution** — you may need several tool calls to finish a task: chain them without stopping to narrate each step; report once, at the end, with the result. Don't re-fetch information already obtained earlier in the run.
 4. **Tool use** — keep the existing tool-first rule; add the generic "open sources yourself" rule (from T0.2); insert the dynamic tool inventory.
 5. **Error handling** — on tool failure/empty results: retry once with adjusted input if sensible, otherwise say plainly what failed and what you know without it. Never fabricate tool output.
 6. **Grounding** — keep the dynamic date block appended by `Agent.ask`.
-Keep it under ~40 lines — it rides along on every ReAct iteration.
+Keep it under ~40 lines — it rides along on every ReAct iteration, so every line costs tokens on every step.
 - *Acceptance:* manual smoke on 5 representative queries; no eval regressions (T0.3).
-- *Depends on:* T0.1, T0.2. ∥ with T1.2–T1.4.
+- *Depends on:* T0.1, T0.2. ∥ with T1.3, T1.4.
 
-### T1.2 — Router gets conversation context (F3)
-Pass the last 2–3 turns (truncated per-message, e.g. 300 chars) into the router prompt as a "Recent conversation" block, keeping the final user message clearly marked as the one to classify.
-- *Acceptance:* new eval cases like "yes do that" after a tool-ish turn classify as `tool_task`; existing single-turn cases unchanged.
-- *Depends on:* T0.1, T0.3. ∥ with T1.1, T1.3, T1.4.
+### ~~T1.2 — Router gets conversation context (F3)~~ ❌ REMOVED (2026-07-09)
+Out of scope per the design direction: Kortex is not a conversational agent, so classifying follow-up phrasings ("yes do that") is not a goal. The 4 `knownFailure` router eval cases added in T0.3 for F3 should be retired in T1.3 rather than fixed.
 
-### T1.3 — Add `chitchat` route, drop `plan` label (F4, F5)
-- Remove `plan` from the default routes (graph edge already treats it as fallthrough; re-add it in Phase 4 with a real PlanNode).
-- Add `chitchat`: acknowledgments, thanks, greetings, empty pleasantries. Route it to `direct` (cheap FAST-model reply) — **not** to a hardcoded response, so tone stays natural. Optionally later: a canned-response node if evals show it's safe.
-- *Acceptance:* "thanks", "ok cool", "good morning" route to `chitchat`→`direct`; graph test updated; router eval expanded.
-- *Files:* `RouterNode.kt`, `Agent.kt` (edges).
-- *Depends on:* T0.1, T0.3. ∥ with T1.1, T1.2.
+### T1.3 — Router cleanup: drop dead `plan` label, retire conversational eval cases (F4)
+- Remove `plan` from the default routes (graph edge already treats it as fallthrough; re-add it in Phase 4 only if/when a real PlanNode lands). Update the router prompt so `tool_task` explicitly covers multi-step tool work.
+- Retire the 4 F3 `knownFailure` follow-up cases from the router eval set (out of scope per design direction); update `docs/eval-baselines.md`.
+- *Acceptance:* router evals green with the reduced route set; graph behavior unchanged for `simple_qa`/`tool_task`.
+- *Files:* `RouterNode.kt`, `RouterPrompt.kt`, `Agent.kt` (edges), `eval/EvalSets.kt`, `docs/eval-baselines.md`.
+- *Depends on:* T0.1, T0.3. ∥ with T1.1, T1.4.
 
 ### T1.4 — Conditional reflection (F8) — biggest cost win
 Skip `ReflectNode` when the answer is low-risk. Concretely, in the `react→reflect` edge (or a fast path inside ReflectNode), go straight to END when **all** hold:
@@ -114,7 +113,7 @@ Skip `ReflectNode` when the answer is low-risk. Concretely, in the `react→refl
 Make the predicate a small pure function with unit tests. Log a `reflect_skipped` trace so we can measure skip rate and complaint rate.
 - *Acceptance:* "what time is it" path makes zero REASONING review calls; multi-tool research queries still reflect; unit tests on the predicate.
 - *Files:* `Agent.kt` (edge condition), `ReflectNode.kt` or new `ReflectPolicy.kt`.
-- *Depends on:* T0.1. ∥ with T1.1–T1.3.
+- *Depends on:* T0.1. ∥ with T1.1, T1.3.
 
 ### T1.5 — Router knows the tool inventory (F6)
 Add a one-line-per-tool list (names only, or name + 5-word description) to the router prompt via T0.2's renderer, with the instruction: "tool_task only if one of these tools plausibly helps; otherwise simple_qa."
@@ -136,9 +135,8 @@ Replace "fully and correctly" with pass/fail criteria: (a) factually consistent 
 - *Acceptance:* recorded eval: a correct-but-terse answer gets OK; a factually wrong one gets REVISE.
 - *Depends on:* T0.1. ∥ with T2.1.
 
-### T2.3 — Conversation-aware review (F10)
-Give the reviewer the last few conversation turns (same truncation helper as T1.2) so it can judge redundancy/contradiction with earlier answers. Reuse a shared `promptHistory(messages, maxTurns, maxChars)` helper — build it once here and refactor T1.2 to use it.
-- *Depends on:* T2.1/T2.2 (merge conflicts otherwise), T1.2 (shared helper).
+### ~~T2.3 — Conversation-aware review (F10)~~ ❌ REMOVED (2026-07-09)
+Out of scope per the design direction: the reviewer judges a single run's answer against the request and tool results (T2.1/T2.2), not conversational continuity.
 
 ---
 
@@ -167,7 +165,7 @@ Add a concise policy block to the system prompt: decline clearly harmful request
 - *Depends on:* T1.1.
 
 ### T4.2 — Real PlanNode (re-introduce the `plan` route)
-Design and implement a PlanNode (decompose → execute steps via ReAct → synthesize), then re-add `plan` to the router with clear criteria ("multiple distinct sub-goals or dependencies between steps"). This is its own mini-project; write a short design doc first.
+Design and implement a PlanNode (decompose → execute steps via ReAct → synthesize), then re-add `plan` to the router with clear criteria ("multiple distinct sub-goals or dependencies between steps"). Directly serves the multi-step-expertise goal; this is its own mini-project — write a short design doc first.
 - *Depends on:* T1.3 (route removed until this lands).
 
 ### T4.3 — Prompt versioning + telemetry
@@ -182,18 +180,18 @@ With the rubric (T2.2) and grounding (T2.1) in place, evaluate running reflectio
 
 ## 4. Suggested agent assignment (parallel waves)
 
-- **Wave 1 (sequential, 1 agent):** T0.1 → then T0.2 and T0.3 in parallel (2 agents).
-- **Wave 2 (4 agents in parallel):** T1.1+T4.1 · T1.2 · T1.3 · T1.4. Then T1.5 (small follow-up).
-- **Wave 3 (2 agents):** T2.1+T2.2 (one agent, same file) · T2.3 after.
+- **Wave 1 (sequential, 1 agent):** T0.1 → then T0.2 and T0.3 in parallel (2 agents). ✅ Done.
+- **Wave 2 (3 agents in parallel):** T1.1+T4.1 · T1.3+T1.5 (one agent — same RouterNode files) · T1.4.
+- **Wave 3 (1 agent):** T2.1+T2.2 (same file).
 - **Wave 4 (3 agents in parallel):** T3.1 · T3.2 · T3.3.
 - **Wave 5:** T4.2, T4.3, T4.4 as capacity allows.
 
-Merge-conflict note: RouterNode tasks (T1.2, T1.3, T1.5) touch the same file — either serialize them or hand them to one agent as a batch. Same for ReflectNode (T1.4, T2.x).
+Merge-conflict note: RouterNode tasks (T1.3, T1.5) and ReflectNode tasks (T1.4, T2.x) each touch the same files — batch them per agent or serialize.
 
 ## 5. Success metrics
 
-- **Cost:** ≥40% reduction in REASONING-model tokens per conversational turn (driven by T1.4, T1.3).
-- **Routing accuracy:** ≥90% on the router eval set including multi-turn follow-ups (baseline to be measured in T0.3).
+- **Cost:** ≥40% reduction in REASONING-model tokens per agent run (driven by T1.4).
+- **Routing accuracy:** ≥90% on the router eval set (single-request classification; conversational follow-up cases retired per design direction).
 - **Reflection quality:** REVISE-for-style rate ~0 on eval set; factual-error catch rate measured before/after T2.1.
 - **Ambient reliability:** JSON parse failure and hallucinated-entity rates tracked before/after T3.2.
 

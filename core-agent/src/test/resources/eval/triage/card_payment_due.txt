@@ -1,0 +1,2 @@
+GENERATE_CARD
+Payment due tomorrow — time-sensitive item the user likely wants to act on.

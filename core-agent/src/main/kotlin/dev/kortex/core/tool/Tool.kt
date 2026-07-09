@@ -20,6 +20,13 @@ interface Tool {
     val description: String
     val parameters: ToolSchema
     val risk: RiskLevel get() = RiskLevel.LOW
+
+    /** Optional one-line usage hint appended to this tool's bullet in the system prompt's
+     *  tool inventory (see [dev.kortex.core.prompt.ToolInventory]). Use it for guidance the
+     *  model needs *before* it decides to call the tool (e.g. "results are short snippets —
+     *  follow up with open_url"); anything else belongs in [description]. */
+    val promptHint: String? get() = null
+
     suspend fun execute(args: JsonObject): ToolResult
 }
 

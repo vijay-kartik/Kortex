@@ -7,6 +7,7 @@ import dev.kortex.core.pattern.DirectAnswerNode
 import dev.kortex.core.pattern.ReActNode
 import dev.kortex.core.pattern.ReflectNode
 import dev.kortex.core.pattern.RouterNode
+import dev.kortex.core.prompt.SystemPrompt
 import dev.kortex.core.state.AgentState
 import dev.kortex.core.state.Goal
 import dev.kortex.core.state.Message
@@ -44,15 +45,11 @@ class Agent(private val ctx: AgentContext) {
         edge("reflect", END)
     }
 
-    suspend fun ask(query: String, attachments: List<dev.kortex.core.state.Attachment> = emptyList(), history: List<Message> = emptyList(), system: String = DEFAULT_SYSTEM): AgentState {
-        // Grounds the model in the real wall-clock time, computed fresh per call. A model's
-        // training cutoff otherwise silently stands in for "today" (e.g. it'll search for
-        // "richest person 2023" on a device where it's actually 2026) — the current_time
-        // tool alone doesn't fix this because nothing forces the model to call it before
-        // deciding how to phrase a time-sensitive query.
-        val grounded = "$system\n\nCurrent date and time: ${ZonedDateTime.now()}. Use this to " +
-            "interpret words like \"today\", \"current\", \"latest\", or a bare year correctly " +
-            "— your training data has a cutoff well before this date, so never assume it is the present."
+    suspend fun ask(query: String, attachments: List<dev.kortex.core.state.Attachment> = emptyList(), history: List<Message> = emptyList(), system: String = SystemPrompt.DEFAULT): AgentState {
+        // Grounds the model in the real wall-clock time, computed fresh per call (see
+        // SystemPrompt.grounded for why the current_time tool alone isn't enough), and
+        // in the live tool inventory so the prompt never drifts from the registry.
+        val grounded = SystemPrompt.grounded(system, ZonedDateTime.now(), ctx.tools)
         val initial = AgentState(
             messages = listOf(Message(Message.Role.SYSTEM, grounded)) + history + listOf(
                 Message(Message.Role.USER, query, attachments),
@@ -63,15 +60,10 @@ class Agent(private val ctx: AgentContext) {
     }
 
     companion object {
-        const val DEFAULT_SYSTEM =
-            "You are Kortex, a capable on-device agent. When you need to take an action " +
-                "(send a message, create an event, etc.), use the appropriate tool immediately. " +
-                "Do NOT ask the user for permission in text; the system will automatically " +
-                "prompt the user for approval when you call a tool. Explain your reasoning briefly. " +
-                "web_search only returns short snippets. If a result's snippet is incomplete, " +
-                "references a page with more detail, or is a live/real-time page (e.g. a " +
-                "'real-time billionaires list' or a news archive), call open_url on that result's " +
-                "URL and read the actual page — never tell the user to visit a link yourself when " +
-                "you're able to open it and answer directly."
+        @Deprecated(
+            "Prompts live in the prompt package now.",
+            ReplaceWith("SystemPrompt.DEFAULT", "dev.kortex.core.prompt.SystemPrompt"),
+        )
+        const val DEFAULT_SYSTEM = SystemPrompt.DEFAULT
     }
 }

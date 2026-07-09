@@ -1,0 +1,5 @@
+```json
+[
+  { "content": "Aisha's new phone number is +91 98200 11223", "kind": "FACT", "salience": 0.9, "tags": ["contact-info"] }
+]
+```

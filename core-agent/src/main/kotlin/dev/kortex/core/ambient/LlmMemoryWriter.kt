@@ -3,6 +3,7 @@ package dev.kortex.core.ambient
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.Models
+import dev.kortex.core.prompt.MemoryPrompt
 import dev.kortex.core.state.Message
 import java.util.UUID
 import kotlinx.serialization.Serializable
@@ -30,7 +31,7 @@ class LlmMemoryWriter(
         val resp = llm.complete(
             LlmRequest(
                 model = model,
-                messages = listOf(Message(Message.Role.USER, buildPrompt(context))),
+                messages = listOf(Message(Message.Role.USER, MemoryPrompt.build(context))),
                 temperature = 0.2,
             )
         )
@@ -53,34 +54,6 @@ class LlmMemoryWriter(
                     createdAtMillis = now,
                 )
             }
-    }
-
-    private fun buildPrompt(ctx: TriageContext): String {
-        val activity = ctx.newSignals.joinToString("\n") { "- via ${it.source.appLabel}: ${it.content}" }
-        val known = ctx.recentMemory.takeIf { it.isNotEmpty() }
-            ?.joinToString("\n") { "- $it" } ?: "(none)"
-        val kinds = MemoryKind.entries.joinToString(", ") { it.name }
-
-        return """
-            Extract durable facts worth remembering about the contact "${ctx.contactName}"
-            from the new activity below — things useful for future context (preferences,
-            commitments, life events, relationships, stable facts). Do NOT include trivia,
-            one-off chit-chat, or anything already in "What we already know".
-
-            Return a JSON array (and nothing else). Each item:
-              { "content": "<concise fact>", "kind": "<one of: $kinds>",
-                "salience": <0.0-1.0 importance>, "tags": ["..."] }
-            Return [] if there is nothing new worth keeping.
-
-            Conversation summary so far:
-            ${ctx.conversationSummary ?: "(none yet)"}
-
-            What we already know:
-            $known
-
-            New activity:
-            $activity
-        """.trimIndent()
     }
 
     private fun parseDrafts(content: String): List<MemoryDraft> {

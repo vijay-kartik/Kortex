@@ -7,6 +7,7 @@ import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.Models
 import dev.kortex.core.log.d
 import dev.kortex.core.log.i
+import dev.kortex.core.prompt.RouterPrompt
 import dev.kortex.core.state.AgentState
 import dev.kortex.core.state.Message
 
@@ -25,15 +26,7 @@ class RouterNode(
         ctx.onProgress.report("Analyzing your request…")
         val query = state.messages.lastOrNull { it.role == Message.Role.USER }?.content.orEmpty()
         ctx.logger.d(TAG, "classifying request: \"$query\"")
-        val prompt = """
-            Classify the user request into exactly one of: ${routes.joinToString(", ")}.
-            - simple_qa: answerable directly with general knowledge, no tools, no multi-step work.
-            - tool_task: needs one or a few tool calls (e.g. sending messages, checking time, calculations).
-            - plan: open-ended/multi-step; needs decomposition first.
-            Respond with ONLY the label.
-
-            Request: $query
-        """.trimIndent()
+        val prompt = RouterPrompt.build(routes, query)
 
         val resp = ctx.complete(
             LlmRequest(

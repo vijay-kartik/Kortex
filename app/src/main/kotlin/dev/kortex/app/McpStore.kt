@@ -42,6 +42,7 @@ class McpStore(private val context: Context) {
         val KEY_COMPOSIO_API_KEY = stringPreferencesKey("composio_api_key")
         val KEY_COMPOSIO_USER_ID = stringPreferencesKey("composio_user_id")
         val KEY_OPENAI_API_KEY = stringPreferencesKey("openai_api_key")
+        val KEY_GMAIL_ACCOUNT = stringPreferencesKey("gmail_account_email")
     }
 
     /** User-entered OpenAI key; overrides the build's local.properties key when set. */
@@ -119,6 +120,19 @@ class McpStore(private val context: Context) {
     suspend fun setComposioUserId(userId: String?) {
         context.mcpDataStore.edit { prefs ->
             if (userId.isNullOrBlank()) prefs.remove(KEY_COMPOSIO_USER_ID) else prefs[KEY_COMPOSIO_USER_ID] = userId
+        }
+    }
+
+    // ── Gmail (direct REST API via OAuth2) ────────────────────────────────
+
+    /** The Google account email whose OAuth token is used for the Gmail tool. */
+    val gmailAccountEmail: Flow<String?> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_GMAIL_ACCOUNT]
+    }
+
+    suspend fun setGmailAccountEmail(email: String?) {
+        context.mcpDataStore.edit { prefs ->
+            if (email.isNullOrBlank()) prefs.remove(KEY_GMAIL_ACCOUNT) else prefs[KEY_GMAIL_ACCOUNT] = email
         }
     }
 

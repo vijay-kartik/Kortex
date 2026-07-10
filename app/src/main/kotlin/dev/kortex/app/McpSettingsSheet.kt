@@ -1,5 +1,9 @@
 package dev.kortex.app
 
+import android.accounts.AccountManager
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -52,6 +56,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -61,9 +66,13 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.kortex.app.auth.GmailAuthManager
 import dev.kortex.app.ui.Amber
+import kotlinx.coroutines.launch
+import android.widget.Toast
 import dev.kortex.app.ui.Alarm
 import dev.kortex.app.ui.Edge
 import dev.kortex.app.ui.Mono
@@ -145,6 +154,16 @@ fun McpSettingsScreen(
                     onConnect = { vm.reconnectComposio() },
                     onEdit = { vm.editComposio() },
                     onCancelEdit = { vm.cancelComposioEdit() },
+                )
+            }
+
+            // ── Native Gmail ─────────────────────────────────────────
+            item { SectionLabel("NATIVE GMAIL (REST API)", Modifier.padding(top = 16.dp)) }
+            item {
+                NativeGmailSettings(
+                    email = ui.gmailAccountEmail,
+                    onConnect = { vm.setGmailAccountEmail(it) },
+                    onDisconnect = { vm.setGmailAccountEmail(null) }
                 )
             }
 
@@ -1007,6 +1026,128 @@ private fun ModelSelector(
                             }
                         }
                     )
+                }
+            }
+        }
+    }
+}
+
+// ── Native Gmail UI ──────────────────────────────────────────────────────
+
+@Composable
+fun NativeGmailSettings(
+    email: String?,
+    onConnect: (String) -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val authManager = remember { GmailAuthManager(context) }
+    var pendingEmail by remember { mutableStateOf<String?>(null) }
+
+    val consentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            pendingEmail?.let { acc ->
+                scope.launch {
+                    when (authManager.getToken(acc)) {
+                        is GmailAuthManager.AuthResult.Success -> onConnect(acc)
+                        else -> Toast.makeText(context, "Failed to get token after consent.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+            if (!accountName.isNullOrBlank()) {
+                pendingEmail = accountName
+                scope.launch {
+                    when (val authRes = authManager.getToken(accountName)) {
+                        is GmailAuthManager.AuthResult.Success -> onConnect(accountName)
+                        is GmailAuthManager.AuthResult.NeedsConsent -> consentLauncher.launch(authRes.intent)
+                        is GmailAuthManager.AuthResult.Error -> Toast.makeText(context, "Error: ${authRes.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Panel,
+        border = BorderStroke(1.dp, Edge),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Icon placeholder or specific Gmail icon
+                Surface(
+                    shape = CircleShape,
+                    color = SynapseDim,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("G", color = Synapse, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Google Account",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        if (email.isNullOrBlank()) "Not connected" else email,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (email.isNullOrBlank()) Muted else StatusConnected,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                "Allows Kortex to search and read emails using the native Gmail REST API without relying on third-party services. Required for the gmail_search tool.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Muted,
+                lineHeight = 18.sp
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                if (!email.isNullOrBlank()) {
+                    TextButton(
+                        onClick = onDisconnect,
+                        colors = ButtonDefaults.textButtonColors(contentColor = Alarm)
+                    ) {
+                        Text("Disconnect")
+                    }
+                } else {
+                    FilledTonalButton(
+                        onClick = {
+                            val intent = GmailAuthManager(context).pickGoogleAccountIntent()
+                            launcher.launch(intent)
+                        },
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = SynapseDim,
+                            contentColor = Synapse
+                        )
+                    ) {
+                        Text("Connect Account")
+                    }
                 }
             }
         }

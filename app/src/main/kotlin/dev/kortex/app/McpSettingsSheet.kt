@@ -121,10 +121,12 @@ fun McpSettingsScreen(
                     supportedModels = ui.supportedModels,
                     ollamaUrl = ui.ollamaUrl,
                     ollamaToken = ui.ollamaToken,
+                    openaiApiKey = ui.openaiApiKey,
                     onProviderSelected = { vm.setActiveProvider(it) },
                     onModelSelected = { vm.setActiveModel(it) },
                     onOllamaUrlChange = { vm.setOllamaUrl(it) },
                     onOllamaTokenChange = { vm.setOllamaToken(it) },
+                    onOpenaiApiKeyChange = { vm.setOpenaiApiKey(it) },
                 )
             }
 
@@ -794,10 +796,12 @@ private fun ModelSelector(
     supportedModels: List<String>,
     ollamaUrl: String,
     ollamaToken: String,
+    openaiApiKey: String,
     onProviderSelected: (String) -> Unit,
     onModelSelected: (String) -> Unit,
     onOllamaUrlChange: (String) -> Unit,
     onOllamaTokenChange: (String) -> Unit,
+    onOpenaiApiKeyChange: (String) -> Unit,
 ) {
     var expandedProvider by remember { mutableStateOf(false) }
     var expandedModel by remember { mutableStateOf(false) }
@@ -935,6 +939,41 @@ private fun ModelSelector(
                         }
                     }
                 }
+                }
+            }
+
+            // OpenAI settings (Only if OpenAI)
+            if (activeProvider == "openai") {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    var editKey by remember { mutableStateOf(openaiApiKey) }
+                    var showKey by remember { mutableStateOf(false) }
+                    SettingsTextField(
+                        value = editKey,
+                        onValueChange = { editKey = it; onOpenaiApiKeyChange(it) },
+                        label = "OpenAI API Key",
+                        placeholder = "sk-...",
+                        isPassword = !showKey,
+                        trailingContent = {
+                            TextButton(onClick = { showKey = !showKey }) {
+                                Text(
+                                    if (showKey) "hide" else "show",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Synapse,
+                                )
+                            }
+                        },
+                    )
+                    val buildKeyPresent = BuildConfig.OPENAI_API_KEY.isNotBlank()
+                    Text(
+                        when {
+                            editKey.isNotBlank() -> "Stored on this device; overrides any key bundled at build time."
+                            buildKeyPresent -> "Currently using the key from local.properties. A key entered here overrides it."
+                            else -> "No key set — OpenAI requests won't work until you add one. Create a key at platform.openai.com."
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (editKey.isBlank() && !buildKeyPresent) Amber else Muted,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
                 }
             }
 

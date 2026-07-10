@@ -17,9 +17,23 @@ class DynamicLlmProvider(
     private var ollamaProvider: LlmProvider? = null
     private var currentOllamaUrl: String? = null
     private var currentOllamaToken: String? = null
+    private var openAiProvider: LlmProvider? = null
+    private var currentOpenAiKey: String? = null
 
     private suspend fun getActiveProvider(): LlmProvider = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val providerType = store.activeProvider.first()
+        if (providerType == "openai") {
+            // A key entered in settings wins over the build's local.properties key,
+            // which defaultProvider was built from at startup.
+            val key = store.openaiApiKey.first()?.trim()?.takeIf { it.isNotBlank() }
+            if (key != null) {
+                if (openAiProvider == null || currentOpenAiKey != key) {
+                    currentOpenAiKey = key
+                    openAiProvider = OpenAiProvider(apiKey = key, logger = AndroidLogger)
+                }
+                return@withContext openAiProvider!!
+            }
+        }
         if (providerType == "ollama") {
             val url = store.ollamaUrl.first()
             val token = store.ollamaToken.first() ?: "ollama"

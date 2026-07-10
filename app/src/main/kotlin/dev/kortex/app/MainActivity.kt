@@ -1,6 +1,7 @@
 package dev.kortex.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.Bundle
@@ -49,6 +50,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -905,6 +907,9 @@ private fun ReasoningPanel(
     live: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(live) }
+    val clipboard = LocalClipboardManager.current
+    val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
     Row(modifier.height(IntrinsicSize.Min)) {
         Box(
             Modifier
@@ -926,6 +931,30 @@ private fun ReasoningPanel(
                     color = Muted,
                 )
                 Spacer(Modifier.weight(1f))
+                if (expanded) {
+                    Text(
+                        "copy",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Muted,
+                        modifier = Modifier.clickable {
+                            clipboard.setText(AnnotatedString(traceAsVisibleText(lines)))
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            Toast.makeText(context, "Trace copied", Toast.LENGTH_SHORT).show()
+                        },
+                    )
+                    Text(
+                        "share",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Muted,
+                        modifier = Modifier.clickable {
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, traceAsVisibleText(lines))
+                            }
+                            context.startActivity(Intent.createChooser(send, "Share trace"))
+                        },
+                    )
+                }
                 Text(
                     if (expanded) "hide" else "show",
                     style = MaterialTheme.typography.labelSmall,
@@ -933,14 +962,17 @@ private fun ReasoningPanel(
                 )
             }
             if (expanded) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 220.dp)
-                        .verticalScroll(rememberScrollState())
-                        .padding(top = 6.dp),
-                ) {
-                    lines.forEach { line -> TraceLine(line) }
+                // Selectable so individual lines can be long-press copied like any text.
+                SelectionContainer {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 220.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(top = 6.dp),
+                    ) {
+                        lines.forEach { line -> TraceLine(line) }
+                    }
                 }
             }
             Text(
@@ -964,6 +996,13 @@ private fun traceTag(tag: String) = when (tag) {
     "ToolGovernor" -> "tool"
     else -> tag.removeSuffix("Node").lowercase()
 }
+
+/**
+ * The trace exactly as rendered in the expanded panel — one `tag  message` line
+ * per step, nothing added. This is what `copy` and `share` emit.
+ */
+private fun traceAsVisibleText(lines: List<ReasoningLine>) =
+    lines.joinToString("\n") { "${traceTag(it.tag)}  ${it.message}" }
 
 @Composable
 private fun TraceLine(line: ReasoningLine) {

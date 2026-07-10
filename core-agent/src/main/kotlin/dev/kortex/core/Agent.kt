@@ -36,7 +36,7 @@ class Agent(private val ctx: AgentContext) {
 
         // Routing (pattern 2): branch on the label the router stored in scratch["route"].
         edge("router", "direct") { it.scratch["route"] == "simple_qa" }
-        edge("router", "react")  // tool_task / plan (fallthrough)
+        edge("router", "react")  // tool_task (fallthrough; `plan` route dropped in T1.3)
         edge("direct", END)
 
         // Reflection (pattern 4): react -> reflect, loop back on "revise", else finish.

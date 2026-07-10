@@ -14,19 +14,23 @@ import dev.kortex.core.state.Message
 /**
  * Pattern 2 (Routing). Uses a cheap/fast model to classify the latest user query into a
  * route label, stored in state.scratch["route"]. The graph's conditional edges then send
- * the query to the right sub-strategy (e.g. "simple_qa", "tool_task", "plan").
+ * the query to the right sub-strategy (e.g. "simple_qa", "tool_task").
+ *
+ * The classification prompt includes a compact rendering of the live tool registry
+ * (T1.5, finding F6) so requests no registered tool can help with stay on `simple_qa`.
+ * The dead `plan` label was dropped in T1.3; `tool_task` covers multi-step tool work.
  *
  * Pairs with pattern 16: classification runs on the FAST model to save budget.
  */
 class RouterNode(
-    private val routes: List<String> = listOf("simple_qa", "tool_task", "plan"),
+    private val routes: List<String> = listOf("simple_qa", "tool_task"),
     private val model: String = Models.FAST,
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
         ctx.onProgress.report("Analyzing your request…")
         val query = state.messages.lastOrNull { it.role == Message.Role.USER }?.content.orEmpty()
         ctx.logger.d(TAG, "classifying request: \"$query\"")
-        val prompt = RouterPrompt.build(routes, query)
+        val prompt = RouterPrompt.build(routes, query, ctx.tools.all())
 
         val resp = ctx.complete(
             LlmRequest(

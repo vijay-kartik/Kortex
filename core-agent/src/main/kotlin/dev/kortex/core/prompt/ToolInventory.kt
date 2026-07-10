@@ -33,6 +33,16 @@ object ToolInventory {
         }
     }
 
+    /**
+     * Compact variant for small/FAST-model prompts (the router, T1.5): no header, no
+     * [Tool.promptHint]s, and descriptions cut much shorter than [render]'s. Returns ""
+     * for an empty list so callers can skip the section entirely.
+     */
+    fun renderCompact(tools: List<Tool>, maxDescriptionChars: Int = MAX_DESCRIPTION_CHARS): String =
+        tools.joinToString(separator = "\n") { tool ->
+            "- ${tool.name}: ${truncateAtWord(tool.description.oneLine(), maxDescriptionChars)}"
+        }
+
     /** Collapses internal newlines/runs of whitespace — each tool must stay one bullet. */
     private fun String.oneLine(): String = replace(Regex("\\s+"), " ").trim()
 

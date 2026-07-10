@@ -4,12 +4,17 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import dev.kortex.core.state.Attachment
 
 /** How dangerous a tool is — drives the Human-in-the-Loop gate (pattern 13). */
 enum class RiskLevel { LOW, MEDIUM, HIGH }
 
 /** Result of running a tool; fed back to the LLM as a TOOL message. */
-data class ToolResult(val ok: Boolean, val content: String)
+data class ToolResult(
+    val ok: Boolean, 
+    val content: String,
+    val attachments: List<Attachment> = emptyList()
+)
 
 /**
  * Pattern 5: Tool Use. A tool is typed, self-describing (so we can emit a JSON schema

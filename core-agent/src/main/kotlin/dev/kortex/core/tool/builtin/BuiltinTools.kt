@@ -25,4 +25,5 @@ fun defaultTools(): List<Tool> = listOf(
     openUrlTool(),
     clockTool(),
     analyzeStatementTool(),
+    readFileTool(),
 )

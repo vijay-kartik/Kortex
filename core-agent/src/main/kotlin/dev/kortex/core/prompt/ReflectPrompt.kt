@@ -7,7 +7,7 @@ package dev.kortex.core.prompt
  */
 object ReflectPrompt {
 
-    fun build(toolsUsed: String, request: String, answer: String): String {
+    fun build(toolsUsed: String, request: String, answer: String, attachmentNote: String = ""): String {
         return """
             You are a strict reviewer. Decide whether the assistant's answer fully and
             correctly addresses the user's request.
@@ -15,7 +15,7 @@ object ReflectPrompt {
             facts in its answer may come from those tool results, which are current and
             trustworthy even when they postdate your training data. Never reject an answer
             because its dates are later than what you know, and never claim the assistant
-            cannot search the web or access real-time information — it can.
+            cannot search the web or access real-time information — it can. $attachmentNote
             - If the answer is good, reply with exactly: OK
             - Otherwise reply: REVISE: <specific, actionable feedback>
 

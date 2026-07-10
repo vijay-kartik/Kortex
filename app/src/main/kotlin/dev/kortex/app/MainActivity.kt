@@ -144,6 +144,8 @@ fun RootScreen() {
     var showMcpSettings by remember { mutableStateOf(false) }
     val tabs = listOf("Chat", "Cards", "Context", "History")
     val vm: ChatViewModel = viewModel()
+    val chatUi by vm.ui.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     if (showMcpSettings) {
         McpSettingsScreen(onDismiss = { showMcpSettings = false })
@@ -156,6 +158,21 @@ fun RootScreen() {
                         title = { Wordmark() },
                         actions = {
                             if (tab == 0) {
+                                if (chatUi.turns.isNotEmpty()) {
+                                    IconButton(onClick = {
+                                        val send = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_TEXT, conversationAsText(chatUi.turns))
+                                        }
+                                        context.startActivity(Intent.createChooser(send, "Share conversation"))
+                                    }) {
+                                        Icon(
+                                            painterResource(R.drawable.ic_share),
+                                            contentDescription = "Share conversation",
+                                            tint = Muted,
+                                        )
+                                    }
+                                }
                                 IconButton(onClick = { showMcpSettings = true }) {
                                     Icon(
                                         painterResource(R.drawable.ic_tune),
@@ -1003,6 +1020,42 @@ private fun traceTag(tag: String) = when (tag) {
  */
 private fun traceAsVisibleText(lines: List<ReasoningLine>) =
     lines.joinToString("\n") { "${traceTag(it.tag)}  ${it.message}" }
+
+/**
+ * The whole conversation as plain text — every bubble plus each assistant turn's full
+ * reasoning trace — structured so it can be pasted into another agent for analysis.
+ */
+private fun conversationAsText(turns: List<ChatTurn>): String = buildString {
+    appendLine("# Kortex conversation — ${turns.size} turn${if (turns.size == 1) "" else "s"}")
+    turns.forEach { turn ->
+        val msg = turn.message
+        appendLine()
+        appendLine(if (msg.role == Message.Role.USER) "## User" else "## Kortex")
+        msg.attachments.forEach { att ->
+            if (att.mimeType.startsWith("audio/") && att.transcript != null) {
+                appendLine("[voice note] ${att.transcript}")
+            } else {
+                appendLine("[attachment: ${att.filename ?: "file"} (${att.mimeType})]")
+            }
+        }
+        if (msg.content.isNotBlank()) appendLine(msg.content)
+        if (turn.reasoning.isNotEmpty()) {
+            val s = turn.stats
+            appendLine()
+            appendLine(
+                "### Trace — %d step%s · %,d tok · %d tool%s · %.1fs".format(
+                    turn.reasoning.size,
+                    if (turn.reasoning.size == 1) "" else "s",
+                    s.tokensUsed,
+                    s.toolCalls,
+                    if (s.toolCalls == 1) "" else "s",
+                    s.durationMs / 1000.0,
+                )
+            )
+            appendLine(traceAsVisibleText(turn.reasoning))
+        }
+    }
+}.trimEnd()
 
 @Composable
 private fun TraceLine(line: ReasoningLine) {

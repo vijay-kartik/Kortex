@@ -51,6 +51,8 @@ data class McpSettingsUi(
     val activeProvider: String = "openai",
     val ollamaUrl: String = "http://10.0.2.2:11434/v1",
     val ollamaToken: String = "",
+    /** User-entered OpenAI key; blank when the app is running on the build's local.properties key (or none). */
+    val openaiApiKey: String = "",
     val composioApiKey: String = "",
     val composioUserId: String = "",
     /** Null until the first connect attempt (this session or a prior one) resolves. */
@@ -102,13 +104,20 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         val pendingDelete: String? = null,
     )
 
+    private data class ProviderPrefs(
+        val provider: String,
+        val ollamaUrl: String,
+        val ollamaToken: String,
+        val openaiApiKey: String,
+    )
+
     val ui: StateFlow<McpSettingsUi> = combine(
         combine(store.disabledTools, store.customServers, _serverStatus) { a, b, c -> Triple(a, b, c) },
         combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
-        combine(store.activeProvider, store.ollamaUrl, store.ollamaToken) { p, u, t -> Triple(p, u, t ?: "") },
+        combine(store.activeProvider, store.ollamaUrl, store.ollamaToken, store.openaiApiKey) { p, u, t, k -> ProviderPrefs(p, u, t ?: "", k ?: "") },
         combine(store.composioApiKey, store.composioUserId) { k, u -> k to u },
         combine(_composioError, _composioEditing) { err, editing -> err to editing },
-    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken), (composioApiKey, composioUserId), (composioError, composioEditing) ->
+    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken, openaiApiKey), (composioApiKey, composioUserId), (composioError, composioEditing) ->
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -158,6 +167,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             activeProvider = activeProvider,
             ollamaUrl = ollamaUrl,
             ollamaToken = ollamaToken,
+            openaiApiKey = openaiApiKey,
             composioApiKey = composioApiKey ?: "",
             composioUserId = composioUserId ?: "",
             composioStatus = composioStatus,
@@ -211,6 +221,12 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     fun setOllamaToken(token: String) {
         viewModelScope.launch {
             store.setOllamaToken(token)
+        }
+    }
+
+    fun setOpenaiApiKey(key: String) {
+        viewModelScope.launch {
+            store.setOpenaiApiKey(key.trim())
         }
     }
 

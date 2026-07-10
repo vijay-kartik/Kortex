@@ -41,6 +41,18 @@ class McpStore(private val context: Context) {
         val KEY_OLLAMA_TOKEN = stringPreferencesKey("ollama_token")
         val KEY_COMPOSIO_API_KEY = stringPreferencesKey("composio_api_key")
         val KEY_COMPOSIO_USER_ID = stringPreferencesKey("composio_user_id")
+        val KEY_OPENAI_API_KEY = stringPreferencesKey("openai_api_key")
+    }
+
+    /** User-entered OpenAI key; overrides the build's local.properties key when set. */
+    val openaiApiKey: Flow<String?> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_OPENAI_API_KEY]
+    }
+
+    suspend fun setOpenaiApiKey(key: String?) {
+        context.mcpDataStore.edit { prefs ->
+            if (key.isNullOrBlank()) prefs.remove(KEY_OPENAI_API_KEY) else prefs[KEY_OPENAI_API_KEY] = key
+        }
     }
 
     val activeModel: Flow<String> = context.mcpDataStore.data.map { prefs ->

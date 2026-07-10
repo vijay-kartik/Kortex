@@ -18,7 +18,10 @@ import dev.kortex.core.llm.DeepseekProvider
 import dev.kortex.core.store.KortexDatabase
 import dev.kortex.core.tool.ToolRegistry
 import dev.kortex.core.tool.builtin.defaultTools
+import dev.kortex.app.auth.GmailAuthManager
 import dev.kortex.app.store.AppDatabase
+import dev.kortex.app.tools.gmailTool
+import kotlinx.coroutines.flow.first
 
 /**
  * Manual dependency container (no DI framework — fewer moving parts). Built once in
@@ -57,8 +60,25 @@ class KortexContainer(context: Context) {
         DynamicLlmProvider(store = mcpStore, defaultProvider = defaultOpenAi)
     }
 
+    // Gmail OAuth2 token management (uses device's Google accounts).
+    val gmailAuth: GmailAuthManager by lazy { GmailAuthManager(appContext) }
+
     // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.
-    val toolRegistry: ToolRegistry by lazy { ToolRegistry(defaultTools()) }
+    val toolRegistry: ToolRegistry by lazy {
+        ToolRegistry(
+            defaultTools() + gmailTool(
+                context = appContext,
+                tokenProvider = {
+                    val email = mcpStore.gmailAccountEmail.first()?.trim()
+                        ?.takeIf { it.isNotBlank() } ?: return@gmailTool null
+                    when (val result = gmailAuth.getToken(email)) {
+                        is GmailAuthManager.AuthResult.Success -> result.token
+                        else -> null
+                    }
+                },
+            ),
+        )
+    }
 
     // MCP settings persistence (user-added servers + disabled tool names).
     val mcpStore: McpStore by lazy { McpStore(appContext) }
@@ -87,4 +107,3 @@ class KortexContainer(context: Context) {
 
     val contactSeeder by lazy { ContactSeeder(appContext, contactDao) }
 }
-

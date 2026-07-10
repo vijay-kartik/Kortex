@@ -62,6 +62,7 @@ data class McpSettingsUi(
     /** True while the user has deliberately reopened the form on an already-connected setup. */
     val composioEditing: Boolean = false,
     val composioToolCount: Int = 0,
+    val gmailAccountEmail: String? = null,
 )
 
 // ── Names of the four builtins, so we can partition them in the UI ──────
@@ -116,8 +117,8 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
         combine(store.activeProvider, store.ollamaUrl, store.ollamaToken, store.openaiApiKey) { p, u, t, k -> ProviderPrefs(p, u, t ?: "", k ?: "") },
         combine(store.composioApiKey, store.composioUserId) { k, u -> k to u },
-        combine(_composioError, _composioEditing) { err, editing -> err to editing },
-    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken, openaiApiKey), (composioApiKey, composioUserId), (composioError, composioEditing) ->
+        combine(_composioError, _composioEditing, store.gmailAccountEmail) { err, editing, gmail -> Triple(err, editing, gmail) },
+    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken, openaiApiKey), (composioApiKey, composioUserId), (composioError, composioEditing, gmailAccountEmail) ->
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -174,6 +175,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             composioError = composioError,
             composioEditing = composioEditing,
             composioToolCount = serverTools[COMPOSIO_GMAIL_SERVER_NAME]?.size ?: 0,
+            gmailAccountEmail = gmailAccountEmail,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), McpSettingsUi())
 
@@ -239,6 +241,12 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     fun setComposioUserId(userId: String) {
         viewModelScope.launch {
             store.setComposioUserId(userId.trim())
+        }
+    }
+
+    fun setGmailAccountEmail(email: String?) {
+        viewModelScope.launch {
+            store.setGmailAccountEmail(email?.trim())
         }
     }
 

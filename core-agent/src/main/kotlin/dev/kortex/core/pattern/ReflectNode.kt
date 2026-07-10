@@ -29,6 +29,9 @@ class ReflectNode(
         const val OK = "ok"
         const val REVISE = "revise"
         private const val TAG = "ReflectNode"
+
+        /** Marks the feedback turns this node appends, so later reviews can skip them. */
+        private const val FEEDBACK_PREFIX = "Please revise your previous answer."
     }
 
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
@@ -37,8 +40,13 @@ class ReflectNode(
         val answer = state.messages
             .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
             ?.content.orEmpty()
-        val request = state.goal?.description
-            ?: state.messages.lastOrNull { it.role == Message.Role.USER }?.content.orEmpty()
+        // The review target is the user's actual request — skip the feedback turns we
+        // appended ourselves, or attempt 2+ reviews the answer against our own critique.
+        val requestMessage = state.messages.lastOrNull {
+            it.role == Message.Role.USER && !it.content.startsWith(FEEDBACK_PREFIX)
+        }
+        val request = state.goal?.description ?: requestMessage?.content.orEmpty()
+        val attachments = requestMessage?.attachments.orEmpty()
         val count = state.scratch[COUNT]?.toIntOrNull() ?: 0
 
         // Nothing to review, or we've revised enough — accept and finish.
@@ -60,20 +68,29 @@ class ReflectNode(
         // The reviewer must share the agent's grounding. Without the conversation's SYSTEM
         // message it falls back to its training-cutoff worldview and rejects correct answers
         // as "impossible future information"; without the tool-call list it invents critiques
-        // like "the assistant did not search the web" when it demonstrably did.
+        // like "the assistant did not search the web" when it demonstrably did; and without
+        // the request's attachments it rejects correct vision answers as "the assistant
+        // cannot view images" — so the attachments ride along on the review request itself.
         val system = state.messages.firstOrNull { it.role == Message.Role.SYSTEM }?.content
         val toolsUsed = state.messages
             .flatMap { it.toolCalls }
             .joinToString("\n") { "- ${it.name}(${it.argumentsJson})" }
+        val attachmentNote = if (attachments.isEmpty()) "" else """
 
-        val prompt = ReflectPrompt.build(toolsUsed, request, answer)
+            The user's request included ${attachments.size} attachment(s), included below
+            exactly as the assistant received them. The assistant CAN see and read attached
+            images and files — never claim it cannot, and never reject an answer for citing
+            their contents. Judge the answer against the attachments themselves.
+        """.trimIndent().let { "\n$it" }
+
+        val prompt = ReflectPrompt.build(toolsUsed, request, answer, attachmentNote)
 
         val resp = ctx.complete(
             LlmRequest(
                 model = model,
                 messages = listOfNotNull(
                     system?.let { Message(Message.Role.SYSTEM, it) },
-                    Message(Message.Role.USER, prompt),
+                    Message(Message.Role.USER, prompt, attachments = attachments),
                 ),
                 temperature = 0.0,
             )
@@ -99,7 +116,7 @@ class ReflectNode(
                 .withMessage(
                     Message(
                         Message.Role.USER,
-                        "Please revise your previous answer. Reviewer feedback: $feedback",
+                        "$FEEDBACK_PREFIX Reviewer feedback: $feedback",
                     )
                 )
                 .trace("reflect", "verdict", "revise")

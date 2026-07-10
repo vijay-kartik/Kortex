@@ -5,6 +5,7 @@ import dev.kortex.core.ambient.LlmMemoryWriter
 import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.pattern.RouterNode
 import dev.kortex.core.state.AgentState
+import dev.kortex.core.tool.builtin.defaultTools
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
 
@@ -48,7 +49,9 @@ class RouterEvalSuite(private val cases: List<RouterEvalCase>) {
         val results = cases.map { case ->
             val ctx = AgentContext(
                 llm = EvalLlmProvider(completer, NAME, case.id),
-                tools = ToolRegistry(),
+                // Representative registry: the router prompt embeds the tool inventory
+                // (T1.5), so eval cases must see the same tools production starts with.
+                tools = ToolRegistry(defaultTools()),
                 governor = ToolGovernor(),
             )
             val out = RouterNode().run(ctx, AgentState(messages = case.conversation))

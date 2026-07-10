@@ -47,6 +47,14 @@ class ReflectNode(
             return state.withVerdict(OK).trace("reflect", "verdict", "stop")
         }
 
+        // Pattern 16 (Resource-Aware Optimization): trivial runs — at most one successful
+        // tool call, short confident answer, no revision yet — skip the review and its
+        // whole LLM call (see ReflectPolicy).
+        if (ReflectPolicy.shouldSkip(state)) {
+            ctx.logger.i(TAG, "verdict: SKIPPED (trivial run, review not worth an LLM call)")
+            return state.withVerdict(OK).trace("reflect", "verdict", "skipped")
+        }
+
         ctx.logger.d(TAG, "reviewing answer (attempt ${count + 1}/$maxReflections)")
 
         // The reviewer must share the agent's grounding. Without the conversation's SYSTEM

@@ -14,9 +14,12 @@ import dev.kortex.core.state.Message
  * The committed eval sets (T0.3). Fixture responses live in
  * `src/test/resources/eval/<suite>/<caseId>.txt`.
  *
- * Router known-failures document finding F3 (router classifies the last user message in
- * isolation, so multi-turn follow-ups misroute) — their fixtures record today's plausible
- * misrouting. Phase 1 (T1.2/T1.3) is expected to fix them; then re-record and unflag.
+ * Router history (T1.3/T1.5): the 4 F3 known-failure follow-up cases were retired —
+ * Kortex is a tool-execution agent, not conversational, per the design direction in
+ * docs/PROMPT_IMPROVEMENT_PLAN.md §2 — and the dead `plan` route was dropped, so
+ * multi-step cases now expect `tool_task`. The router prompt now carries the tool
+ * inventory (F6), so requests no registered tool can help with expect `simple_qa`;
+ * [RouterEvalSuite] runs with the `defaultTools()` registry to match production.
  */
 object EvalSets {
 
@@ -40,7 +43,7 @@ object EvalSets {
             conversation = listOf(user("Why is the sky blue?")),
             expectedRoute = "simple_qa",
         ),
-        // --- single-turn: tool_task ---
+        // --- single-turn: tool_task (a registered tool directly applies) ---
         RouterEvalCase(
             id = "tool_task_time",
             conversation = listOf(user("What time is it right now?")),
@@ -52,73 +55,47 @@ object EvalSets {
             expectedRoute = "tool_task",
         ),
         RouterEvalCase(
-            id = "tool_task_send_message",
-            conversation = listOf(user("Send a message to Neha saying I'll be 20 minutes late")),
-            expectedRoute = "tool_task",
-        ),
-        RouterEvalCase(
             id = "tool_task_calculation",
             conversation = listOf(user("What's 234823 multiplied by 98123?")),
             expectedRoute = "tool_task",
         ),
-        // --- single-turn: plan ---
+        // --- multi-step tool work (T1.3: the `plan` route is gone; tool_task covers these) ---
         RouterEvalCase(
-            id = "plan_trip",
+            id = "multi_step_trip",
             conversation = listOf(
                 user("Plan a 3-day trip to Jaipur for me with a budget breakdown and a day-by-day itinerary"),
             ),
-            expectedRoute = "plan",
+            expectedRoute = "tool_task",
         ),
         RouterEvalCase(
-            id = "plan_research_compare",
+            id = "multi_step_research_compare",
             conversation = listOf(
                 user("Research the top 5 mid-range phones this year, compare their cameras and battery life, and recommend one"),
             ),
-            expectedRoute = "plan",
+            expectedRoute = "tool_task",
         ),
-        // --- multi-turn follow-ups (finding F3: router sees only the last user message) ---
+        // Chains web_search + calculator — multi-step within a single run (T1.5).
         RouterEvalCase(
-            id = "followup_yes_do_that",
+            id = "tool_task_chained_currency",
             conversation = listOf(
-                user("Can you check the weather in Delhi for tomorrow?"),
-                assistant("I can look that up with a web search — want me to?"),
-                user("yes do that"),
+                user("Find the current USD to INR exchange rate and work out how much $2,500 is in rupees"),
             ),
             expectedRoute = "tool_task",
-            // Today the router sees only "yes do that" and has no idea a tool is needed.
-            knownFailure = true,
         ),
+        // --- tool-awareness (T1.5, finding F6): no registered tool plausibly helps ---
         RouterEvalCase(
-            id = "followup_what_about_other",
-            conversation = listOf(
-                user("Look up reviews for the Pixel 9a and the Galaxy A56"),
-                assistant("The Pixel 9a reviews highlight its camera and 7-year updates…"),
-                user("what about the other one?"),
-            ),
-            expectedRoute = "tool_task",
-            knownFailure = true,
+            id = "simple_qa_unavailable_lights",
+            conversation = listOf(user("Turn on my living room lights")),
+            expectedRoute = "simple_qa",
         ),
+        // The eval registry (defaultTools) has no messaging tool, so a tool-aware router
+        // must NOT pick tool_task here. In-app registries with messaging tools differ.
         RouterEvalCase(
-            id = "followup_again_for_mumbai",
-            conversation = listOf(
-                user("What's the weather in Delhi right now?"),
-                assistant("It's 34°C and hazy in Delhi (via web search)."),
-                user("can you do that again but for Mumbai?"),
-            ),
-            expectedRoute = "tool_task",
-            knownFailure = true,
+            id = "simple_qa_no_messaging_tool",
+            conversation = listOf(user("Send a message to Neha saying I'll be 20 minutes late")),
+            expectedRoute = "simple_qa",
         ),
-        RouterEvalCase(
-            id = "followup_second_option",
-            conversation = listOf(
-                user("How should I tell Rohit I can't make it tonight?"),
-                assistant("Option 1: call him. Option 2: I can send him a short apology message for you."),
-                user("let's go with the second option"),
-            ),
-            expectedRoute = "tool_task",
-            knownFailure = true,
-        ),
-        // --- pleasantries (finding F5: no chitchat route yet; simple_qa is today's cheapest home) ---
+        // --- pleasantries (finding F5: no chitchat route; simple_qa is the cheapest home) ---
         RouterEvalCase(
             id = "followup_thanks",
             conversation = listOf(

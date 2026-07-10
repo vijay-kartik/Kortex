@@ -49,7 +49,7 @@ The plan therefore invests early in a tiny amount of infrastructure (Phase 0) th
 | Phase | Theme | Outcome | Effort |
 |-------|-------|---------|--------|
 | 0 | Prompt infrastructure + evals | ✅ **Done (2026-07-09)** — prompts centralized, tool inventory injectable, eval harness exists | ~3 tasks |
-| 1 | Quick wins (high value, low risk) | Enriched system prompt, conditional reflection, router cleanup + tool awareness | ~4 tasks |
+| 1 | Quick wins (high value, low risk) | ✅ **Done (2026-07-10)** — enriched system prompt, conditional reflection, router cleanup + tool awareness | ~4 tasks |
 | 2 | Grounded reflection & rubrics | Reflect sees tool results, explicit rubric | ~2 tasks |
 | 3 | Ambient pipeline hardening | Few-shots for triage/memory, split card generation | ~3 tasks |
 | 4 | Longer-term architecture | Real PlanNode (or drop route), safety policy layer, prompt versioning/telemetry | ~4 tasks |
@@ -83,7 +83,7 @@ A JUnit-based (or standalone `main`) harness in `core-agent/src/test/` that runs
 
 ## Phase 1 — Quick wins
 
-### T1.1 — Enrich the main system prompt (F1)
+### T1.1 — Enrich the main system prompt (F1) ✅ DONE (2026-07-10)
 Rewrite `DEFAULT_SYSTEM` (in the new `SystemPrompt.kt`) with clearly separated sections:
 1. **Identity & tone** — Kortex, an on-device tool-execution agent; direct and matter-of-fact. No filler, no pleasantries, no restating the question. Straightforward answers are respected more.
 2. **Output format** — concise by default; lead with the answer, not the process; markdown headers/lists only for genuinely long answers. Short factual results in one line.
@@ -94,18 +94,20 @@ Rewrite `DEFAULT_SYSTEM` (in the new `SystemPrompt.kt`) with clearly separated s
 Keep it under ~40 lines — it rides along on every ReAct iteration, so every line costs tokens on every step.
 - *Acceptance:* manual smoke on 5 representative queries; no eval regressions (T0.3).
 - *Depends on:* T0.1, T0.2. ∥ with T1.3, T1.4.
+- *Landed:* `SystemPrompt.DEFAULT` rewritten with all five sections plus the T4.1 safety/privacy block — 11 lines / ~1,540 chars. Budget enforced by a test that fails above 40 lines / 2,000 chars. `grounded()` overloads and time suffix unchanged. Manual smoke on-device still pending.
 
 ### ~~T1.2 — Router gets conversation context (F3)~~ ❌ REMOVED (2026-07-09)
 Out of scope per the design direction: Kortex is not a conversational agent, so classifying follow-up phrasings ("yes do that") is not a goal. The 4 `knownFailure` router eval cases added in T0.3 for F3 should be retired in T1.3 rather than fixed.
 
-### T1.3 — Router cleanup: drop dead `plan` label, retire conversational eval cases (F4)
+### T1.3 — Router cleanup: drop dead `plan` label, retire conversational eval cases (F4) ✅ DONE (2026-07-10)
 - Remove `plan` from the default routes (graph edge already treats it as fallthrough; re-add it in Phase 4 only if/when a real PlanNode lands). Update the router prompt so `tool_task` explicitly covers multi-step tool work.
 - Retire the 4 F3 `knownFailure` follow-up cases from the router eval set (out of scope per design direction); update `docs/eval-baselines.md`.
 - *Acceptance:* router evals green with the reduced route set; graph behavior unchanged for `simple_qa`/`tool_task`.
 - *Files:* `RouterNode.kt`, `RouterPrompt.kt`, `Agent.kt` (edges), `eval/EvalSets.kt`, `docs/eval-baselines.md`.
 - *Depends on:* T0.1, T0.3. ∥ with T1.1, T1.4.
+- *Landed:* routes are now `simple_qa, tool_task`; `tool_task` explicitly covers chained multi-step tool work. 4 F3 follow-up cases retired; `plan_*` cases became `multi_step_*` expecting `tool_task`. Router eval: 13/13, zero known failures.
 
-### T1.4 — Conditional reflection (F8) — biggest cost win
+### T1.4 — Conditional reflection (F8) — biggest cost win ✅ DONE (2026-07-10)
 Skip `ReflectNode` when the answer is low-risk. Concretely, in the `react→reflect` edge (or a fast path inside ReflectNode), go straight to END when **all** hold:
 - ≤1 tool call was made in the run, and it succeeded;
 - no revision has happened yet;
@@ -114,11 +116,13 @@ Make the predicate a small pure function with unit tests. Log a `reflect_skipped
 - *Acceptance:* "what time is it" path makes zero REASONING review calls; multi-tool research queries still reflect; unit tests on the predicate.
 - *Files:* `Agent.kt` (edge condition), `ReflectNode.kt` or new `ReflectPolicy.kt`.
 - *Depends on:* T0.1. ∥ with T1.1, T1.3.
+- *Landed:* `pattern/ReflectPolicy.kt` (pure predicate; tool success detected from ReAct's `react/tool` trace events) + fast path in `ReflectNode.run()` emitting `trace("reflect","verdict","skipped")` with zero LLM calls. 0 successful tool calls also skips (nothing to verify against). 9 unit tests in `ReflectPolicyTest`.
 
-### T1.5 — Router knows the tool inventory (F6)
+### T1.5 — Router knows the tool inventory (F6) ✅ DONE (2026-07-10)
 Add a one-line-per-tool list (names only, or name + 5-word description) to the router prompt via T0.2's renderer, with the instruction: "tool_task only if one of these tools plausibly helps; otherwise simple_qa."
 - *Acceptance:* eval case "turn on my smart lights" (no such tool) routes to `simple_qa` (agent then explains it can't); token growth of router prompt < 200 tokens.
 - *Depends on:* T0.2, T1.3 (routes list settled).
+- *Landed:* `ToolInventory.renderCompact()` (60-char truncation, no hints) inserted via `RouterPrompt.build(routes, query, tools)`; RouterNode passes `ctx.tools.all()`; ~100–120 added tokens. New eval cases incl. unavailable-tool → `simple_qa`; eval suite now uses a production-representative registry.
 
 ---
 
@@ -160,7 +164,7 @@ Add 2 positive examples (good durable memory entries) and 2 negative ("do not st
 
 ## Phase 4 — Longer-term architecture
 
-### T4.1 — Safety & privacy policy section (F1)
+### T4.1 — Safety & privacy policy section (F1) ✅ DONE (2026-07-10, landed with T1.1)
 Add a concise policy block to the system prompt: decline clearly harmful requests; treat contact/message content as private — never include one contact's private information in messages drafted to another without the user asking; sensitive actions rely on the existing tool-approval flow (`Approver`). Coordinate with `ToolGovernor`/`CardGuardrails` so policy lives in *one* place per concern (prompt = model behavior; governor = enforcement).
 - *Depends on:* T1.1.
 
@@ -181,7 +185,7 @@ With the rubric (T2.2) and grounding (T2.1) in place, evaluate running reflectio
 ## 4. Suggested agent assignment (parallel waves)
 
 - **Wave 1 (sequential, 1 agent):** T0.1 → then T0.2 and T0.3 in parallel (2 agents). ✅ Done.
-- **Wave 2 (3 agents in parallel):** T1.1+T4.1 · T1.3+T1.5 (one agent — same RouterNode files) · T1.4.
+- **Wave 2 (3 agents in parallel):** T1.1+T4.1 · T1.3+T1.5 (one agent — same RouterNode files) · T1.4. ✅ Done.
 - **Wave 3 (1 agent):** T2.1+T2.2 (same file).
 - **Wave 4 (3 agents in parallel):** T3.1 · T3.2 · T3.3.
 - **Wave 5:** T4.2, T4.3, T4.4 as capacity allows.

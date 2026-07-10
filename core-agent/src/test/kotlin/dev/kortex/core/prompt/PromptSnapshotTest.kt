@@ -43,16 +43,44 @@ class PromptSnapshotTest {
 
     // --- SystemPrompt ---
 
-    // T0.2 deliberately replaced the hardcoded web_search/open_url sentences with a generic
-    // open-it-yourself rule; per-tool guidance now travels via Tool.promptHint + ToolInventory.
+    // T1.1/T4.1 deliberate rewrite: sectioned tool-execution persona (identity, output
+    // format, multi-step execution, tool use, error handling) plus the T4.1 safety &
+    // privacy block. Tool-name-free (T0.2): per-tool guidance travels via
+    // Tool.promptHint + ToolInventory.
     @Test
-    fun `default system prompt is tool-name-free with a generic open-sources rule`() {
-        SystemPrompt.DEFAULT shouldBe "You are Kortex, a capable on-device agent. " +
-            "When you need to take an action (send a message, create an event, etc.), " +
-            "use the appropriate tool immediately. Do NOT ask the user for permission in text; " +
-            "the system will automatically prompt the user for approval when you call a tool. " +
-            "Explain your reasoning briefly. " +
-            "Never tell the user to visit a link you can open yourself — open it and answer directly."
+    fun `default system prompt has the T1_1 sections and T4_1 safety block`() {
+        SystemPrompt.DEFAULT shouldBe listOf(
+            "You are Kortex, an on-device tool-execution agent. Be direct and matter-of-fact: " +
+                "no filler, no pleasantries, no restating the question.",
+            "Output: concise by default. Lead with the answer, not the process. " +
+                "Short factual results fit in one line; use markdown headers or lists " +
+                "only for genuinely long answers.",
+            "Multi-step tasks: chain as many tool calls as needed without narrating each step. " +
+                "Never re-fetch information already obtained earlier in this run. " +
+                "Report once, at the end, with the result.",
+            "Tool use: when an action is needed (send a message, create an event, etc.), " +
+                "call the appropriate tool immediately. Do NOT ask permission in text — " +
+                "the system prompts the user for approval on every tool call. " +
+                "Never tell the user to visit a link you can open yourself — open it and answer directly.",
+            "Errors: if a tool fails or returns nothing, retry once with adjusted input if sensible; " +
+                "otherwise state plainly what failed and answer with what you know. " +
+                "Never fabricate tool output.",
+            "Safety & privacy: decline clearly harmful requests. Contacts' messages are private — " +
+                "never include one contact's private information in a message drafted to another " +
+                "unless the user asked for it. Sensitive actions are gated by tool approval; " +
+                "do not re-confirm them in text.",
+        ).joinToString("\n\n")
+    }
+
+    // T1.1 budget guard: DEFAULT rides on every ReAct iteration, so every line costs
+    // tokens on every step. Fails loudly if future additions bloat it past the cap.
+    @Test
+    fun `default system prompt stays within its token budget`() {
+        val lines = SystemPrompt.DEFAULT.split("\n")
+        check(lines.size <= 40) { "DEFAULT is ${lines.size} lines; budget is 40" }
+        check(SystemPrompt.DEFAULT.length <= 2000) {
+            "DEFAULT is ${SystemPrompt.DEFAULT.length} chars; budget is 2000"
+        }
     }
 
     @Test
@@ -88,14 +116,44 @@ class PromptSnapshotTest {
 
     // --- RouterPrompt ---
 
+    // Deliberate snapshot update for T1.3 (dead `plan` route dropped; tool_task now covers
+    // multi-step work) and T1.5 (compact tool inventory + "only if a tool plausibly helps"
+    // rule). Descriptions are truncated at RouterPrompt.MAX_TOOL_DESCRIPTION_CHARS (60) at
+    // a word boundary; promptHints are excluded to keep the FAST-model prompt small.
     @Test
-    fun `router prompt matches the legacy RouterNode prompt`() {
-        val built = RouterPrompt.build(listOf("simple_qa", "tool_task", "plan"), "What time is it in Tokyo?")
+    fun `router prompt lists the reduced routes and the compact tool inventory`() {
+        val tools = listOf(
+            tool(
+                "web_search",
+                "Search the web (DuckDuckGo) for current or factual information and " +
+                    "return the top results as title, snippet, and URL.",
+            ) { execute { ToolResult(true, "") } },
+            tool("current_time", "Get the current local date and time (ISO-8601).") {
+                execute { ToolResult(true, "") }
+            },
+        )
+        val built = RouterPrompt.build(listOf("simple_qa", "tool_task"), "What time is it in Tokyo?", tools)
         built shouldBe listOf(
-            "Classify the user request into exactly one of: simple_qa, tool_task, plan.",
-            "- simple_qa: answerable directly with general knowledge, no tools, no multi-step work.",
-            "- tool_task: needs one or a few tool calls (e.g. sending messages, checking time, calculations).",
-            "- plan: open-ended/multi-step; needs decomposition first.",
+            "Classify the user request into exactly one of: simple_qa, tool_task.",
+            "- simple_qa: answerable directly with general knowledge, no tools needed.",
+            "- tool_task: needs tool work — one or several tool calls, possibly chained (e.g. search the web, open a result, compute).",
+            "Available tools:",
+            "- web_search: Search the web (DuckDuckGo) for current or factual…",
+            "- current_time: Get the current local date and time (ISO-8601).",
+            "Choose tool_task only if one of these tools plausibly helps with the request; otherwise choose simple_qa.",
+            "Respond with ONLY the label.",
+            "",
+            "Request: What time is it in Tokyo?",
+        ).joinToString("\n")
+    }
+
+    @Test
+    fun `router prompt with no tools omits the inventory section`() {
+        val built = RouterPrompt.build(listOf("simple_qa", "tool_task"), "What time is it in Tokyo?")
+        built shouldBe listOf(
+            "Classify the user request into exactly one of: simple_qa, tool_task.",
+            "- simple_qa: answerable directly with general knowledge, no tools needed.",
+            "- tool_task: needs tool work — one or several tool calls, possibly chained (e.g. search the web, open a result, compute).",
             "Respond with ONLY the label.",
             "",
             "Request: What time is it in Tokyo?",

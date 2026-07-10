@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dev.kortex.core.log.w
 import dev.kortex.core.mcp.McpServer
 import dev.kortex.core.mcp.McpToolConnector
-import dev.kortex.core.mcp.resolveComposioToolRouterServer
+import dev.kortex.core.mcp.resolveComposioServer
 import dev.kortex.core.tool.ToolRegistry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -143,10 +143,10 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
                 status = statuses[srv.name] ?: ServerStatus.CONNECTING,
             )
         }
-        // Composio (Gmail) shows up once an API key + user id are configured, even before
+        // Composio (Gmail) shows up once an API key is configured, even before
         // the first successful connect — the card then reflects CONNECTING/ERROR/CONNECTED.
         val composioStatus = statuses[COMPOSIO_GMAIL_SERVER_NAME]
-        val composioEntries = if (!composioApiKey.isNullOrBlank() && !composioUserId.isNullOrBlank()) {
+        val composioEntries = if (!composioApiKey.isNullOrBlank()) {
             listOf(
                 ServerEntry(
                     name = COMPOSIO_GMAIL_SERVER_NAME,
@@ -254,22 +254,19 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         _composioEditing.value = false
     }
 
-    /** Mints a fresh Composio Tool Router session and (re)connects it — call after editing
-     *  the API key/user id, since [ChatViewModel] only resolves one at startup. */
+    /** Resolves the Composio MCP server and (re)connects it — call after editing
+     *  the API key, since [ChatViewModel] only resolves one at startup. */
     fun reconnectComposio() {
         viewModelScope.launch {
             val apiKey = store.composioApiKey.first()?.trim().orEmpty()
-            val userId = store.composioUserId.first()?.trim().orEmpty()
-            if (apiKey.isBlank() || userId.isBlank()) return@launch
+            if (apiKey.isBlank()) return@launch
 
             _composioError.value = null
             _serverStatus.update { it + (COMPOSIO_GMAIL_SERVER_NAME to ServerStatus.CONNECTING) }
 
             val server = runCatching {
-                resolveComposioToolRouterServer(
+                resolveComposioServer(
                     apiKey = apiKey,
-                    userId = userId,
-                    toolkits = listOf("gmail"),
                     serverName = COMPOSIO_GMAIL_SERVER_NAME,
                 )
             }.getOrElse { err ->
@@ -353,8 +350,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
      * discoverable here and would sit on "Connecting…" forever despite being live.
      */
     private suspend fun refreshToolEntries() {
-        val composioConfigured = !store.composioApiKey.first().isNullOrBlank() &&
-            !store.composioUserId.first().isNullOrBlank()
+        val composioConfigured = !store.composioApiKey.first().isNullOrBlank()
         val knownServerNames = mcpServers.map { it.name } +
             store.customServers.first().map { it.name } +
             listOfNotNull(COMPOSIO_GMAIL_SERVER_NAME.takeIf { composioConfigured })

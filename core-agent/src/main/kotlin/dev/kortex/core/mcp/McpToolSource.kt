@@ -72,22 +72,22 @@ fun mcpTool(client: McpClient, desc: McpToolDescriptor, server: McpServer): Tool
     override val description = desc.description
     override val parameters = schemaFromMcp(desc.inputSchema)
     override val risk = server.risk
-    override suspend fun execute(args: JsonObject): ToolResult = try {
-        mcpResultToToolResult(client.callTool(desc.name, args))
-    } catch (e: McpUnauthorizedException) {
-        if (server.tokenProvider != null) {
-            val token = server.tokenProvider.invoke(true)
-            if (token != null) {
-                try {
-                    mcpResultToToolResult(client.callTool(desc.name, args))
-                } catch (e2: McpUnauthorizedException) {
-                    ToolResult(false, "${server.name} requires sign-in; reconnect it in Settings → MCP")
+    override suspend fun execute(args: JsonObject): ToolResult {
+        try {
+            return mcpResultToToolResult(client.callTool(desc.name, args))
+        } catch (e: McpUnauthorizedException) {
+            if (server.tokenProvider != null) {
+                // invoke(true) is intentionally called solely for its side-effect of refreshing 
+                // the provider's token before callTool fetches it again.
+                if (server.tokenProvider.invoke(true) != null) {
+                    try {
+                        return mcpResultToToolResult(client.callTool(desc.name, args))
+                    } catch (e2: McpUnauthorizedException) {
+                        // fall through to fallback
+                    }
                 }
-            } else {
-                ToolResult(false, "${server.name} requires sign-in; reconnect it in Settings → MCP")
             }
-        } else {
-            ToolResult(false, "${server.name} requires sign-in; reconnect it in Settings → MCP")
+            return ToolResult(false, "${server.name} requires sign-in; reconnect it in Settings → MCP")
         }
     }
 }

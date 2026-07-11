@@ -143,7 +143,7 @@ class McpClient(
             if (response.status.value == 401) {
                 throw McpUnauthorizedException(response.headers[HttpHeaders.WWWAuthenticate])
             }
-        }
+        }.onFailure { if (it is McpUnauthorizedException) throw it }
     }
 
     private suspend fun HttpRequestBuilder.mcpHeaders() {

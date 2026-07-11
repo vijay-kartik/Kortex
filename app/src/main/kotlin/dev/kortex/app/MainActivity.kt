@@ -126,6 +126,10 @@ import androidx.compose.ui.layout.ContentScale
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+
+    /** Session requested by a notification tap (share-intake result); consumed by RootScreen. */
+    private val requestedSessionId = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // The theme is committed dark, so pin light system-bar icons regardless of device theme.
@@ -133,19 +137,49 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
-        setContent { KortexTheme { RootScreen() } }
+        requestedSessionId.value = intent.getStringExtra(EXTRA_OPEN_SESSION_ID)
+        setContent {
+            KortexTheme {
+                RootScreen(
+                    requestedSessionId = requestedSessionId.collectAsStateWithLifecycle().value,
+                    onSessionRequestConsumed = { requestedSessionId.value = null },
+                )
+            }
+        }
+    }
+
+    // launchMode="singleTop": a notification tap while the app is open lands here.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(EXTRA_OPEN_SESSION_ID)?.let { requestedSessionId.value = it }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_SESSION_ID = "dev.kortex.app.OPEN_SESSION_ID"
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RootScreen() {
+fun RootScreen(
+    requestedSessionId: String? = null,
+    onSessionRequestConsumed: () -> Unit = {},
+) {
     var tab by remember { mutableIntStateOf(0) }
     var showMcpSettings by remember { mutableStateOf(false) }
     val tabs = listOf("Chat", "Cards", "Context", "History")
     val vm: ChatViewModel = viewModel()
     val chatUi by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // Notification tap → load that session on the Chat tab.
+    LaunchedEffect(requestedSessionId) {
+        if (requestedSessionId != null) {
+            vm.loadSession(requestedSessionId)
+            tab = 0
+            onSessionRequestConsumed()
+        }
+    }
 
     if (showMcpSettings) {
         McpSettingsScreen(onDismiss = { showMcpSettings = false })

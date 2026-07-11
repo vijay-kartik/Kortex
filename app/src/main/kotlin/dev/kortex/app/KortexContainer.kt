@@ -21,6 +21,9 @@ import dev.kortex.core.tool.builtin.defaultTools
 import dev.kortex.app.auth.GmailAuthManager
 import dev.kortex.app.store.AppDatabase
 import dev.kortex.app.tools.gmailTool
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 
 /**
@@ -106,4 +109,18 @@ class KortexContainer(context: Context) {
     }
 
     val contactSeeder by lazy { ContactSeeder(appContext, contactDao) }
+
+    /** App-lifetime scope for work that must outlive any single activity (share intake). */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Background agent runs for files shared into Kortex from other apps. */
+    val shareAgentRunner: ShareAgentRunner by lazy {
+        ShareAgentRunner(
+            appContext = appContext,
+            scope = appScope,
+            llm = llm,
+            tools = toolRegistry,
+            sessionDao = chatSessionDao,
+        )
+    }
 }

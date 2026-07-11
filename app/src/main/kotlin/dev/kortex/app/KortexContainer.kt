@@ -26,6 +26,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * Manual dependency container (no DI framework — fewer moving parts). Built once in
@@ -92,8 +93,19 @@ class KortexContainer(context: Context) {
             context = appContext,
             mcpStore = mcpStore,
             onReconnect = { url ->
-                // The actual reconnection logic would go here or be collected
-                // as part of the toolRegistry/app flow. For now it triggers this callback.
+                appScope.launch {
+                    val customServers = mcpStore.customServers.first()
+                    val serverModel = customServers.find { it.url == url }
+                    if (serverModel != null) {
+                        val mcpServer = dev.kortex.core.mcp.McpServer(
+                            name = serverModel.name,
+                            url = serverModel.url,
+                            bearerToken = serverModel.bearerToken,
+                            tokenProvider = mcpOAuthManager.tokenProviderFor(serverModel.url)
+                        )
+                        dev.kortex.core.mcp.McpToolConnector(toolRegistry, AndroidLogger).connect(mcpServer)
+                    }
+                }
             }
         )
     }

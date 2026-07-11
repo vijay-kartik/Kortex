@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 class McpOAuthManager(
     private val context: Context,
     private val mcpStore: McpStore,
-    private val onReconnect: (String) -> Unit = {}
+    private val appScope: kotlinx.coroutines.CoroutineScope
 ) {
     companion object {
         const val REDIRECT_URI = "kortex://oauth/callback"
@@ -102,7 +102,6 @@ class McpOAuthManager(
                 tokenEndpoint = pendingAuth.tokenEndpoint
             )
             mcpStore.setOauthState(pendingAuth.serverUrl, oauthState)
-            onReconnect(pendingAuth.serverUrl)
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Exchange failed: ${e.message}", Toast.LENGTH_SHORT).show()

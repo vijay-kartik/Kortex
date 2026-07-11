@@ -191,7 +191,7 @@ fun McpSettingsScreen(
                         ServerCard(
                             server = server,
                             onToggleTool = { name, enabled -> vm.toggleTool(name, enabled) },
-                            onSignIn = { vm.signInToCustomServer(server.url) },
+                            onSignIn = { vm.signIn(server.name) },
                         )
                     }
                 }
@@ -220,7 +220,7 @@ fun McpSettingsScreen(
                             server = server,
                             onToggleTool = { name, enabled -> vm.toggleTool(name, enabled) },
                             onDelete = { vm.requestDelete(server.name) },
-                            onSignIn = { vm.signInToCustomServer(server.url) },
+                            onSignIn = { vm.signIn(server.name) },
                         )
                     }
                 }
@@ -380,6 +380,7 @@ private fun ServerCard(
                                 ServerStatus.CONNECTED -> StatusConnected
                                 ServerStatus.CONNECTING -> StatusConnecting
                                 ServerStatus.ERROR -> StatusError
+                                ServerStatus.NEEDS_AUTH -> Amber
                             },
                             CircleShape,
                         ),
@@ -407,7 +408,7 @@ private fun ServerCard(
                     color = Muted,
                 )
 
-                if (server.status == ServerStatus.ERROR) {
+                if (server.status == ServerStatus.ERROR || server.status == ServerStatus.NEEDS_AUTH) {
                     Spacer(Modifier.width(8.dp))
                     TextButton(
                         onClick = { onSignIn?.invoke() },
@@ -456,6 +457,7 @@ private fun ServerCard(
                             ServerStatus.CONNECTING -> "Connecting…"
                             ServerStatus.ERROR -> "Failed to connect."
                             ServerStatus.CONNECTED -> "No tools discovered."
+                            ServerStatus.NEEDS_AUTH -> "Sign in required."
                         }
                         Text(
                             msg,
@@ -798,6 +800,7 @@ private fun ComposioStatusRow(
                         ServerStatus.CONNECTED -> StatusConnected
                         ServerStatus.CONNECTING -> StatusConnecting
                         ServerStatus.ERROR -> StatusError
+                        ServerStatus.NEEDS_AUTH -> Amber
                     },
                     CircleShape,
                 ),
@@ -813,6 +816,7 @@ private fun ComposioStatusRow(
                     ServerStatus.CONNECTED -> "Connected — $toolCount tool${if (toolCount == 1) "" else "s"} available"
                     ServerStatus.CONNECTING -> "Connecting…"
                     ServerStatus.ERROR -> "Connection failed"
+                    ServerStatus.NEEDS_AUTH -> "Sign in required"
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = Muted,

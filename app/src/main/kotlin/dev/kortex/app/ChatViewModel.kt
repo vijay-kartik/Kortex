@@ -15,6 +15,7 @@ import dev.kortex.core.graph.LlmUsageListener
 import dev.kortex.core.graph.ProgressListener
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.log.Logger
+import dev.kortex.core.log.w
 import dev.kortex.core.mcp.McpServer
 import dev.kortex.core.mcp.McpToolConnector
 import dev.kortex.core.state.Message
@@ -155,12 +156,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun connectMcpServers() {
         val customServers = mcpStore.customServers.first().map {
-            McpServer(name = it.name, url = it.url, bearerToken = it.bearerToken)
+            McpServer(
+                name = it.name,
+                url = it.url,
+                bearerToken = it.bearerToken,
+                tokenProvider = container.mcpOAuthManager.tokenProviderFor(it.url)
+            )
         }
         val composioServer = resolveComposioGmailServer(mcpStore, AndroidLogger)
         val allServers = mcpServers + customServers + listOfNotNull(composioServer)
-        if (allServers.isNotEmpty()) {
-            McpToolConnector(tools, AndroidLogger).connectAll(allServers)
+        
+        val connector = McpToolConnector(tools, AndroidLogger)
+        for (server in allServers) {
+            try {
+                connector.connect(server)
+            } catch (e: dev.kortex.core.mcp.McpUnauthorizedException) {
+                // Known server, needs sign-in (no crash; card shows state next time settings opens).
+                container.mcpAuthFailures.update { it + server.name }
+            } catch (e: Exception) {
+                AndroidLogger.w("ChatViewModel", "Failed to connect to MCP server: ${server.name}", e)
+            }
         }
         // Composio Gmail tools are opt-in: first-seen ones land in the disabled set, and
         // the disabledTools collector above applies that to the registry.

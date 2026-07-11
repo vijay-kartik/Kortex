@@ -26,30 +26,36 @@ class McpOAuthManager(
     private val refreshMutex = Mutex()
 
     suspend fun beginSignIn(server: McpServer) {
-        val storedState = mcpStore.oauthStates.first()[server.url]
-        val discovery = McpOAuth.discover(server.url)
-        val authMeta = discovery.authServerMetadata
+        try {
+            val storedState = mcpStore.oauthStates.first()[server.url]
+            val discovery = McpOAuth.discover(server.url)
+            val authMeta = discovery.authServerMetadata
 
-        val clientId = storedState?.clientId ?: McpOAuth.register(
-            meta = authMeta,
-            redirectUri = REDIRECT_URI,
-            scope = discovery.scope ?: ""
-        )
+            val clientId = storedState?.clientId ?: McpOAuth.register(
+                meta = authMeta,
+                redirectUri = REDIRECT_URI,
+                scope = discovery.scope ?: ""
+            )
 
-        val pendingAuth = McpOAuth.beginAuthorization(
-            meta = authMeta,
-            clientId = clientId,
-            redirectUri = REDIRECT_URI,
-            resource = server.url,
-            scope = discovery.scope ?: ""
-        )
+            val pendingAuth = McpOAuth.beginAuthorization(
+                meta = authMeta,
+                clientId = clientId,
+                redirectUri = REDIRECT_URI,
+                resource = server.url,
+                scope = discovery.scope ?: ""
+            )
 
-        mcpStore.setPendingAuth(pendingAuth)
+            mcpStore.setPendingAuth(pendingAuth)
 
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(pendingAuth.authorizationUrl)).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(pendingAuth.authorizationUrl)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Sign in failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
-        context.startActivity(intent)
     }
 
     suspend fun handleCallback(uri: Uri) {
@@ -113,34 +119,39 @@ class McpOAuthManager(
                 val now = System.currentTimeMillis()
                 val needsRefresh = forceRefresh || (currentState.expiresAtMillis != null && currentState.expiresAtMillis < now)
 
-                if (needsRefresh && currentState.refreshToken != null) {
-                    refreshMutex.withLock {
-                        // Double-checked locking
-                        val stateDuringLock = mcpStore.oauthStates.first()[url]
-                        if (stateDuringLock?.accessToken != currentState.accessToken && stateDuringLock?.accessToken != null) {
-                            // Another thread already refreshed
-                            stateDuringLock.accessToken
-                        } else {
-                            try {
-                                val tokens = McpOAuth.refresh(
-                                    tokenEndpoint = currentState.tokenEndpoint,
-                                    clientId = currentState.clientId,
-                                    refreshToken = currentState.refreshToken,
-                                    resource = url
-                                )
+                if (needsRefresh) {
+                    if (currentState.refreshToken != null) {
+                        refreshMutex.withLock {
+                            // Double-checked locking
+                            val stateDuringLock = mcpStore.oauthStates.first()[url]
+                            if (stateDuringLock?.accessToken != currentState.accessToken && stateDuringLock?.accessToken != null) {
+                                // Another thread already refreshed
+                                stateDuringLock.accessToken
+                            } else {
+                                try {
+                                    val tokens = McpOAuth.refresh(
+                                        tokenEndpoint = currentState.tokenEndpoint,
+                                        clientId = currentState.clientId,
+                                        refreshToken = currentState.refreshToken,
+                                        resource = url
+                                    )
 
-                                val newState = currentState.copy(
-                                    accessToken = tokens.accessToken,
-                                    refreshToken = tokens.refreshToken,
-                                    expiresAtMillis = tokens.expiresAtMillis
-                                )
-                                mcpStore.setOauthState(url, newState)
-                                newState.accessToken
-                            } catch (e: Exception) {
-                                mcpStore.setOauthState(url, null)
-                                null
+                                    val newState = currentState.copy(
+                                        accessToken = tokens.accessToken,
+                                        refreshToken = tokens.refreshToken,
+                                        expiresAtMillis = tokens.expiresAtMillis
+                                    )
+                                    mcpStore.setOauthState(url, newState)
+                                    newState.accessToken
+                                } catch (e: Exception) {
+                                    mcpStore.setOauthState(url, null)
+                                    null
+                                }
                             }
                         }
+                    } else {
+                        mcpStore.setOauthState(url, null)
+                        null
                     }
                 } else {
                     currentState.accessToken

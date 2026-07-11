@@ -191,6 +191,7 @@ fun McpSettingsScreen(
                         ServerCard(
                             server = server,
                             onToggleTool = { name, enabled -> vm.toggleTool(name, enabled) },
+                            onSignIn = { vm.signInToCustomServer(server.url) },
                         )
                     }
                 }
@@ -219,6 +220,7 @@ fun McpSettingsScreen(
                             server = server,
                             onToggleTool = { name, enabled -> vm.toggleTool(name, enabled) },
                             onDelete = { vm.requestDelete(server.name) },
+                            onSignIn = { vm.signInToCustomServer(server.url) },
                         )
                     }
                 }
@@ -350,6 +352,7 @@ private fun ServerCard(
     server: ServerEntry,
     onToggleTool: (String, Boolean) -> Unit,
     onDelete: (() -> Unit)? = null,
+    onSignIn: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -403,6 +406,17 @@ private fun ServerCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = Muted,
                 )
+
+                if (server.status == ServerStatus.ERROR) {
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { onSignIn?.invoke() },
+                        modifier = Modifier.height(24.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text("Sign In", fontSize = 12.sp, color = Amber)
+                    }
+                }
 
                 if (onDelete != null) {
                     Spacer(Modifier.width(4.dp))

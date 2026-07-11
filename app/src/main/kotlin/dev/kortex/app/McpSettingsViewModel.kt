@@ -347,6 +347,20 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun signInToCustomServer(serverUrl: String) {
+        viewModelScope.launch {
+            val customServers = store.customServers.first()
+            val serverModel = customServers.find { it.url == serverUrl } ?: return@launch
+            val mcpServer = dev.kortex.core.mcp.McpServer(
+                name = serverModel.name,
+                url = serverModel.url,
+                bearerToken = serverModel.bearerToken,
+                tokenProvider = container.mcpOAuthManager.tokenProviderFor(serverModel.url)
+            )
+            container.mcpOAuthManager.beginSignIn(mcpServer)
+        }
+    }
+
     // ── internals ───────────────────────────────────────────────────────
 
     private suspend fun connectServer(server: McpServer) {

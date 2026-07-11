@@ -135,7 +135,7 @@ class KortexContainer(context: Context) {
     val contactSeeder by lazy { ContactSeeder(appContext, contactDao) }
 
     /** App-lifetime scope for work that must outlive any single activity (share intake). */
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /** Background agent runs for files shared into Kortex from other apps. */
     val shareAgentRunner: ShareAgentRunner by lazy {

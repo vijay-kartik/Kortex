@@ -22,10 +22,15 @@ assembled by `defaultTools()` in `BuiltinTools.kt`. The app wires them up in
 
 MCP tools (Composio Gmail, user-added servers) are **not** builtin — they are registered
 dynamically at runtime by `McpToolSource` (`core/mcp/McpToolSource.kt`) into the same
-registry, carrying their server's raw JSON schema. **Composio Gmail tools are opt-in:**
-newly discovered `composio-gmail_*` tools start disabled
+registry, carrying their server's raw JSON schema.
+
+**OAuth servers:** The engine supports OAuth for MCP servers. If a tool call returns an HTTP 401, the system triggers a sign-in flow.
+
+**Composio Gmail tools are opt-in:** newly discovered `composio-gmail_*` tools start disabled
 (`McpStore.defaultDisableNewTools`) and must be enabled per-tool in MCP Settings; the
 user's toggle is remembered and never overridden on reconnect.
+
+**TranscriptMagic tools:** These appear as `<name>_transcribe_instagram` etc. and run at **MEDIUM** risk (requiring human approval per call) since each call costs 1 credit.
 
 ## Default tool set (`defaultTools()`)
 

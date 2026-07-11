@@ -54,7 +54,8 @@ data class PendingAuthorization(
     val state: String,
     val codeVerifier: String,
     val tokenEndpoint: String,
-    val clientId: String
+    val clientId: String,
+    val serverUrl: String
 )
 
 data class McpOAuthDiscovery(
@@ -175,7 +176,8 @@ object McpOAuth {
             state = state,
             codeVerifier = codeVerifier,
             tokenEndpoint = meta.tokenEndpoint,
-            clientId = clientId
+            clientId = clientId,
+            serverUrl = resource
         )
     }
 

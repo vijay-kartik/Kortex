@@ -19,6 +19,7 @@ import dev.kortex.core.store.KortexDatabase
 import dev.kortex.core.tool.ToolRegistry
 import dev.kortex.core.tool.builtin.defaultTools
 import dev.kortex.app.auth.GmailAuthManager
+import dev.kortex.app.auth.McpOAuthManager
 import dev.kortex.app.store.AppDatabase
 import dev.kortex.app.tools.gmailTool
 import kotlinx.coroutines.CoroutineScope
@@ -85,6 +86,17 @@ class KortexContainer(context: Context) {
 
     // MCP settings persistence (user-added servers + disabled tool names).
     val mcpStore: McpStore by lazy { McpStore(appContext) }
+
+    val mcpOAuthManager: McpOAuthManager by lazy { 
+        McpOAuthManager(
+            context = appContext,
+            mcpStore = mcpStore,
+            onReconnect = { url ->
+                // The actual reconnection logic would go here or be collected
+                // as part of the toolRegistry/app flow. For now it triggers this callback.
+            }
+        )
+    }
 
     // Pipeline collaborators
     private val retriever by lazy { MemoryRetriever(memoryDao) }

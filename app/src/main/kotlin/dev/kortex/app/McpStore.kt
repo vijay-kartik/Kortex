@@ -30,7 +30,7 @@ data class McpOAuthState(
     val accessToken: String,
     val refreshToken: String? = null,
     val expiresAtMillis: Long? = null,
-    val authServerIssuer: String
+    val tokenEndpoint: String
 )
 
 /**

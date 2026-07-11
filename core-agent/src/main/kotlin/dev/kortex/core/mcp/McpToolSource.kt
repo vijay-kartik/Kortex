@@ -20,6 +20,7 @@ data class McpServer(
     val name: String,
     val url: String,
     val bearerToken: String? = null,
+    val tokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
     /** Extra headers sent on every request, for servers that authenticate with something
      *  other than `Authorization: Bearer` (e.g. Composio's `x-api-key`). */
     val extraHeaders: Map<String, String> = emptyMap(),
@@ -43,12 +44,18 @@ class McpToolConnector(
     suspend fun connectAll(servers: List<McpServer>): Int = servers.sumOf { connect(it) }
 
     suspend fun connect(server: McpServer): Int = runCatching {
-        val client = McpClient(server.url, server.bearerToken, server.extraHeaders, logger = logger)
+        val client = McpClient(
+            serverUrl = server.url,
+            tokenProvider = server.tokenProvider ?: server.bearerToken?.let { token -> { _ -> token } },
+            extraHeaders = server.extraHeaders,
+            logger = logger
+        )
         val tools = client.listTools()
         tools.forEach { registry.register(mcpTool(client, it, server)) }
         logger.i(TAG, "'${server.name}': ${tools.size} tool(s) registered [${tools.joinToString { it.name }}]")
         tools.size
     }.getOrElse { err ->
+        if (err is McpUnauthorizedException) throw err
         logger.w(TAG, "'${server.name}' unavailable, continuing without it: ${err.message}")
         0
     }
@@ -65,8 +72,24 @@ fun mcpTool(client: McpClient, desc: McpToolDescriptor, server: McpServer): Tool
     override val description = desc.description
     override val parameters = schemaFromMcp(desc.inputSchema)
     override val risk = server.risk
-    override suspend fun execute(args: JsonObject): ToolResult =
+    override suspend fun execute(args: JsonObject): ToolResult = try {
         mcpResultToToolResult(client.callTool(desc.name, args))
+    } catch (e: McpUnauthorizedException) {
+        if (server.tokenProvider != null) {
+            val token = server.tokenProvider.invoke(true)
+            if (token != null) {
+                try {
+                    mcpResultToToolResult(client.callTool(desc.name, args))
+                } catch (e2: McpUnauthorizedException) {
+                    ToolResult(false, "${server.name} requires sign-in; reconnect it in Settings → MCP")
+                }
+            } else {
+                ToolResult(false, "${server.name} requires sign-in; reconnect it in Settings → MCP")
+            }
+        } else {
+            ToolResult(false, "${server.name} requires sign-in; reconnect it in Settings → MCP")
+        }
+    }
 }
 
 private fun sanitize(s: String) = s.replace(Regex("[^A-Za-z0-9_-]"), "_")

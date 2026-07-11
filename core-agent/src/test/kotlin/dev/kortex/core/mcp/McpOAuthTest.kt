@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Test
 import java.util.Base64
+import kotlin.math.abs
 
 class McpOAuthTest {
 
@@ -68,6 +69,73 @@ class McpOAuthTest {
 
         discovery.resourceMetadata.authorizationServers shouldBe listOf("https://auth.example.com")
         discovery.authServerMetadata.authorizationEndpoint shouldBe "https://auth.example.com/authorize"
+        discovery.scope shouldBe "mcp"
+    }
+
+    @Test
+    fun `metadata parsing handles real TranscriptMagic payloads`() = runTest {
+        val client = mockClient { request ->
+            when (request.url.fullPath) {
+                "/.well-known/oauth-protected-resource" -> {
+                    respond(
+                        """
+                        {
+                          "resource": "https://api.transcriptmagic.com",
+                          "authorization_servers": [
+                            "https://auth.transcriptmagic.com"
+                          ],
+                          "scopes_supported": [
+                            "mcp"
+                          ],
+                          "bearer_methods_supported": [
+                            "header"
+                          ]
+                        }
+                        """.trimIndent(),
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+                "/.well-known/oauth-authorization-server" -> {
+                    respond(
+                        """
+                        {
+                          "issuer": "https://auth.transcriptmagic.com",
+                          "authorization_endpoint": "https://auth.transcriptmagic.com/oauth2/authorize",
+                          "token_endpoint": "https://auth.transcriptmagic.com/oauth2/token",
+                          "jwks_uri": "https://auth.transcriptmagic.com/.well-known/jwks.json",
+                          "scopes_supported": [
+                            "mcp",
+                            "offline_access"
+                          ],
+                          "response_types_supported": [
+                            "code"
+                          ],
+                          "grant_types_supported": [
+                            "authorization_code",
+                            "refresh_token"
+                          ],
+                          "code_challenge_methods_supported": [
+                            "S256"
+                          ]
+                        }
+                        """.trimIndent(),
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+                else -> respondError(HttpStatusCode.NotFound)
+            }
+        }
+
+        val discovery = McpOAuth.discover(
+            client = client,
+            serverUrl = "https://api.transcriptmagic.com",
+            resourceMetadataUrl = null
+        )
+
+        discovery.resourceMetadata.authorizationServers shouldBe listOf("https://auth.transcriptmagic.com")
+        discovery.resourceMetadata.scopesSupported shouldBe listOf("mcp")
+        discovery.authServerMetadata.authorizationEndpoint shouldBe "https://auth.transcriptmagic.com/oauth2/authorize"
+        discovery.authServerMetadata.tokenEndpoint shouldBe "https://auth.transcriptmagic.com/oauth2/token"
         discovery.scope shouldBe "mcp"
     }
 
@@ -137,9 +205,26 @@ class McpOAuthTest {
         pending.authorizationUrl.contains("response_type=code") shouldBe true
         pending.authorizationUrl.contains("client_id=test_client_id") shouldBe true
         pending.authorizationUrl.contains("resource=https%3A%2F%2Fapi.example.com") shouldBe true
+        pending.authorizationUrl.contains("redirect_uri=com.example.app%3A%2Foauth2redirect") shouldBe true
+        pending.authorizationUrl.contains("scope=mcp") shouldBe true
+        pending.authorizationUrl.contains("state=${pending.state}") shouldBe true
+        pending.authorizationUrl.contains("code_challenge=") shouldBe true
+        pending.authorizationUrl.contains("code_challenge_method=S256") shouldBe true
         pending.clientId shouldBe "test_client_id"
         pending.tokenEndpoint shouldBe "https://auth.example.com/token"
-        pending.codeVerifier.length shouldNotBe 0
+        
+        // verifier charset/length check
+        pending.codeVerifier.length shouldBe 43 // 32 bytes base64url encoded without padding is 43 chars
+        pending.codeVerifier.matches(Regex("^[a-zA-Z0-9\\-._~]+$")) shouldBe true // PKCE unreserved characters
+    }
+
+    @Test
+    fun `generateCodeChallenge produces correct RFC 7636 Appendix B vector`() {
+        val verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        val expectedChallenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        
+        val actualChallenge = McpOAuth.generateCodeChallenge(verifier)
+        actualChallenge shouldBe expectedChallenge
     }
 
     @Test
@@ -161,7 +246,44 @@ class McpOAuthTest {
         tokens.accessToken shouldBe "acc_token_123"
         tokens.refreshToken shouldBe "ref_token_456"
         tokens.scope shouldBe "mcp"
+        
+        // Check expires_in skew
         tokens.expiresAtMillis shouldNotBe null
+        val expectedExpiresAt = System.currentTimeMillis() + (3600 * 1000) - 60_000
+        (abs(tokens.expiresAtMillis!! - expectedExpiresAt) < 1000L) shouldBe true
+    }
+
+    @Test
+    fun `exchangeCode sends correct body parameters`() = runTest {
+        var requestBody: String? = null
+        val client = mockClient { request ->
+            requestBody = (request.body as FormDataContent).formData.formUrlEncode()
+            respond(
+                """
+                {
+                    "access_token": "acc_token_123"
+                }
+                """.trimIndent(),
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }
+        McpOAuth.exchangeCode(
+            "https://auth.example.com/token", 
+            "test_client_id", 
+            "auth_code_789", 
+            "verifier_123", 
+            "com.example.app:/oauth2redirect", 
+            "https://api.example.com", 
+            client
+        )
+        
+        requestBody shouldNotBe null
+        requestBody!!.contains("grant_type=authorization_code") shouldBe true
+        requestBody!!.contains("client_id=test_client_id") shouldBe true
+        requestBody!!.contains("code=auth_code_789") shouldBe true
+        requestBody!!.contains("code_verifier=verifier_123") shouldBe true
+        requestBody!!.contains("redirect_uri=com.example.app%3A%2Foauth2redirect") shouldBe true
+        requestBody!!.contains("resource=https%3A%2F%2Fapi.example.com") shouldBe true
     }
 
     @Test
@@ -180,6 +302,33 @@ class McpOAuthTest {
         val tokens = McpOAuth.refresh("https://auth.example.com/token", "test_client_id", "ref_token_old", "https://api.example.com", client)
         tokens.accessToken shouldBe "acc_token_new"
         tokens.refreshToken shouldBe "ref_token_old" // fallback to old refresh token
+        
+        // Check expires_in skew
         tokens.expiresAtMillis shouldNotBe null
+        val expectedExpiresAt = System.currentTimeMillis() + (3600 * 1000) - 60_000
+        (abs(tokens.expiresAtMillis!! - expectedExpiresAt) < 1000L) shouldBe true
+    }
+
+    @Test
+    fun `refresh sends correct body parameters`() = runTest {
+        var requestBody: String? = null
+        val client = mockClient { request ->
+            requestBody = (request.body as FormDataContent).formData.formUrlEncode()
+            respond(
+                """
+                {
+                    "access_token": "acc_token_new"
+                }
+                """.trimIndent(),
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }
+        McpOAuth.refresh("https://auth.example.com/token", "test_client_id", "ref_token_old", "https://api.example.com", client)
+        
+        requestBody shouldNotBe null
+        requestBody!!.contains("grant_type=refresh_token") shouldBe true
+        requestBody!!.contains("client_id=test_client_id") shouldBe true
+        requestBody!!.contains("refresh_token=ref_token_old") shouldBe true
+        requestBody!!.contains("resource=https%3A%2F%2Fapi.example.com") shouldBe true
     }
 }

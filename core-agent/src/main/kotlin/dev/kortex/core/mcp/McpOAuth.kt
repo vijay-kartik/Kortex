@@ -151,10 +151,7 @@ object McpOAuth {
         val verifierBytes = ByteArray(32)
         secureRandom.nextBytes(verifierBytes)
         val codeVerifier = Base64.getUrlEncoder().withoutPadding().encodeToString(verifierBytes)
-
-        val digest = MessageDigest.getInstance("SHA-256")
-        val challengeBytes = digest.digest(codeVerifier.toByteArray())
-        val codeChallenge = Base64.getUrlEncoder().withoutPadding().encodeToString(challengeBytes)
+        val codeChallenge = generateCodeChallenge(codeVerifier)
 
         val stateBytes = ByteArray(16)
         secureRandom.nextBytes(stateBytes)
@@ -243,5 +240,11 @@ object McpOAuth {
             expiresAtMillis = expiresAt,
             scope = tokenResponse.scope
         )
+    }
+
+    internal fun generateCodeChallenge(verifier: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val challengeBytes = digest.digest(verifier.toByteArray(Charsets.US_ASCII))
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(challengeBytes)
     }
 }

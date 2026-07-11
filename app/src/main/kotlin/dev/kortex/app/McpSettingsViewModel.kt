@@ -53,6 +53,8 @@ data class McpSettingsUi(
     val ollamaToken: String = "",
     /** User-entered OpenAI key; blank when the app is running on the build's local.properties key (or none). */
     val openaiApiKey: String = "",
+    /** API key for Ollama Cloud (ollama.com/settings/keys); blank until the user enters one. */
+    val ollamaCloudApiKey: String = "",
     val composioApiKey: String = "",
     val composioUserId: String = "",
     /** Null until the first connect attempt (this session or a prior one) resolves. */
@@ -110,15 +112,16 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         val ollamaUrl: String,
         val ollamaToken: String,
         val openaiApiKey: String,
+        val ollamaCloudApiKey: String,
     )
 
     val ui: StateFlow<McpSettingsUi> = combine(
         combine(store.disabledTools, store.customServers, _serverStatus) { a, b, c -> Triple(a, b, c) },
         combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
-        combine(store.activeProvider, store.ollamaUrl, store.ollamaToken, store.openaiApiKey) { p, u, t, k -> ProviderPrefs(p, u, t ?: "", k ?: "") },
+        combine(store.activeProvider, store.ollamaUrl, store.ollamaToken, store.openaiApiKey, store.ollamaCloudApiKey) { p, u, t, k, oc -> ProviderPrefs(p, u, t ?: "", k ?: "", oc ?: "") },
         combine(store.composioApiKey, store.composioUserId) { k, u -> k to u },
         combine(_composioError, _composioEditing, store.gmailAccountEmail) { err, editing, gmail -> Triple(err, editing, gmail) },
-    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken, openaiApiKey), (composioApiKey, composioUserId), (composioError, composioEditing, gmailAccountEmail) ->
+    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken, openaiApiKey, ollamaCloudApiKey), (composioApiKey, composioUserId), (composioError, composioEditing, gmailAccountEmail) ->
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -169,6 +172,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             ollamaUrl = ollamaUrl,
             ollamaToken = ollamaToken,
             openaiApiKey = openaiApiKey,
+            ollamaCloudApiKey = ollamaCloudApiKey,
             composioApiKey = composioApiKey ?: "",
             composioUserId = composioUserId ?: "",
             composioStatus = composioStatus,
@@ -232,6 +236,12 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun setOllamaCloudApiKey(key: String) {
+        viewModelScope.launch {
+            store.setOllamaCloudApiKey(key.trim())
+        }
+    }
+
     fun setComposioApiKey(key: String) {
         viewModelScope.launch {
             store.setComposioApiKey(key.trim())
@@ -285,6 +295,8 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             connectServer(server)
+            // Composio Gmail tools are opt-in: newly discovered ones start disabled.
+            store.defaultDisableNewTools(composioGmailToolNames(tools))
             if (_serverStatus.value[COMPOSIO_GMAIL_SERVER_NAME] == ServerStatus.ERROR) {
                 _composioError.value = "Connected, but no tools came back. Make sure the user_id above " +
                     "matches the one your Gmail connection was authorized under in Composio."

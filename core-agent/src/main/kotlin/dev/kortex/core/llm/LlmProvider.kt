@@ -57,4 +57,25 @@ object Models {
         "o1-preview",
         "o1-mini"
     )
+
+    /**
+     * Curated Ollama Cloud models (ollama.com/search?c=cloud) as of July 2026. The catalog
+     * changes often, so the settings UI also lets the user type any model id. Vision-capable
+     * models (image attachments work) are listed first.
+     */
+    val supportedOllamaCloud = listOf(
+        // Vision / multimodal
+        "qwen3.5:122b",
+        "qwen3.5:27b",
+        "gemma4:31b",
+        "kimi-k2.7-code",
+        "minimax-m3",
+        // Text-only
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
+        "gpt-oss:120b",
+        "gpt-oss:20b",
+        "qwen3-coder:480b",
+        "glm-5.2",
+    )
 }

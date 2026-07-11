@@ -131,11 +131,13 @@ fun McpSettingsScreen(
                     ollamaUrl = ui.ollamaUrl,
                     ollamaToken = ui.ollamaToken,
                     openaiApiKey = ui.openaiApiKey,
+                    ollamaCloudApiKey = ui.ollamaCloudApiKey,
                     onProviderSelected = { vm.setActiveProvider(it) },
                     onModelSelected = { vm.setActiveModel(it) },
                     onOllamaUrlChange = { vm.setOllamaUrl(it) },
                     onOllamaTokenChange = { vm.setOllamaToken(it) },
                     onOpenaiApiKeyChange = { vm.setOpenaiApiKey(it) },
+                    onOllamaCloudApiKeyChange = { vm.setOllamaCloudApiKey(it) },
                 )
             }
 
@@ -816,11 +818,13 @@ private fun ModelSelector(
     ollamaUrl: String,
     ollamaToken: String,
     openaiApiKey: String,
+    ollamaCloudApiKey: String,
     onProviderSelected: (String) -> Unit,
     onModelSelected: (String) -> Unit,
     onOllamaUrlChange: (String) -> Unit,
     onOllamaTokenChange: (String) -> Unit,
     onOpenaiApiKeyChange: (String) -> Unit,
+    onOllamaCloudApiKeyChange: (String) -> Unit,
 ) {
     var expandedProvider by remember { mutableStateOf(false) }
     var expandedModel by remember { mutableStateOf(false) }
@@ -851,7 +855,8 @@ private fun ModelSelector(
                     Text(
                         when (activeProvider) {
                             "openai" -> "OpenAI"
-                            else -> "Ollama (Local/Cloud)"
+                            "ollama-cloud" -> "Ollama Cloud"
+                            else -> "Ollama (Local)"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = Synapse,
@@ -863,7 +868,8 @@ private fun ModelSelector(
                 Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
                     listOf(
                         "openai" to "OpenAI",
-                        "ollama" to "Ollama (Local/Cloud)",
+                        "ollama" to "Ollama (Local)",
+                        "ollama-cloud" to "Ollama Cloud",
                     ).forEach { (id, label) ->
                         Row(
                             modifier = Modifier
@@ -887,7 +893,7 @@ private fun ModelSelector(
             }
 
             // Model Selection
-            if (activeProvider == "openai" || activeProvider == "ollama") {
+            if (activeProvider == "openai" || activeProvider == "ollama" || activeProvider == "ollama-cloud") {
                 Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -913,35 +919,41 @@ private fun ModelSelector(
             }
             AnimatedVisibility(visible = expandedModel) {
                 Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
-                    if (activeProvider == "openai") {
-                        supportedModels.forEach { model ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onModelSelected(model)
-                                        expandedModel = false
-                                    }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    model,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (model == activeModel) Synapse else Muted,
-                                    fontWeight = if (model == activeModel) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
+                    // OpenAI and Ollama Cloud get a curated tap-to-pick list; the cloud
+                    // catalog changes often, so Ollama Cloud also keeps the free-text field.
+                    val quickPickModels = when (activeProvider) {
+                        "openai" -> supportedModels
+                        "ollama-cloud" -> dev.kortex.core.llm.Models.supportedOllamaCloud
+                        else -> emptyList()
+                    }
+                    quickPickModels.forEach { model ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onModelSelected(model)
+                                    expandedModel = false
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                model,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (model == activeModel) Synapse else Muted,
+                                fontWeight = if (model == activeModel) FontWeight.Bold else FontWeight.Normal
+                            )
                         }
-                    } else {
-                        // For Ollama, users type the model name
+                    }
+                    if (activeProvider != "openai") {
+                        // For Ollama (local or cloud), users can type any model name
                         var customModel by remember { mutableStateOf(activeModel) }
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
                             SettingsTextField(
                                 value = customModel,
                                 onValueChange = { customModel = it },
                                 label = "Model Name",
-                                placeholder = "llama3:latest"
+                                placeholder = if (activeProvider == "ollama-cloud") "qwen3.5:122b" else "llama3:latest"
                             )
                             Spacer(Modifier.height(8.dp))
                             ButtonDefaults.filledTonalButtonColors()
@@ -1013,7 +1025,7 @@ private fun ModelSelector(
                     SettingsTextField(
                         value = editToken,
                         onValueChange = { editToken = it; onOllamaTokenChange(it) },
-                        label = "API Key (optional, for Cloud/Groq/Together)",
+                        label = "API Key (optional, for OpenAI-compatible hosts)",
                         placeholder = "sk-...",
                         isPassword = !showToken,
                         trailingContent = {
@@ -1025,6 +1037,40 @@ private fun ModelSelector(
                                 )
                             }
                         }
+                    )
+                }
+            }
+
+            // Ollama Cloud settings (Only if Ollama Cloud)
+            if (activeProvider == "ollama-cloud") {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    var editKey by remember { mutableStateOf(ollamaCloudApiKey) }
+                    var showKey by remember { mutableStateOf(false) }
+                    SettingsTextField(
+                        value = editKey,
+                        onValueChange = { editKey = it; onOllamaCloudApiKeyChange(it) },
+                        label = "Ollama Cloud API Key",
+                        placeholder = "from ollama.com/settings/keys",
+                        isPassword = !showKey,
+                        trailingContent = {
+                            TextButton(onClick = { showKey = !showKey }) {
+                                Text(
+                                    if (showKey) "hide" else "show",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Synapse,
+                                )
+                            }
+                        },
+                    )
+                    Text(
+                        if (editKey.isBlank()) {
+                            "No key set — create one at ollama.com/settings/keys. Until then, requests fall back to the default provider."
+                        } else {
+                            "Stored on this device. Vision-capable cloud models (qwen3.5, gemma4, kimi-k2.7) can read image attachments."
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (editKey.isBlank()) Amber else Muted,
+                        modifier = Modifier.padding(top = 6.dp),
                     )
                 }
             }

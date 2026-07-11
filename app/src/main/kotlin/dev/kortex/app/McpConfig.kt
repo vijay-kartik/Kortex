@@ -4,6 +4,7 @@ import dev.kortex.core.log.Logger
 import dev.kortex.core.log.w
 import dev.kortex.core.mcp.McpServer
 import dev.kortex.core.mcp.resolveComposioServer
+import dev.kortex.core.tool.ToolRegistry
 import kotlinx.coroutines.flow.first
 
 /**
@@ -37,6 +38,12 @@ const val COMPOSIO_GMAIL_SERVER_NAME = "composio-gmail"
  * Composio now exposes a direct MCP endpoint at `connect.composio.dev/mcp` — no
  * session-minting step is needed; the `x-consumer-api-key` header handles auth.
  */
+/** Names of the Composio Gmail tools currently registered (the `composio-gmail_` prefix). */
+fun composioGmailToolNames(registry: ToolRegistry): List<String> =
+    registry.allIncludingDisabled()
+        .map { it.name }
+        .filter { it.startsWith("${COMPOSIO_GMAIL_SERVER_NAME}_") }
+
 suspend fun resolveComposioGmailServer(store: McpStore, logger: Logger): McpServer? {
     // Trimmed defensively: header values can't contain whitespace/newlines, and copy-pasted
     // keys/ids routinely carry a trailing one from the source they were copied out of.

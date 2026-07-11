@@ -17,6 +17,8 @@ class DynamicLlmProvider(
     private var ollamaProvider: LlmProvider? = null
     private var currentOllamaUrl: String? = null
     private var currentOllamaToken: String? = null
+    private var ollamaCloudProvider: LlmProvider? = null
+    private var currentOllamaCloudKey: String? = null
     private var openAiProvider: LlmProvider? = null
     private var currentOpenAiKey: String? = null
 
@@ -45,7 +47,29 @@ class DynamicLlmProvider(
             }
             return@withContext ollamaProvider!!
         }
+        if (providerType == "ollama-cloud") {
+            val key = store.ollamaCloudApiKey.first()?.trim()?.takeIf { it.isNotBlank() }
+            if (key != null) {
+                if (ollamaCloudProvider == null || currentOllamaCloudKey != key) {
+                    currentOllamaCloudKey = key
+                    // Ollama Cloud speaks the OpenAI chat-completions dialect at ollama.com/v1
+                    // (Bearer auth; images as base64 data URLs — external image URLs and
+                    // tool_choice are not supported, which matches what OpenAiProvider sends).
+                    ollamaCloudProvider = OpenAiProvider(
+                        apiKey = key,
+                        baseUrl = OLLAMA_CLOUD_BASE_URL,
+                        logger = AndroidLogger,
+                    )
+                }
+                return@withContext ollamaCloudProvider!!
+            }
+            // No key yet — fall through to the default so the chat still answers.
+        }
         defaultProvider
+    }
+
+    companion object {
+        const val OLLAMA_CLOUD_BASE_URL = "https://ollama.com/v1"
     }
 
     override suspend fun complete(req: LlmRequest, logger: Logger?): LlmResponse {

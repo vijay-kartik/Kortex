@@ -35,10 +35,12 @@ class McpStore(private val context: Context) {
     private companion object {
         val KEY_CUSTOM_SERVERS = stringPreferencesKey("custom_mcp_servers")
         val KEY_DISABLED_TOOLS = stringSetPreferencesKey("disabled_tools")
+        val KEY_DEFAULT_DISABLED_SEEN = stringSetPreferencesKey("default_disabled_seen_tools")
         val KEY_ACTIVE_MODEL = stringPreferencesKey("active_model")
         val KEY_ACTIVE_PROVIDER = stringPreferencesKey("active_provider")
         val KEY_OLLAMA_URL = stringPreferencesKey("ollama_url")
         val KEY_OLLAMA_TOKEN = stringPreferencesKey("ollama_token")
+        val KEY_OLLAMA_CLOUD_API_KEY = stringPreferencesKey("ollama_cloud_api_key")
         val KEY_COMPOSIO_API_KEY = stringPreferencesKey("composio_api_key")
         val KEY_COMPOSIO_USER_ID = stringPreferencesKey("composio_user_id")
         val KEY_OPENAI_API_KEY = stringPreferencesKey("openai_api_key")
@@ -97,6 +99,17 @@ class McpStore(private val context: Context) {
             } else {
                 prefs[KEY_OLLAMA_TOKEN] = token
             }
+        }
+    }
+
+    /** API key for Ollama Cloud (ollama.com) — created at ollama.com/settings/keys. */
+    val ollamaCloudApiKey: Flow<String?> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_OLLAMA_CLOUD_API_KEY]
+    }
+
+    suspend fun setOllamaCloudApiKey(key: String?) {
+        context.mcpDataStore.edit { prefs ->
+            if (key.isNullOrBlank()) prefs.remove(KEY_OLLAMA_CLOUD_API_KEY) else prefs[KEY_OLLAMA_CLOUD_API_KEY] = key
         }
     }
 
@@ -173,6 +186,23 @@ class McpStore(private val context: Context) {
             val current = prefs[KEY_DISABLED_TOOLS]?.toMutableSet() ?: mutableSetOf()
             if (disabled) current += toolName else current -= toolName
             prefs[KEY_DISABLED_TOOLS] = current
+        }
+    }
+
+    /**
+     * Disables every tool in [names] that has never been seen before, and remembers it as
+     * seen. Used for tools that must be opt-in (Composio Gmail): the first time a name shows
+     * up it lands in the disabled set, but a user's later enable/disable toggle is never
+     * overridden on reconnect because the name is already marked seen.
+     */
+    suspend fun defaultDisableNewTools(names: Collection<String>) {
+        if (names.isEmpty()) return
+        context.mcpDataStore.edit { prefs ->
+            val seen = prefs[KEY_DEFAULT_DISABLED_SEEN] ?: emptySet()
+            val new = names.filterNot { it in seen }
+            if (new.isEmpty()) return@edit
+            prefs[KEY_DISABLED_TOOLS] = (prefs[KEY_DISABLED_TOOLS] ?: emptySet()) + new
+            prefs[KEY_DEFAULT_DISABLED_SEEN] = seen + new
         }
     }
 }

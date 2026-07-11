@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -134,9 +135,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             mcpStore.disabledTools.collect { disabled -> tools.setDisabled(disabled) }
         }
-        // Update the active reasoning model globally whenever it changes.
+        // Update the active reasoning/routing models globally whenever they change. Ollama
+        // hosts (local or cloud) don't serve OpenAI's mini model, so the router and other
+        // FAST-tier nodes must run on the same user-selected model there.
         viewModelScope.launch {
-            mcpStore.activeModel.collect { model -> dev.kortex.core.llm.Models.REASONING = model }
+            combine(mcpStore.activeProvider, mcpStore.activeModel) { provider, model -> provider to model }
+                .collect { (provider, model) ->
+                    dev.kortex.core.llm.Models.REASONING = model
+                    dev.kortex.core.llm.Models.FAST =
+                        if (provider == "ollama" || provider == "ollama-cloud") model else "gpt-4o-mini"
+                }
         }
     }
 
@@ -153,6 +161,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val allServers = mcpServers + customServers + listOfNotNull(composioServer)
         if (allServers.isNotEmpty()) {
             McpToolConnector(tools, AndroidLogger).connectAll(allServers)
+        }
+        // Composio Gmail tools are opt-in: first-seen ones land in the disabled set, and
+        // the disabledTools collector above applies that to the registry.
+        if (composioServer != null) {
+            mcpStore.defaultDisableNewTools(composioGmailToolNames(tools))
         }
     }
 
@@ -334,7 +347,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val activeProviderName = mcpStore.activeProvider.first()
             val model = when (activeProviderName) {
-                "ollama" -> mcpStore.activeModel.first()
+                "ollama", "ollama-cloud" -> mcpStore.activeModel.first()
                 else -> "gpt-4o"
             }
             // Snapshot history before appending this turn — Agent.ask() adds the query as a

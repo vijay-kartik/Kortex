@@ -35,6 +35,7 @@ data class ServerEntry(
     val isDefault: Boolean,
     val tools: List<ToolEntry>,
     val status: ServerStatus,
+    val hasOAuthSession: Boolean = false,
 )
 
 enum class ServerStatus { CONNECTING, CONNECTED, ERROR, NEEDS_AUTH }
@@ -107,6 +108,13 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         val pendingDelete: String? = null,
     )
 
+    private data class ServerStateBlock(
+        val disabledTools: Set<String>,
+        val customServers: List<CustomMcpServer>,
+        val statuses: Map<String, ServerStatus>,
+        val oauthUrls: Set<String>
+    )
+
     private data class ProviderPrefs(
         val provider: String,
         val ollamaUrl: String,
@@ -116,12 +124,12 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     )
 
     val ui: StateFlow<McpSettingsUi> = combine(
-        combine(store.disabledTools, store.customServers, _serverStatus) { a, b, c -> Triple(a, b, c) },
+        combine(store.disabledTools, store.customServers, _serverStatus, store.oauthStates) { a, b, c, d -> ServerStateBlock(a, b, c, d.keys) },
         combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
         combine(store.activeProvider, store.ollamaUrl, store.ollamaToken, store.openaiApiKey, store.ollamaCloudApiKey) { p, u, t, k, oc -> ProviderPrefs(p, u, t ?: "", k ?: "", oc ?: "") },
         combine(store.composioApiKey, store.composioUserId) { k, u -> k to u },
         combine(_composioError, _composioEditing, store.gmailAccountEmail) { err, editing, gmail -> Triple(err, editing, gmail) },
-    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken, openaiApiKey, ollamaCloudApiKey), (composioApiKey, composioUserId), (composioError, composioEditing, gmailAccountEmail) ->
+    ) { (disabled, customServers, statuses, oauthUrls), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken, openaiApiKey, ollamaCloudApiKey), (composioApiKey, composioUserId), (composioError, composioEditing, gmailAccountEmail) ->
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -136,6 +144,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
                 isDefault = true,
                 tools = serverTools[srv.name]?.map { it.copy(enabled = it.name !in disabled) } ?: emptyList(),
                 status = statuses[srv.name] ?: ServerStatus.CONNECTING,
+                hasOAuthSession = srv.url in oauthUrls,
             )
         }
         val customEntries = customServers.map { srv ->
@@ -145,6 +154,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
                 isDefault = false,
                 tools = serverTools[srv.name]?.map { it.copy(enabled = it.name !in disabled) } ?: emptyList(),
                 status = statuses[srv.name] ?: ServerStatus.CONNECTING,
+                hasOAuthSession = srv.url in oauthUrls,
             )
         }
         // Composio (Gmail) shows up once an API key is configured, even before
@@ -400,6 +410,25 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
                 tokenProvider = container.mcpOAuthManager.tokenProviderFor(serverModel.url)
             )
             container.mcpOAuthManager.beginSignIn(mcpServer)
+        }
+    }
+
+    fun signOut(serverName: String) {
+        viewModelScope.launch {
+            val customServers = store.customServers.first()
+            val serverModelUrl = customServers.find { it.name == serverName }?.url
+                ?: mcpServers.find { it.name == serverName }?.url
+                ?: return@launch
+            
+            store.setOauthState(serverModelUrl, null)
+            
+            val prefix = sanitize(serverName) + "_"
+            tools.allIncludingDisabled()
+                .filter { it.name.startsWith(prefix) }
+                .forEach { tools.unregister(it.name) }
+                
+            _serverStatus.update { it + (serverName to ServerStatus.NEEDS_AUTH) }
+            _serverTools.update { it - serverName }
         }
     }
 

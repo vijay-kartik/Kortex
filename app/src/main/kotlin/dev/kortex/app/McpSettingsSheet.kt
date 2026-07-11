@@ -420,7 +420,7 @@ private fun ServerCard(
                     ) {
                         Text("Sign out", fontSize = 12.sp, color = Muted)
                     }
-                } else if (server.status == ServerStatus.ERROR) {
+                } else if (server.status == ServerStatus.ERROR || server.status == ServerStatus.NEEDS_AUTH) {
                     Spacer(Modifier.width(8.dp))
                     TextButton(
                         onClick = { onSignIn?.invoke() },
@@ -473,34 +473,34 @@ private fun ServerCard(
                                 color = Amber,
                                 modifier = Modifier.padding(vertical = 6.dp),
                             )
-                            if (!pending) {
-                                Spacer(Modifier.height(4.dp))
-                                FilledTonalButton(
-                                    onClick = { 
-                                        pending = true
-                                        onSignIn?.invoke()
-                                    },
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = SynapseDim,
-                                        contentColor = Synapse
-                                    )
-                                ) {
-                                    Text("Sign in")
-                                }
+                            Spacer(Modifier.height(4.dp))
+                            FilledTonalButton(
+                                onClick = { 
+                                    pending = true
+                                    onSignIn?.invoke()
+                                },
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = SynapseDim,
+                                    contentColor = Synapse
+                                )
+                            ) {
+                                Text("Sign in")
                             }
                         } else {
                             val msg = when (server.status) {
                                 ServerStatus.CONNECTING -> "Connecting…"
                                 ServerStatus.ERROR -> "Failed to connect."
                                 ServerStatus.CONNECTED -> "No tools discovered."
-                                ServerStatus.NEEDS_AUTH -> ""
+                                else -> "" // fallback, though unused for NEEDS_AUTH now
                             }
-                            Text(
-                                msg,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (server.status == ServerStatus.ERROR) Alarm else Muted,
-                                modifier = Modifier.padding(vertical = 6.dp),
-                            )
+                            if (msg.isNotEmpty()) {
+                                Text(
+                                    msg,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (server.status == ServerStatus.ERROR) Alarm else Muted,
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                )
+                            }
                         }
                     } else {
                         server.tools.forEach { tool ->

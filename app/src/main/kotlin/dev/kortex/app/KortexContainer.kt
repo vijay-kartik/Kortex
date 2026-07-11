@@ -92,21 +92,7 @@ class KortexContainer(context: Context) {
         McpOAuthManager(
             context = appContext,
             mcpStore = mcpStore,
-            onReconnect = { url ->
-                appScope.launch {
-                    val customServers = mcpStore.customServers.first()
-                    val serverModel = customServers.find { it.url == url }
-                    if (serverModel != null) {
-                        val mcpServer = dev.kortex.core.mcp.McpServer(
-                            name = serverModel.name,
-                            url = serverModel.url,
-                            bearerToken = serverModel.bearerToken,
-                            tokenProvider = mcpOAuthManager.tokenProviderFor(serverModel.url)
-                        )
-                        dev.kortex.core.mcp.McpToolConnector(toolRegistry, AndroidLogger).connect(mcpServer)
-                    }
-                }
-            }
+            appScope = appScope
         )
     }
 
@@ -136,6 +122,9 @@ class KortexContainer(context: Context) {
 
     /** App-lifetime scope for work that must outlive any single activity (share intake). */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Shared state to track servers that failed with McpUnauthorizedException during startup. */
+    val mcpAuthFailures = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
 
     /** Background agent runs for files shared into Kortex from other apps. */
     val shareAgentRunner: ShareAgentRunner by lazy {

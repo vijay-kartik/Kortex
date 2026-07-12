@@ -199,7 +199,8 @@ object McpOAuth {
             }
         )
         if (!response.status.isSuccess()) {
-            throw McpException("Token exchange failed: ${response.status}")
+            val errorBody = response.bodyAsText()
+            throw McpException("Token exchange failed: ${response.status} - $errorBody")
         }
         val tokenResponse = json.decodeFromString<TokenResponse>(response.bodyAsText())
         val expiresAt = tokenResponse.expiresIn?.let { System.currentTimeMillis() + (it * 1000) - 60_000 }
@@ -229,7 +230,8 @@ object McpOAuth {
             }
         )
         if (!response.status.isSuccess()) {
-            throw McpException("Token refresh failed: ${response.status}")
+            val errorBody = response.bodyAsText()
+            throw McpException("Token refresh failed: ${response.status} - $errorBody")
         }
         val tokenResponse = json.decodeFromString<TokenResponse>(response.bodyAsText())
         val expiresAt = tokenResponse.expiresIn?.let { System.currentTimeMillis() + (it * 1000) - 60_000 }

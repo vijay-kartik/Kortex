@@ -84,29 +84,23 @@ class McpOAuthManager(
             return
         }
 
-        try {
-            val tokens = McpOAuth.exchangeCode(
-                tokenEndpoint = pendingAuth.tokenEndpoint,
-                clientId = pendingAuth.clientId,
-                code = code,
-                codeVerifier = pendingAuth.codeVerifier,
-                redirectUri = REDIRECT_URI,
-                resource = pendingAuth.serverUrl
-            )
+        val tokens = McpOAuth.exchangeCode(
+            tokenEndpoint = pendingAuth.tokenEndpoint,
+            clientId = pendingAuth.clientId,
+            code = code,
+            codeVerifier = pendingAuth.codeVerifier,
+            redirectUri = REDIRECT_URI,
+            resource = pendingAuth.serverUrl
+        )
 
-            val oauthState = McpOAuthState(
-                clientId = pendingAuth.clientId,
-                accessToken = tokens.accessToken,
-                refreshToken = tokens.refreshToken,
-                expiresAtMillis = tokens.expiresAtMillis,
-                tokenEndpoint = pendingAuth.tokenEndpoint
-            )
-            mcpStore.setOauthState(pendingAuth.serverUrl, oauthState)
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Exchange failed: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
+        val oauthState = McpOAuthState(
+            clientId = pendingAuth.clientId,
+            accessToken = tokens.accessToken,
+            refreshToken = tokens.refreshToken,
+            expiresAtMillis = tokens.expiresAtMillis,
+            tokenEndpoint = pendingAuth.tokenEndpoint
+        )
+        mcpStore.setOauthState(pendingAuth.serverUrl, oauthState)
     }
 
     fun tokenProviderFor(url: String): suspend (forceRefresh: Boolean) -> String? {

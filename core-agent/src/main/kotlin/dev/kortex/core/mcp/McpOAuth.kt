@@ -75,7 +75,7 @@ private data class ClientRegistrationRequest(
 )
 
 object McpOAuth {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val secureRandom = SecureRandom()
 
     suspend fun discover(

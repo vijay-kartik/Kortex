@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
+import dev.kortex.core.log.e
 import dev.kortex.core.log.w
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,10 +23,10 @@ class OAuthCallbackActivity : Activity() {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(app, "OAuth linked successfully", Toast.LENGTH_SHORT).show()
                     }
-                } catch (e: Exception) {
-                    AndroidLogger.w("OAuth", "Callback failed", e)
+                } catch (err: Exception) {
+                    AndroidLogger.e("OAuth", "OAuth link failed: ${err.message}", err)
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(app, "OAuth link failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(app, "OAuth link failed. See logs.", Toast.LENGTH_SHORT).show()
                     }
                 }
             }

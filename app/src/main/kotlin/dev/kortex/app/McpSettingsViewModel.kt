@@ -35,9 +35,10 @@ data class ServerEntry(
     val isDefault: Boolean,
     val tools: List<ToolEntry>,
     val status: ServerStatus,
+    val hasOAuthSession: Boolean = false,
 )
 
-enum class ServerStatus { CONNECTING, CONNECTED, ERROR }
+enum class ServerStatus { CONNECTING, CONNECTED, ERROR, NEEDS_AUTH }
 
 data class McpSettingsUi(
     val builtinTools: List<ToolEntry> = emptyList(),
@@ -107,6 +108,13 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         val pendingDelete: String? = null,
     )
 
+    private data class ServerStateBlock(
+        val disabledTools: Set<String>,
+        val customServers: List<CustomMcpServer>,
+        val statuses: Map<String, ServerStatus>,
+        val oauthUrls: Set<String>
+    )
+
     private data class ProviderPrefs(
         val provider: String,
         val ollamaUrl: String,
@@ -116,12 +124,12 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     )
 
     val ui: StateFlow<McpSettingsUi> = combine(
-        combine(store.disabledTools, store.customServers, _serverStatus) { a, b, c -> Triple(a, b, c) },
+        combine(store.disabledTools, store.customServers, _serverStatus, store.oauthStates) { a, b, c, d -> ServerStateBlock(a, b, c, d.keys) },
         combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
         combine(store.activeProvider, store.ollamaUrl, store.ollamaToken, store.openaiApiKey, store.ollamaCloudApiKey) { p, u, t, k, oc -> ProviderPrefs(p, u, t ?: "", k ?: "", oc ?: "") },
         combine(store.composioApiKey, store.composioUserId) { k, u -> k to u },
         combine(_composioError, _composioEditing, store.gmailAccountEmail) { err, editing, gmail -> Triple(err, editing, gmail) },
-    ) { (disabled, customServers, statuses), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken, openaiApiKey, ollamaCloudApiKey), (composioApiKey, composioUserId), (composioError, composioEditing, gmailAccountEmail) ->
+    ) { (disabled, customServers, statuses, oauthUrls), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken, openaiApiKey, ollamaCloudApiKey), (composioApiKey, composioUserId), (composioError, composioEditing, gmailAccountEmail) ->
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -136,6 +144,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
                 isDefault = true,
                 tools = serverTools[srv.name]?.map { it.copy(enabled = it.name !in disabled) } ?: emptyList(),
                 status = statuses[srv.name] ?: ServerStatus.CONNECTING,
+                hasOAuthSession = srv.url in oauthUrls,
             )
         }
         val customEntries = customServers.map { srv ->
@@ -145,6 +154,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
                 isDefault = false,
                 tools = serverTools[srv.name]?.map { it.copy(enabled = it.name !in disabled) } ?: emptyList(),
                 status = statuses[srv.name] ?: ServerStatus.CONNECTING,
+                hasOAuthSession = srv.url in oauthUrls,
             )
         }
         // Composio (Gmail) shows up once an API key is configured, even before
@@ -192,6 +202,40 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             // combine re-fires whenever _serverTools changes, so late arrivals show up.
             kotlinx.coroutines.delay(1_500)
             refreshToolEntries()
+        }
+        
+        // Reconnect servers when their OAuth state changes (e.g. after a sign-in callback)
+        viewModelScope.launch {
+            var previousStates = store.oauthStates.first()
+            store.oauthStates.collect { currentStates ->
+                for ((url, state) in currentStates) {
+                    val prev = previousStates[url]
+                    if (state != null && (prev == null || prev.accessToken != state.accessToken)) {
+                        val customServers = store.customServers.first()
+                        val serverModel = customServers.find { it.url == url }
+                        if (serverModel != null) {
+                            val mcpServer = dev.kortex.core.mcp.McpServer(
+                                name = serverModel.name,
+                                url = serverModel.url,
+                                bearerToken = serverModel.bearerToken,
+                                tokenProvider = container.mcpOAuthManager.tokenProviderFor(url)
+                            )
+                            connectServer(mcpServer)
+                        }
+                    }
+                }
+                previousStates = currentStates
+            }
+        }
+        
+        // Track servers that failed auth on startup
+        viewModelScope.launch {
+            container.mcpAuthFailures.collect { failures ->
+                if (failures.isNotEmpty()) {
+                    val updates = failures.associateWith { ServerStatus.NEEDS_AUTH }
+                    _serverStatus.update { it + updates }
+                }
+            }
         }
     }
 
@@ -325,7 +369,14 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         val server = CustomMcpServer(name = name.trim(), url = url.trim(), bearerToken = bearerToken?.trim()?.ifBlank { null })
         viewModelScope.launch {
             store.addServer(server)
-            connectServer(McpServer(name = server.name, url = server.url, bearerToken = server.bearerToken))
+            connectServer(
+                McpServer(
+                    name = server.name,
+                    url = server.url,
+                    bearerToken = server.bearerToken,
+                    tokenProvider = container.mcpOAuthManager.tokenProviderFor(server.url)
+                )
+            )
         }
     }
 
@@ -343,7 +394,41 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
 
             _serverStatus.update { it - serverName }
             _serverTools.update { it - serverName }
+            container.mcpAuthFailures.update { it - serverName }
             store.removeServer(serverName)
+        }
+    }
+
+    fun signIn(serverName: String) {
+        viewModelScope.launch {
+            val customServers = store.customServers.first()
+            val serverModel = customServers.find { it.name == serverName } ?: return@launch
+            val mcpServer = dev.kortex.core.mcp.McpServer(
+                name = serverModel.name,
+                url = serverModel.url,
+                bearerToken = serverModel.bearerToken,
+                tokenProvider = container.mcpOAuthManager.tokenProviderFor(serverModel.url)
+            )
+            container.mcpOAuthManager.beginSignIn(mcpServer)
+        }
+    }
+
+    fun signOut(serverName: String) {
+        viewModelScope.launch {
+            val customServers = store.customServers.first()
+            val serverModelUrl = customServers.find { it.name == serverName }?.url
+                ?: mcpServers.find { it.name == serverName }?.url
+                ?: return@launch
+            
+            store.setOauthState(serverModelUrl, null)
+            
+            val prefix = sanitize(serverName) + "_"
+            tools.allIncludingDisabled()
+                .filter { it.name.startsWith(prefix) }
+                .forEach { tools.unregister(it.name) }
+                
+            _serverStatus.update { it + (serverName to ServerStatus.NEEDS_AUTH) }
+            _serverTools.update { it - serverName }
         }
     }
 
@@ -351,9 +436,19 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
 
     private suspend fun connectServer(server: McpServer) {
         _serverStatus.update { it + (server.name to ServerStatus.CONNECTING) }
-        val count = McpToolConnector(tools, AndroidLogger).connect(server)
-        _serverStatus.update {
-            it + (server.name to if (count > 0) ServerStatus.CONNECTED else ServerStatus.ERROR)
+        try {
+            val count = McpToolConnector(tools, AndroidLogger).connect(server)
+            _serverStatus.update {
+                it + (server.name to if (count > 0) ServerStatus.CONNECTED else ServerStatus.ERROR)
+            }
+            if (count > 0) {
+                container.mcpAuthFailures.update { it - server.name }
+            }
+        } catch (e: dev.kortex.core.mcp.McpUnauthorizedException) {
+            _serverStatus.update { it + (server.name to ServerStatus.NEEDS_AUTH) }
+            container.mcpAuthFailures.update { it + server.name }
+        } catch (e: Exception) {
+            _serverStatus.update { it + (server.name to ServerStatus.ERROR) }
         }
         refreshToolEntries()
     }

@@ -191,6 +191,8 @@ fun McpSettingsScreen(
                         ServerCard(
                             server = server,
                             onToggleTool = { name, enabled -> vm.toggleTool(name, enabled) },
+                            onSignIn = { vm.signIn(server.name) },
+                            onSignOut = { vm.signOut(server.name) },
                         )
                     }
                 }
@@ -219,6 +221,8 @@ fun McpSettingsScreen(
                             server = server,
                             onToggleTool = { name, enabled -> vm.toggleTool(name, enabled) },
                             onDelete = { vm.requestDelete(server.name) },
+                            onSignIn = { vm.signIn(server.name) },
+                            onSignOut = { vm.signOut(server.name) },
                         )
                     }
                 }
@@ -350,6 +354,8 @@ private fun ServerCard(
     server: ServerEntry,
     onToggleTool: (String, Boolean) -> Unit,
     onDelete: (() -> Unit)? = null,
+    onSignIn: (() -> Unit)? = null,
+    onSignOut: (() -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -377,6 +383,7 @@ private fun ServerCard(
                                 ServerStatus.CONNECTED -> StatusConnected
                                 ServerStatus.CONNECTING -> StatusConnecting
                                 ServerStatus.ERROR -> StatusError
+                                ServerStatus.NEEDS_AUTH -> Amber
                             },
                             CircleShape,
                         ),
@@ -403,6 +410,26 @@ private fun ServerCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = Muted,
                 )
+
+                if (server.hasOAuthSession) {
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { onSignOut?.invoke() },
+                        modifier = Modifier.height(24.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text("Sign out", fontSize = 12.sp, color = Muted)
+                    }
+                } else if (server.status == ServerStatus.ERROR || server.status == ServerStatus.NEEDS_AUTH) {
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { onSignIn?.invoke() },
+                        modifier = Modifier.height(24.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Text("Sign In", fontSize = 12.sp, color = Amber)
+                    }
+                }
 
                 if (onDelete != null) {
                     Spacer(Modifier.width(4.dp))
@@ -438,17 +465,43 @@ private fun ServerCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (server.tools.isEmpty()) {
-                        val msg = when (server.status) {
-                            ServerStatus.CONNECTING -> "Connecting…"
-                            ServerStatus.ERROR -> "Failed to connect."
-                            ServerStatus.CONNECTED -> "No tools discovered."
+                        if (server.status == ServerStatus.NEEDS_AUTH) {
+                            var pending by remember(server.status) { mutableStateOf(false) }
+                            Text(
+                                if (pending) "Waiting for browser sign-in…" else "Sign in required",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Amber,
+                                modifier = Modifier.padding(vertical = 6.dp),
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            FilledTonalButton(
+                                onClick = { 
+                                    pending = true
+                                    onSignIn?.invoke()
+                                },
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = SynapseDim,
+                                    contentColor = Synapse
+                                )
+                            ) {
+                                Text("Sign in")
+                            }
+                        } else {
+                            val msg = when (server.status) {
+                                ServerStatus.CONNECTING -> "Connecting…"
+                                ServerStatus.ERROR -> "Failed to connect."
+                                ServerStatus.CONNECTED -> "No tools discovered."
+                                else -> "" // fallback, though unused for NEEDS_AUTH now
+                            }
+                            if (msg.isNotEmpty()) {
+                                Text(
+                                    msg,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (server.status == ServerStatus.ERROR) Alarm else Muted,
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                )
+                            }
                         }
-                        Text(
-                            msg,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Muted,
-                            modifier = Modifier.padding(vertical = 6.dp),
-                        )
                     } else {
                         server.tools.forEach { tool ->
                             McpToolRow(
@@ -548,7 +601,7 @@ private fun AddServerDialog(
                 SettingsTextField(
                     value = token,
                     onValueChange = { token = it },
-                    label = "Bearer token (optional)",
+                    label = "API key (optional — OAuth servers can be signed into after adding)",
                     placeholder = "sk-…",
                     isPassword = !showToken,
                     trailingContent = {
@@ -784,6 +837,7 @@ private fun ComposioStatusRow(
                         ServerStatus.CONNECTED -> StatusConnected
                         ServerStatus.CONNECTING -> StatusConnecting
                         ServerStatus.ERROR -> StatusError
+                        ServerStatus.NEEDS_AUTH -> Amber
                     },
                     CircleShape,
                 ),
@@ -799,6 +853,7 @@ private fun ComposioStatusRow(
                     ServerStatus.CONNECTED -> "Connected — $toolCount tool${if (toolCount == 1) "" else "s"} available"
                     ServerStatus.CONNECTING -> "Connecting…"
                     ServerStatus.ERROR -> "Connection failed"
+                    ServerStatus.NEEDS_AUTH -> "Sign in required"
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = Muted,

@@ -23,7 +23,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
-class McpException(message: String) : RuntimeException(message)
+open class McpException(message: String) : RuntimeException(message)
+
+class McpUnauthorizedException(val wwwAuthenticate: String?) : McpException("Unauthorized (401)")
 
 /** One tool advertised by an MCP server: name, description, and its raw JSON-Schema input. */
 data class McpToolDescriptor(
@@ -44,7 +46,7 @@ data class McpToolDescriptor(
  */
 class McpClient(
     private val serverUrl: String,
-    private val bearerToken: String? = null,
+    private val tokenProvider: (suspend (forceRefresh: Boolean) -> String?)? = null,
     private val extraHeaders: Map<String, String> = emptyMap(),
     private val client: HttpClient = defaultMcpHttpClient(),
     private val logger: Logger = Logger.CONSOLE,
@@ -112,6 +114,11 @@ class McpClient(
             mcpHeaders()
             setBody(body)
         }
+        
+        if (response.status.value == 401) {
+            throw McpUnauthorizedException(response.headers[HttpHeaders.WWWAuthenticate])
+        }
+        
         response.headers["Mcp-Session-Id"]?.let { sessionId = it }
 
         val contentType = response.contentType()?.let { "${it.contentType}/${it.contentSubtype}" }
@@ -129,19 +136,22 @@ class McpClient(
     /** Fire-and-forget JSON-RPC notification (no id, no response expected). */
     private suspend fun notify(method: String) {
         runCatching {
-            client.post(serverUrl) {
+            val response = client.post(serverUrl) {
                 mcpHeaders()
                 setBody(buildJsonObject { put("jsonrpc", "2.0"); put("method", method) }.toString())
             }
-        }
+            if (response.status.value == 401) {
+                throw McpUnauthorizedException(response.headers[HttpHeaders.WWWAuthenticate])
+            }
+        }.onFailure { if (it is McpUnauthorizedException) throw it }
     }
 
-    private fun HttpRequestBuilder.mcpHeaders() {
+    private suspend fun HttpRequestBuilder.mcpHeaders() {
         contentType(ContentType.Application.Json)
         header(HttpHeaders.Accept, "application/json, text/event-stream")
         header("MCP-Protocol-Version", protocolVersion)
         sessionId?.let { header("Mcp-Session-Id", it) }
-        bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+        tokenProvider?.invoke(false)?.let { header(HttpHeaders.Authorization, "Bearer $it") }
         extraHeaders.forEach { (k, v) -> header(k, v) }
     }
 

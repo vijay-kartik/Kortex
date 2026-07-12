@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import dev.kortex.core.mcp.PendingAuthorization
 
 private val Context.mcpDataStore: DataStore<Preferences> by preferencesDataStore(name = "mcp_settings")
 
@@ -21,6 +22,15 @@ data class CustomMcpServer(
     val name: String,
     val url: String,
     val bearerToken: String? = null,
+)
+
+@Serializable
+data class McpOAuthState(
+    val clientId: String,
+    val accessToken: String,
+    val refreshToken: String? = null,
+    val expiresAtMillis: Long? = null,
+    val tokenEndpoint: String
 )
 
 /**
@@ -45,6 +55,8 @@ class McpStore(private val context: Context) {
         val KEY_COMPOSIO_USER_ID = stringPreferencesKey("composio_user_id")
         val KEY_OPENAI_API_KEY = stringPreferencesKey("openai_api_key")
         val KEY_GMAIL_ACCOUNT = stringPreferencesKey("gmail_account_email")
+        val KEY_OAUTH_STATES = stringPreferencesKey("mcp_oauth_states")
+        val KEY_PENDING_AUTH = stringPreferencesKey("mcp_pending_auth")
     }
 
     /** User-entered OpenAI key; overrides the build's local.properties key when set. */
@@ -203,6 +215,56 @@ class McpStore(private val context: Context) {
             if (new.isEmpty()) return@edit
             prefs[KEY_DISABLED_TOOLS] = (prefs[KEY_DISABLED_TOOLS] ?: emptySet()) + new
             prefs[KEY_DEFAULT_DISABLED_SEEN] = seen + new
+        }
+    }
+
+    // ── OAuth states ────────────────────────────────────────────────────
+
+    // Plain DataStore now (consistent with existing key storage — Composio/OpenAI keys are
+    // already plain); note that `security-crypto` is already a declared dependency if
+    // hardening is wanted later.
+
+    val oauthStates: Flow<Map<String, McpOAuthState>> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_OAUTH_STATES]
+            ?.let { runCatching { json.decodeFromString<Map<String, McpOAuthState>>(it) }.getOrNull() }
+            ?: emptyMap()
+    }
+
+    suspend fun setOauthState(url: String, state: McpOAuthState?) {
+        context.mcpDataStore.edit { prefs ->
+            val current = prefs[KEY_OAUTH_STATES]
+                ?.let { runCatching { json.decodeFromString<Map<String, McpOAuthState>>(it) }.getOrNull() }
+                ?: emptyMap()
+            
+            val updated = if (state == null) current - url else current + (url to state)
+            if (updated.isEmpty()) {
+                prefs.remove(KEY_OAUTH_STATES)
+            } else {
+                prefs[KEY_OAUTH_STATES] = json.encodeToString(updated)
+            }
+        }
+    }
+
+    /** Consume-once read-and-clear accessor for the in-flight PendingAuthorization. */
+    suspend fun consumePendingAuth(): PendingAuthorization? {
+        var auth: PendingAuthorization? = null
+        context.mcpDataStore.edit { prefs ->
+            val jsonStr = prefs[KEY_PENDING_AUTH]
+            if (jsonStr != null) {
+                auth = runCatching { json.decodeFromString<PendingAuthorization>(jsonStr) }.getOrNull()
+                prefs.remove(KEY_PENDING_AUTH)
+            }
+        }
+        return auth
+    }
+
+    suspend fun setPendingAuth(auth: PendingAuthorization?) {
+        context.mcpDataStore.edit { prefs ->
+            if (auth == null) {
+                prefs.remove(KEY_PENDING_AUTH)
+            } else {
+                prefs[KEY_PENDING_AUTH] = json.encodeToString(auth)
+            }
         }
     }
 }

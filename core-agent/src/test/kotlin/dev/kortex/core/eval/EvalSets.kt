@@ -14,11 +14,13 @@ import dev.kortex.core.state.Message
  * The committed eval sets (T0.3). Fixture responses live in
  * `src/test/resources/eval/<suite>/<caseId>.txt`.
  *
- * Router history (T1.3/T1.5): the 4 F3 known-failure follow-up cases were retired —
+ * Router history (T1.3/T1.5/T4.2): the 4 F3 known-failure follow-up cases were retired —
  * Kortex is a tool-execution agent, not conversational, per the design direction in
- * docs/PROMPT_IMPROVEMENT_PLAN.md §2 — and the dead `plan` route was dropped, so
- * multi-step cases now expect `tool_task`. The router prompt now carries the tool
- * inventory (F6), so requests no registered tool can help with expect `simple_qa`;
+ * docs/PROMPT_IMPROVEMENT_PLAN.md §2. The `plan` route, dropped as a dead label in T1.3,
+ * was restored in T4.2 with a real PlanNode: `plan_*` cases expect it for multi-sub-goal
+ * requests, while the `multi_step_*` single-goal chains stay `tool_task` (boundary
+ * documented in docs/eval-baselines.md). The router prompt carries the tool inventory
+ * (F6), so requests no registered tool can help with expect `simple_qa`;
  * [RouterEvalSuite] runs with the `defaultTools()` registry to match production.
  */
 object EvalSets {
@@ -59,7 +61,23 @@ object EvalSets {
             conversation = listOf(user("What's 234823 multiplied by 98123?")),
             expectedRoute = "tool_task",
         ),
-        // --- multi-step tool work (T1.3: the `plan` route is gone; tool_task covers these) ---
+        // --- plan (T4.2: real PlanNode; multiple distinct sub-goals / cross-topic deps) ---
+        RouterEvalCase(
+            id = "plan_compare_recommend",
+            conversation = listOf(
+                user("Compare the iPhone 17 and the Pixel 11 on price, camera quality, and battery life, then recommend one"),
+            ),
+            expectedRoute = "plan",
+        ),
+        RouterEvalCase(
+            id = "plan_multi_topic",
+            conversation = listOf(
+                user("Find the weather in Tokyo this weekend, and also get the latest USD to JPY exchange rate"),
+            ),
+            expectedRoute = "plan",
+        ),
+        // --- multi-step but single-goal: stays tool_task (T4.2 boundary cases; see
+        // docs/eval-baselines.md for where the tool_task/plan line is drawn) ---
         RouterEvalCase(
             id = "multi_step_trip",
             conversation = listOf(

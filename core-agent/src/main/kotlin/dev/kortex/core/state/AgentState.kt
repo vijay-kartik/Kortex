@@ -49,6 +49,33 @@ data class Budget(
         get() = tokensUsed >= maxTokens || toolCallsMade >= maxToolCalls || steps >= maxSteps
 }
 
+/**
+ * Pattern 6 (Planning): one step of a decomposed request. [result] is the step's outcome
+ * summary — it feeds later steps' scoped contexts and the final synthesis. A FAILED step
+ * never aborts the plan; later steps and the synthesizer see the failure and work around it.
+ */
+@Serializable
+data class PlanStep(
+    val description: String,
+    val status: Status = Status.PENDING,
+    val result: String = "",
+) {
+    enum class Status { PENDING, DONE, FAILED }
+}
+
+/**
+ * Pattern 6 (Planning): the fixed step list PlanNode produced. Immutable like the rest of
+ * the state — ExecuteStepNode copies-on-write as steps complete. Typed (not scratch-JSON)
+ * because the plan is structured, mutated across nodes, and worth tracing/checkpointing
+ * first-class.
+ */
+@Serializable
+data class Plan(val steps: List<PlanStep>) {
+    /** Index of the first PENDING step; null when every step is DONE or FAILED. */
+    val nextPending: Int?
+        get() = steps.indexOfFirst { it.status == PlanStep.Status.PENDING }.takeIf { it >= 0 }
+}
+
 /** Pattern 19: Evaluation & Monitoring — one breadcrumb per node/tool/LLM call. */
 @Serializable
 data class TraceEvent(val node: String, val kind: String, val detail: String, val at: Long)
@@ -62,6 +89,10 @@ data class AgentState(
     val messages: List<Message> = emptyList(),
     val goal: Goal? = null,
     val scratch: Map<String, String> = emptyMap(),
+    /** Pattern 6 (Planning): set by PlanNode when the request was decomposed; null on
+     *  the direct/react paths and when planning degraded. Defaulted so previously
+     *  serialized states still decode. */
+    val plan: Plan? = null,
     val budget: Budget = Budget(),
     val trace: List<TraceEvent> = emptyList(),
     val done: Boolean = false,

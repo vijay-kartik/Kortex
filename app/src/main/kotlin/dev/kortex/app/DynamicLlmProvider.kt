@@ -42,8 +42,14 @@ class DynamicLlmProvider(
             if (ollamaProvider == null || currentOllamaUrl != url || currentOllamaToken != token) {
                 currentOllamaUrl = url
                 currentOllamaToken = token
-                // Ollama natively supports the OpenAI /v1/chat/completions API since early 2024
-                ollamaProvider = OpenAiProvider(apiKey = token, baseUrl = url, logger = AndroidLogger)
+                // Ollama natively supports the OpenAI /v1/chat/completions API since early 2024,
+                // but not the type:"file" PDF extension — see supportsPdfAttachments.
+                ollamaProvider = OpenAiProvider(
+                    apiKey = token,
+                    baseUrl = url,
+                    logger = AndroidLogger,
+                    supportsPdfAttachments = false,
+                )
             }
             return@withContext ollamaProvider!!
         }
@@ -55,15 +61,19 @@ class DynamicLlmProvider(
                     // Ollama Cloud speaks the OpenAI chat-completions dialect at ollama.com/v1
                     // (Bearer auth; images as base64 data URLs — external image URLs and
                     // tool_choice are not supported, which matches what OpenAiProvider sends).
+                    // type:"file" PDFs aren't supported either — see supportsPdfAttachments.
                     ollamaCloudProvider = OpenAiProvider(
                         apiKey = key,
                         baseUrl = OLLAMA_CLOUD_BASE_URL,
                         logger = AndroidLogger,
+                        supportsPdfAttachments = false,
                     )
                 }
                 return@withContext ollamaCloudProvider!!
             }
-            // No key yet — fall through to the default so the chat still answers.
+            // Ollama Cloud is explicitly selected but has no key — fail loudly instead of
+            // silently answering via defaultProvider (which is OpenAI in most dev builds).
+            error("Ollama Cloud is selected but no API key is set. Add one in Settings.")
         }
         defaultProvider
     }

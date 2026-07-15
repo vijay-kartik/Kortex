@@ -47,6 +47,10 @@ class OpenAiProvider(
     private val apiKey: String,
     private val baseUrl: String = "https://api.openai.com/v1",
     private val logger: Logger = Logger.CONSOLE,
+    /** The `type: "file"` content part (base64 PDFs) is an OpenAI-only Chat Completions
+     *  extension — Ollama's OpenAI-compat endpoint rejects it as an invalid message. Set
+     *  false for non-OpenAI-compatible hosts so PDFs fall back to a text placeholder. */
+    private val supportsPdfAttachments: Boolean = true,
 ) : LlmProvider {
 
     private val client: HttpClient = defaultClient()
@@ -145,7 +149,7 @@ class OpenAiProvider(
                                 }
                             })
                         }
-                        attachment.mimeType == "application/pdf" -> {
+                        attachment.mimeType == "application/pdf" && supportsPdfAttachments -> {
                             add(buildJsonObject {
                                 put("type", "file")
                                 putJsonObject("file") {
@@ -153,6 +157,26 @@ class OpenAiProvider(
                                     put("file_data", "data:application/pdf;base64,${attachment.dataBase64}")
                                 }
                             })
+                        }
+                        attachment.mimeType == "application/pdf" -> {
+                            // Host has no PDF content type (e.g. Ollama) — render pages to
+                            // images instead of a text placeholder, so the model actually
+                            // sees the document rather than guessing at a local file path.
+                            val tmp = java.io.File.createTempFile("attach_pdf", ".pdf").apply {
+                                writeBytes(java.util.Base64.getDecoder().decode(attachment.dataBase64))
+                            }
+                            try {
+                                renderPdfPagesAsImages(tmp, attachment.filename ?: "document").forEach { page ->
+                                    add(buildJsonObject {
+                                        put("type", "image_url")
+                                        putJsonObject("image_url") {
+                                            put("url", "data:${page.mimeType};base64,${page.dataBase64}")
+                                        }
+                                    })
+                                }
+                            } finally {
+                                tmp.delete()
+                            }
                         }
                         // Dictated voice notes carry a transcript and no audio bytes; send the
                         // text so any chat model can read it (input_audio needs audio-capable

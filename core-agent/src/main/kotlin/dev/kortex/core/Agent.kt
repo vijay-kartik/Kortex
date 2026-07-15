@@ -4,9 +4,12 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.END
 import dev.kortex.core.graph.agentGraph
 import dev.kortex.core.pattern.DirectAnswerNode
+import dev.kortex.core.pattern.ExecuteStepNode
+import dev.kortex.core.pattern.PlanNode
 import dev.kortex.core.pattern.ReActNode
 import dev.kortex.core.pattern.ReflectNode
 import dev.kortex.core.pattern.RouterNode
+import dev.kortex.core.pattern.SynthesizeNode
 import dev.kortex.core.prompt.SystemPrompt
 import dev.kortex.core.state.AgentState
 import dev.kortex.core.state.Goal
@@ -16,14 +19,22 @@ import java.time.ZonedDateTime
 /**
  * Top-level entry point. Builds the agent graph and runs a query. Patterns compose here:
  *
- *   router ──simple_qa──▶ direct ───────────────▶ END        (cheap, no tools)
- *   router ──else───────▶ react ──▶ reflect ──ok─▶ END        (tool loop + critique)
- *                                      ▲           │
- *                                      └──revise───┘           (Reflection cycle)
+ *   router ──simple_qa──▶ direct ─────────────────────────▶ END   (cheap, no tools)
+ *   router ──tool_task──▶ react ──▶ reflect ──ok──▶ END           (tool loop + critique)
+ *   router ──plan───────▶ plan ──▶ execute ─┐                     (T4.2, pattern 6)
+ *                           │       ▲       │ (steps remain)
+ *                           │       └───────┘
+ *                           │(degraded)     │ (all steps done)
+ *                           └──▶ react      ▼
+ *                                       synthesize ──▶ reflect ──ok──▶ END
+ *                                           ▲              │
+ *                                           └────revise────┘
  *
- * Routing (2) picks the strategy; ReAct (5+17) does tool work; Reflection (4) reviews and
- * loops back until the answer is good or the reflection/budget cap is hit. New patterns
- * (Planner, Supervisor) slot in as more nodes/edges without changing `ask`.
+ * Routing (2) picks the strategy; ReAct (5+17) does tool work; Planning (6) decomposes
+ * multi-goal requests into scoped steps; Reflection (4) reviews and loops back until the
+ * answer is good or the reflection/budget cap is hit. Reflect's revise edge for plan runs
+ * targets synthesize, not execute — re-answering from collected evidence is cheap;
+ * re-running tools is not.
  */
 class Agent(private val ctx: AgentContext) {
 
@@ -32,15 +43,32 @@ class Agent(private val ctx: AgentContext) {
         node("direct", DirectAnswerNode())
         node("react", ReActNode())
         node("reflect", ReflectNode())
+        node("plan", PlanNode())
+        node("execute", ExecuteStepNode())
+        node("synthesize", SynthesizeNode())
         entry("router")
 
         // Routing (pattern 2): branch on the label the router stored in scratch["route"].
         edge("router", "direct") { it.scratch["route"] == "simple_qa" }
-        edge("router", "react")  // tool_task (fallthrough; `plan` route dropped in T1.3)
+        edge("router", "plan") { it.scratch["route"] == "plan" }
+        edge("router", "react")  // tool_task (fallthrough)
         edge("direct", END)
 
-        // Reflection (pattern 4): react -> reflect, loop back on "revise", else finish.
+        // Planning (pattern 6, T4.2): decompose, then execute one step per pass; when no
+        // plan was set (parse failure / too few steps) fall through to plain react — a
+        // broken planner must never make the agent worse than the react path.
+        edge("plan", "execute") { it.plan != null }
+        edge("plan", "react")  // degradation fallthrough
+        edge("execute", "execute") { it.plan?.nextPending != null }
+        edge("execute", "synthesize")  // all steps done/failed
+        edge("synthesize", "reflect")
+
+        // Reflection (pattern 4): loop back on "revise" — to synthesize when a plan exists
+        // (edge order matters: this must precede the react revise edge), else to react.
         edge("react", "reflect")
+        edge("reflect", "synthesize") {
+            it.scratch[ReflectNode.VERDICT] == ReflectNode.REVISE && it.plan != null
+        }
         edge("reflect", "react") { it.scratch[ReflectNode.VERDICT] == ReflectNode.REVISE }
         edge("reflect", END)
     }

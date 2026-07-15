@@ -18,12 +18,13 @@ import dev.kortex.core.state.Message
  *
  * The classification prompt includes a compact rendering of the live tool registry
  * (T1.5, finding F6) so requests no registered tool can help with stay on `simple_qa`.
- * The dead `plan` label was dropped in T1.3; `tool_task` covers multi-step tool work.
+ * `plan` (restored in T4.2, backed by a real PlanNode — pattern 6) is for requests with
+ * multiple distinct sub-goals; single-goal chained tool work stays `tool_task`.
  *
  * Pairs with pattern 16: classification runs on the FAST model to save budget.
  */
 class RouterNode(
-    private val routes: List<String> = listOf("simple_qa", "tool_task"),
+    private val routes: List<String> = listOf("simple_qa", "tool_task", "plan"),
     private val model: String = Models.FAST,
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {

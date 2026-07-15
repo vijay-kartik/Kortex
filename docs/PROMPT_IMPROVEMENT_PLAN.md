@@ -51,7 +51,7 @@ The plan therefore invests early in a tiny amount of infrastructure (Phase 0) th
 | 0 | Prompt infrastructure + evals | ✅ **Done (2026-07-09)** — prompts centralized, tool inventory injectable, eval harness exists | ~3 tasks |
 | 1 | Quick wins (high value, low risk) | ✅ **Done (2026-07-10)** — enriched system prompt, conditional reflection, router cleanup + tool awareness | ~4 tasks |
 | 2 | Grounded reflection & rubrics | ✅ **Done (2026-07-15)** — reflect sees tool results, explicit rubric | ~2 tasks |
-| 3 | Ambient pipeline hardening | Few-shots for triage/memory, split card generation | ~3 tasks |
+| 3 | Ambient pipeline hardening | ⏸ **Deferred (2026-07-15)** — not required for now per Kartik; revisit when ambient pipeline becomes a priority | ~3 tasks |
 | 4 | Longer-term architecture | Real PlanNode (or drop route), safety policy layer, prompt versioning/telemetry | ~4 tasks |
 
 Phases 1–3 can largely run in parallel once Phase 0 lands. Within each phase, tasks marked ∥ are independent of each other.
@@ -146,7 +146,7 @@ Out of scope per the design direction: the reviewer judges a single run's answer
 
 ---
 
-## Phase 3 — Ambient pipeline hardening
+## Phase 3 — Ambient pipeline hardening ⏸ DEFERRED (2026-07-15, per Kartik — Wave 4 skipped)
 
 ### T3.1 — Few-shot examples for AmbientTriage (F11)
 Add 3–4 compact labeled examples pinning the STORE_MEMORY/GENERATE_CARD boundary (e.g. "Flight lands at 6, can you pick me up?" → GENERATE_CARD; "I got the new job!" with no ask → STORE_MEMORY; "👍" → IGNORE).
@@ -170,9 +170,11 @@ Add 2 positive examples (good durable memory entries) and 2 negative ("do not st
 Add a concise policy block to the system prompt: decline clearly harmful requests; treat contact/message content as private — never include one contact's private information in messages drafted to another without the user asking; sensitive actions rely on the existing tool-approval flow (`Approver`). Coordinate with `ToolGovernor`/`CardGuardrails` so policy lives in *one* place per concern (prompt = model behavior; governor = enforcement).
 - *Depends on:* T1.1.
 
-### T4.2 — Real PlanNode (re-introduce the `plan` route)
+### T4.2 — Real PlanNode (re-introduce the `plan` route) ✅ DONE (2026-07-15)
 Design and implement a PlanNode (decompose → execute steps via ReAct → synthesize), then re-add `plan` to the router with clear criteria ("multiple distinct sub-goals or dependencies between steps"). Directly serves the multi-step-expertise goal; this is its own mini-project — write a short design doc first.
 - *Depends on:* T1.3 (route removed until this lands).
+- *Design:* `docs/PLANNODE_DESIGN.md` — plan → execute (self-loop, scoped per-step context) → synthesize → existing reflect; typed `Plan` in AgentState; degradation to plain react on planner failure; revise loops back to synthesize (cheap) not execute.
+- *Landed:* `PlanNode`/`ExecuteStepNode`/`SynthesizeNode` + `PlanPrompt`/`SynthesizePrompt`; typed `Plan`/`PlanStep` on AgentState; `plan` route restored with a conditional prompt bullet; edges wired per design §5. 16 new unit tests + 2 graph-level tests (end-to-end plan route, degradation); router eval 15/15 with the tool_task/plan boundary documented in eval-baselines.md. Known v1 gap (accepted in design §4): plan-path tool calls emit no react-trace events, so ReflectPolicy may skip review of short synthesized answers — grounding the plan-path reviewer is the noted follow-up.
 
 ### T4.3 — Prompt versioning + telemetry
 Tag each prompt builder with a version constant; include it in the `trace(...)` calls / `onLlmUsage` path so logs attribute outcomes (route distribution, reflect skip/REVISE rates, JSON parse failures) to prompt versions. This turns future prompt work into a measurable loop.
@@ -189,8 +191,8 @@ With the rubric (T2.2) and grounding (T2.1) in place, evaluate running reflectio
 - **Wave 1 (sequential, 1 agent):** T0.1 → then T0.2 and T0.3 in parallel (2 agents). ✅ Done.
 - **Wave 2 (3 agents in parallel):** T1.1+T4.1 · T1.3+T1.5 (one agent — same RouterNode files) · T1.4. ✅ Done.
 - **Wave 3 (1 agent):** T2.1+T2.2 (same file). ✅ Done.
-- **Wave 4 (3 agents in parallel):** T3.1 · T3.2 · T3.3.
-- **Wave 5:** T4.2, T4.3, T4.4 as capacity allows.
+- **Wave 4 (3 agents in parallel):** T3.1 · T3.2 · T3.3. ⏸ Skipped with Phase 3.
+- **Wave 5:** T4.2 first (per Kartik), then T4.3, T4.4 as capacity allows.
 
 Merge-conflict note: RouterNode tasks (T1.3, T1.5) and ReflectNode tasks (T1.4, T2.x) each touch the same files — batch them per agent or serialize.
 

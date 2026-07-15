@@ -47,7 +47,7 @@ regression detection on the prompt + parse pipeline.
 
 | Suite  | Cases | Known failures | Recorded baseline (scored) | Live baseline |
 |--------|-------|----------------|----------------------------|---------------|
-| router | 13    | 0              | 13/13 (1.00)               | TBD — no live run yet |
+| router | 15    | 0              | 15/15 (1.00)               | TBD — no live run yet |
 | triage | 10    | 0              | 10/10 (1.00)               | TBD — no live run yet |
 | memory | 5     | 0              | 5/5 (1.00)                 | TBD — no live run yet |
 
@@ -75,3 +75,31 @@ not a conversational one, so interpreting conversational follow-ups is out of sc
   `simple_qa_no_messaging_tool` (formerly `tool_task_send_message` — the eval registry has no
   messaging tool, so a tool-aware router must not pick `tool_task`), and
   `tool_task_chained_currency` (web_search + calculator chained in one run → `tool_task`).
+
+### Router suite changes in T4.2 (`plan` route restored)
+
+**T4.2** re-introduced `plan`, now backed by a real PlanNode (`docs/PLANNODE_DESIGN.md`).
+New cases with `plan` fixtures:
+
+- `plan_compare_recommend` — "Compare the iPhone 17 and the Pixel 11 on price, camera
+  quality, and battery life, then recommend one": two named entities, each needing its own
+  research thread, plus a dependent recommendation step.
+- `plan_multi_topic` — "Find the weather in Tokyo this weekend, and also get the latest
+  USD to JPY exchange rate": two unrelated sub-goals in one request.
+
+**Boundary choice (deliberate, not a silent flip):** the `multi_step_*` cases stay
+`tool_task`. The line we draw is *distinct research threads named upfront* vs *one research
+chain*:
+
+- `multi_step_trip` ("plan a 3-day trip to Jaipur…") is a single goal — one trip — whose
+  sub-parts (budget, itinerary) all fall out of the same chained research; the word "plan"
+  in the request does not make it a `plan` route.
+- `multi_step_research_compare` ("research the top 5 mid-range phones this year, compare…,
+  recommend one") looks like `plan_compare_recommend`, but the entities are **not named
+  upfront** — a discovery search must produce the candidate list first, so the whole task is
+  one research chain (find list → read comparisons → recommend). By contrast,
+  `plan_compare_recommend` names both products, so each is an independently executable
+  sub-goal the planner can decompose. This is the closest boundary pair in the suite; if a
+  live run shows the FAST model can't hold this line, prefer moving
+  `multi_step_research_compare` to `plan` (over-planning a research chain degrades gracefully
+  via per-step ReAct loops; under-planning a decomposable request loses the benefit).

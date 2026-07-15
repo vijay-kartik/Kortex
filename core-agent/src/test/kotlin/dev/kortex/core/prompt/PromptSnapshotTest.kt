@@ -162,21 +162,42 @@ class PromptSnapshotTest {
 
     // --- ReflectPrompt ---
 
+    // Deliberate snapshot update for T2.1 (reviewer sees tool RESULTS paired with each
+    // call, so it can verify the answer's claims — F7) and T2.2 (explicit pass/fail
+    // rubric a/b/c; style/tone/length/formatting are not revision-worthy; a REVISE must
+    // name the failed criterion — F9). The grounding preamble (live tools / training
+    // cutoff) is kept; the reply stays "OK" / "REVISE: <feedback>". The prompt is now
+    // built with joinToString, so the legacy 12-space trimIndent quirk is gone.
+
+    /** The T2.1/T2.2 instruction block, shared by the reflect snapshots below. */
+    private val reflectHeader = listOf(
+        "You are a reviewer verifying the assistant's final answer before it reaches the user.",
+        "The assistant has real, live tools (web search, opening URLs, the device clock);",
+        "facts in its answer may come from the tool results below, which are current and",
+        "trustworthy even when they postdate your training data. Never reject an answer",
+        "because its dates are later than what you know, and never claim the assistant",
+        "cannot search the web or access real-time information — it can.",
+        "",
+        "Check the answer's claims against the tool results below. The answer passes only if:",
+        "(a) it is factually consistent with the tool results shown,",
+        "(b) it actually answers what was asked,",
+        "(c) nothing the user explicitly requested is missing.",
+        "Do NOT request revision for style, tone, length, or formatting — concise answers",
+        "are preferred and must not be penalized.",
+        "- If every criterion passes, reply with exactly: OK",
+        "- Otherwise reply: REVISE: (<failed criterion a/b/c>) <specific, actionable feedback>",
+        "",
+    )
+
     @Test
-    fun `reflect prompt matches the legacy ReflectNode prompt with no tool calls`() {
-        val built = ReflectPrompt.build(toolsUsed = "", request = "Who is the richest person?", answer = "Elon Musk.")
-        built shouldBe listOf(
-            "You are a strict reviewer. Decide whether the assistant's answer fully and",
-            "correctly addresses the user's request.",
-            "The assistant has real, live tools (web search, opening URLs, the device clock);",
-            "facts in its answer may come from those tool results, which are current and",
-            "trustworthy even when they postdate your training data. Never reject an answer",
-            "because its dates are later than what you know, and never claim the assistant",
-            "cannot search the web or access real-time information — it can.",
-            "- If the answer is good, reply with exactly: OK",
-            "- Otherwise reply: REVISE: <specific, actionable feedback>",
-            "",
-            "Tool calls the assistant already made during this run:",
+    fun `reflect prompt with no tool calls shows (none)`() {
+        val built = ReflectPrompt.build(
+            toolExchanges = emptyList(),
+            request = "Who is the richest person?",
+            answer = "Elon Musk.",
+        )
+        built shouldBe (reflectHeader + listOf(
+            "Tool calls and results from this run:",
             "(none)",
             "",
             "User request:",
@@ -184,37 +205,69 @@ class PromptSnapshotTest {
             "",
             "Assistant answer:",
             "Elon Musk.",
-        ).joinToString("\n")
+        )).joinToString("\n")
     }
 
+    // T2.1: each tool call is paired with its result content so the reviewer can verify
+    // the answer against what the tools actually returned.
     @Test
-    fun `reflect prompt keeps the legacy 12-space indent when the tool list is multi-line`() {
+    fun `reflect prompt pairs each tool call with its result`() {
         val built = ReflectPrompt.build(
-            toolsUsed = "- web_search({\"query\":\"x\"})\n- open_url({\"url\":\"y\"})",
+            toolExchanges = listOf(
+                ToolExchange("web_search", "{\"query\":\"richest person\"}", "Forbes: Elon Musk tops the list."),
+                ToolExchange("open_url", "{\"url\":\"y\"}", "Elon Musk is the richest person, worth ~\$400B."),
+            ),
             request = "Who is the richest person?",
             answer = "Elon Musk.",
         )
-        built shouldBe listOf(
-            p + "You are a strict reviewer. Decide whether the assistant's answer fully and",
-            p + "correctly addresses the user's request.",
-            p + "The assistant has real, live tools (web search, opening URLs, the device clock);",
-            p + "facts in its answer may come from those tool results, which are current and",
-            p + "trustworthy even when they postdate your training data. Never reject an answer",
-            p + "because its dates are later than what you know, and never claim the assistant",
-            p + "cannot search the web or access real-time information — it can.",
-            p + "- If the answer is good, reply with exactly: OK",
-            p + "- Otherwise reply: REVISE: <specific, actionable feedback>",
-            "",
-            p + "Tool calls the assistant already made during this run:",
-            p + "- web_search({\"query\":\"x\"})",
+        built shouldBe (reflectHeader + listOf(
+            "Tool calls and results from this run:",
+            "- web_search({\"query\":\"richest person\"})",
+            "  Result: Forbes: Elon Musk tops the list.",
             "- open_url({\"url\":\"y\"})",
+            "  Result: Elon Musk is the richest person, worth ~\$400B.",
             "",
-            p + "User request:",
-            p + "Who is the richest person?",
+            "User request:",
+            "Who is the richest person?",
             "",
-            p + "Assistant answer:",
-            p + "Elon Musk.",
-        ).joinToString("\n")
+            "Assistant answer:",
+            "Elon Musk.",
+        )).joinToString("\n")
+    }
+
+    // T2.1: a long tool result is truncated to ~500 chars at a word boundary with an
+    // ellipsis; the rest of the prompt is unaffected.
+    @Test
+    fun `reflect prompt truncates a long tool result at a word boundary`() {
+        val longResult = ("word ").repeat(200).trim() // 999 chars of "word word …"
+        val built = ReflectPrompt.build(
+            toolExchanges = listOf(ToolExchange("open_url", "{}", longResult)),
+            request = "R",
+            answer = "A",
+        )
+        val resultLine = built.lines().first { it.startsWith("  Result: ") }
+        val rendered = resultLine.removePrefix("  Result: ")
+        rendered.length shouldBe 500 // 499 chars kept at the word boundary + "…"
+        rendered shouldBe ("word ").repeat(99).trim() + " word…"
+    }
+
+    // T2.1: the whole tool section is capped at ~3,000 chars, dropping the OLDEST
+    // exchanges first — the newest results usually ground the final answer.
+    @Test
+    fun `reflect prompt total cap keeps the newest tool results`() {
+        val exchanges = (1..10).map { i ->
+            ToolExchange("tool_$i", "{}", "result-$i " + "x".repeat(480))
+        }
+        val built = ReflectPrompt.build(exchanges, request = "R", answer = "A")
+        built.contains("tool_10({})") shouldBe true
+        built.contains("result-10") shouldBe true
+        built.contains("tool_1({})") shouldBe false
+        built.contains("older tool call(s) omitted") shouldBe true
+        // The rendered section itself respects the cap.
+        val section = built
+            .substringAfter("Tool calls and results from this run:\n")
+            .substringBefore("\n\nUser request:")
+        check(section.length <= 3_000) { "tool section is ${section.length} chars; cap is 3000" }
     }
 
     // --- TriagePrompt ---

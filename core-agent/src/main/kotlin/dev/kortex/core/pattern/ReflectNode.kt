@@ -72,9 +72,10 @@ class ReflectNode(
         // the request's attachments it rejects correct vision answers as "the assistant
         // cannot view images" — so the attachments ride along on the review request itself.
         val system = state.messages.firstOrNull { it.role == Message.Role.SYSTEM }?.content
-        val toolsUsed = state.messages
-            .flatMap { it.toolCalls }
-            .joinToString("\n") { "- ${it.name}(${it.argumentsJson})" }
+        // T2.1: pair each tool call with its recorded result so the reviewer can verify
+        // the answer's claims against what the tools actually returned (truncation and
+        // total-cap live in ReflectPrompt).
+        val toolExchanges = ReflectPrompt.pair(state.messages)
         val attachmentNote = if (attachments.isEmpty()) "" else """
 
             The user's request included ${attachments.size} attachment(s), included below
@@ -83,7 +84,7 @@ class ReflectNode(
             their contents. Judge the answer against the attachments themselves.
         """.trimIndent().let { "\n$it" }
 
-        val prompt = ReflectPrompt.build(toolsUsed, request, answer, attachmentNote)
+        val prompt = ReflectPrompt.build(toolExchanges, request, answer, attachmentNote)
 
         val resp = ctx.complete(
             LlmRequest(

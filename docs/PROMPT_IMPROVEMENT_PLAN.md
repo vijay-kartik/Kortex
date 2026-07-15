@@ -50,7 +50,7 @@ The plan therefore invests early in a tiny amount of infrastructure (Phase 0) th
 |-------|-------|---------|--------|
 | 0 | Prompt infrastructure + evals | ✅ **Done (2026-07-09)** — prompts centralized, tool inventory injectable, eval harness exists | ~3 tasks |
 | 1 | Quick wins (high value, low risk) | ✅ **Done (2026-07-10)** — enriched system prompt, conditional reflection, router cleanup + tool awareness | ~4 tasks |
-| 2 | Grounded reflection & rubrics | Reflect sees tool results, explicit rubric | ~2 tasks |
+| 2 | Grounded reflection & rubrics | ✅ **Done (2026-07-15)** — reflect sees tool results, explicit rubric | ~2 tasks |
 | 3 | Ambient pipeline hardening | Few-shots for triage/memory, split card generation | ~3 tasks |
 | 4 | Longer-term architecture | Real PlanNode (or drop route), safety policy layer, prompt versioning/telemetry | ~4 tasks |
 
@@ -128,16 +128,18 @@ Add a one-line-per-tool list (names only, or name + 5-word description) to the r
 
 ## Phase 2 — Grounded, rubric-based reflection
 
-### T2.1 — Reflect sees tool results, not just names (F7)
+### T2.1 — Reflect sees tool results, not just names (F7) ✅ DONE (2026-07-15)
 Include TOOL-role message contents in the reflect prompt, truncated (e.g. 500 chars per result, newest-first, total cap ~3k chars) to bound cost. Rephrase the task as verification: "Check the answer's claims against these tool results."
 - *Acceptance:* fixture test where the answer contradicts a tool result → REVISE; where it matches → OK.
 - *Files:* `ReflectNode.kt` / `ReflectPrompt.kt`.
 - *Depends on:* T0.1, best after T1.4 (so added tokens only hit non-trivial runs). ∥ with T2.2.
+- *Landed:* `ReflectPrompt.build` now takes typed `ToolExchange` pairs (tool call matched to its TOOL-message result by toolCallId; unmatched → "(no result recorded)"). Per-result 500-char word-boundary truncation; 3,000-char total cap dropping oldest first with an "(N older tool call(s) omitted)" note. Helpers unit-tested in `ReflectPromptTest`; `ReflectNodeTest` covers contradicting-answer → REVISE and consistent-answer → OK with canned reviewers.
 
-### T2.2 — Explicit review rubric (F9)
+### T2.2 — Explicit review rubric (F9) ✅ DONE (2026-07-15)
 Replace "fully and correctly" with pass/fail criteria: (a) factually consistent with tool results, (b) actually answers what was asked, (c) no critical omission the user explicitly requested. Add: "Do NOT request revision for style, tone, length, or formatting." Require the REVISE reason to cite which criterion failed.
 - *Acceptance:* recorded eval: a correct-but-terse answer gets OK; a factually wrong one gets REVISE.
 - *Depends on:* T0.1. ∥ with T2.1.
+- *Landed:* reviewer reframed as verification against the tool results with explicit criteria (a) factually consistent, (b) answers what was asked, (c) nothing explicitly requested missing; REVISE feedback must name the failed criterion; "do NOT revise for style, tone, length, or formatting — concise answers are preferred". Reply format unchanged (OK / REVISE: …), instruction block grew ~7 lines. Grounding preamble kept.
 
 ### ~~T2.3 — Conversation-aware review (F10)~~ ❌ REMOVED (2026-07-09)
 Out of scope per the design direction: the reviewer judges a single run's answer against the request and tool results (T2.1/T2.2), not conversational continuity.
@@ -186,7 +188,7 @@ With the rubric (T2.2) and grounding (T2.1) in place, evaluate running reflectio
 
 - **Wave 1 (sequential, 1 agent):** T0.1 → then T0.2 and T0.3 in parallel (2 agents). ✅ Done.
 - **Wave 2 (3 agents in parallel):** T1.1+T4.1 · T1.3+T1.5 (one agent — same RouterNode files) · T1.4. ✅ Done.
-- **Wave 3 (1 agent):** T2.1+T2.2 (same file).
+- **Wave 3 (1 agent):** T2.1+T2.2 (same file). ✅ Done.
 - **Wave 4 (3 agents in parallel):** T3.1 · T3.2 · T3.3.
 - **Wave 5:** T4.2, T4.3, T4.4 as capacity allows.
 

@@ -1,0 +1,1 @@
+REVISE: (c) The user explicitly asked for battery life as well, but the answer only covers the price. The tool results show a 5,000 mAh battery rated at 31 hours.

@@ -176,13 +176,14 @@ Design and implement a PlanNode (decompose → execute steps via ReAct → synth
 - *Design:* `docs/PLANNODE_DESIGN.md` — plan → execute (self-loop, scoped per-step context) → synthesize → existing reflect; typed `Plan` in AgentState; degradation to plain react on planner failure; revise loops back to synthesize (cheap) not execute.
 - *Landed:* `PlanNode`/`ExecuteStepNode`/`SynthesizeNode` + `PlanPrompt`/`SynthesizePrompt`; typed `Plan`/`PlanStep` on AgentState; `plan` route restored with a conditional prompt bullet; edges wired per design §5. 16 new unit tests + 2 graph-level tests (end-to-end plan route, degradation); router eval 15/15 with the tool_task/plan boundary documented in eval-baselines.md. Known v1 gap (accepted in design §4): plan-path tool calls emit no react-trace events, so ReflectPolicy may skip review of short synthesized answers — grounding the plan-path reviewer is the noted follow-up.
 
-### T4.3 — Prompt versioning + telemetry
+### T4.3 — Prompt versioning + telemetry ⏸ DEFERRED (2026-07-16, per Kartik)
 Tag each prompt builder with a version constant; include it in the `trace(...)` calls / `onLlmUsage` path so logs attribute outcomes (route distribution, reflect skip/REVISE rates, JSON parse failures) to prompt versions. This turns future prompt work into a measurable loop.
 - *Depends on:* T0.1.
 
-### T4.4 — Reflect-model right-sizing
+### T4.4 — Reflect-model right-sizing ✅ DONE (2026-07-16) — default kept at REASONING pending live data
 With the rubric (T2.2) and grounding (T2.1) in place, evaluate running reflection on `Models.FAST` instead of REASONING. Decide with eval data, not intuition.
 - *Depends on:* T2.1, T2.2, T0.3.
+- *Landed:* `ReflectEvalSuite` (10 cases spanning rubric criteria a/b/c, the anti-style rule, the post-training-date trap, truncation, unmatched calls, honest failure; all constructed so ReflectPolicy can't fast-path them). Recorded baseline 10/10. A live-only FAST-vs-REASONING comparison test prints accuracy/false-REVISE/missed-REVISE per model. **Decision: default stays `Models.REASONING`** — no API key was available for a live run, and the plan's rule requires data. Flip criteria (FAST matches REASONING on missed-REVISE, within 1 case on accuracy) + the run command are in `docs/eval-baselines.md` §T4.4 and ReflectNode's KDoc.
 
 ---
 

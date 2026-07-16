@@ -45,11 +45,12 @@ Scored cases exclude known failures. Recorded fixtures are hand-written plausibl
 until the first live re-recording, so the recorded baseline is by construction 100%; its job is
 regression detection on the prompt + parse pipeline.
 
-| Suite  | Cases | Known failures | Recorded baseline (scored) | Live baseline |
-|--------|-------|----------------|----------------------------|---------------|
-| router | 15    | 0              | 15/15 (1.00)               | TBD — no live run yet |
-| triage | 10    | 0              | 10/10 (1.00)               | TBD — no live run yet |
-| memory | 5     | 0              | 5/5 (1.00)                 | TBD — no live run yet |
+| Suite   | Cases | Known failures | Recorded baseline (scored) | Live baseline |
+|---------|-------|----------------|----------------------------|---------------|
+| router  | 15    | 0              | 15/15 (1.00)               | TBD — no live run yet |
+| triage  | 10    | 0              | 10/10 (1.00)               | TBD — no live run yet |
+| memory  | 5     | 0              | 5/5 (1.00)                 | TBD — no live run yet |
+| reflect | 10    | 0              | 10/10 (1.00)               | TBD — no live run yet (see §T4.4) |
 
 Baseline constants asserted in tests: `PromptEvalTest` (`ROUTER_BASELINE` etc.). Keep this table
 in sync when adding cases or re-recording.
@@ -103,3 +104,56 @@ chain*:
   live run shows the FAST model can't hold this line, prefer moving
   `multi_step_research_compare` to `plan` (over-planning a research chain degrades gracefully
   via per-step ReAct loops; under-planning a decomposable request loses the benefit).
+
+## T4.4 — Reflect-model right-sizing (reflect suite + FAST/REASONING comparison)
+
+**T4.4** added a `reflect` eval suite that runs the REAL `ReflectNode` (real `ReflectPrompt`
+with T2.1 tool-result grounding and the T2.2 rubric, real OK/REVISE parsing) over 10 cases with
+hand-written run fixtures (request + final answer + tool exchanges). The 10 cases span the
+rubric:
+
+- **(a) factual consistency:** `revise_contradicts_tools`, `revise_fabricated_number`
+- **(b) answers what was asked:** `revise_wrong_question`
+- **(c) explicitly requested item missing:** `revise_missing_requested_item`
+- **anti-style-revision rule:** `ok_correct_terse` (correct but terse → OK)
+- **multi-tool synthesis:** `ok_synthesized_conversion` (search + calculator combined → OK)
+- **per-result truncation:** `ok_truncated_multi_results` (>500-char results; claims appear
+  before the cut → OK)
+- **grounding preamble:** `ok_postdates_training` (tool results dated after any plausible
+  training cutoff must not be rejected → OK)
+- **unmatched tool call:** `ok_unmatched_tool_call` (one call renders "(no result recorded)";
+  answer grounded in the other result → OK)
+- **honest empty-handed answer:** `ok_honest_failure` (tools found nothing; answer says so
+  plainly and matches them → OK)
+
+Every case has ≥2 tool calls (or a hedging answer), so `ReflectPolicy` never fast-paths it;
+the suite fails any case whose review got policy-skipped instead of reaching the reviewer LLM.
+Case ids are stable so LIVE runs compare models on identical inputs.
+
+### Model comparison (LIVE only)
+
+`ReflectEvalSuite` takes the reviewer model as a constructor param. The live-only test
+`reflect model comparison FAST vs REASONING (live only)` in `PromptEvalTest` runs the same 10
+cases twice — reviewer on `Models.FAST` (`gpt-4o-mini` / `deepseek-v4-flash`) and on
+`Models.REASONING` (`gpt-4o` / `deepseek-v4-pro`) — and prints per-model accuracy plus the two
+costly failure modes: **false-REVISE** (expected OK, got REVISE — wastes a full ReAct revision
+loop) and **missed-REVISE** (expected REVISE, got OK — a wrong answer reaches the user).
+
+```powershell
+$env:KORTEX_EVAL_LIVE = "1"
+$env:OPENAI_API_KEY = "sk-..."   # or $env:DEEPSEEK_API_KEY = "..."
+.\gradlew.bat :core-agent:testDebugUnitTest --tests "dev.kortex.core.eval.PromptEvalTest"
+```
+
+### Decision (2026-07-16): default stays `Models.REASONING` — live data pending
+
+Decision rule (flip `ReflectNode`'s default to `Models.FAST` only if BOTH hold on a live run):
+
+1. FAST **matches** REASONING on missed-REVISE — the dangerous failure mode; and
+2. FAST is **within 1 case** of REASONING on overall accuracy (10 cases).
+
+No API key was available when T4.4 landed, so no live run has happened yet and the default is
+**unchanged** (`Models.REASONING`). Blocker: live data pending — run the command above and
+record the score table here, then flip the default (and this section) only if the rule passes.
+The RECORDED reflect baseline (10/10) asserts the harness plumbing and parsing and is
+model-independent; it stays green in CI either way.

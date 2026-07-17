@@ -3,8 +3,13 @@ package dev.kortex.core.eval
 import dev.kortex.core.ambient.AmbientTriage
 import dev.kortex.core.ambient.LlmMemoryWriter
 import dev.kortex.core.graph.AgentContext
+import dev.kortex.core.llm.Models
+import dev.kortex.core.pattern.ReflectNode
 import dev.kortex.core.pattern.RouterNode
 import dev.kortex.core.state.AgentState
+import dev.kortex.core.state.Message
+import dev.kortex.core.state.ToolCall
+import dev.kortex.core.state.TraceEvent
 import dev.kortex.core.tool.builtin.defaultTools
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
@@ -110,5 +115,92 @@ class MemoryEvalSuite(private val cases: List<MemoryEvalCase>) {
 
     companion object {
         const val NAME = "memory"
+    }
+}
+
+/**
+ * Runs [ReflectEvalCase]s through the REAL [ReflectNode] (real ReflectPrompt with
+ * tool-result grounding and the T2.2 rubric, real OK/REVISE parsing) — T4.4.
+ *
+ * The reviewer [model] is a constructor param so LIVE mode can run the same cases twice
+ * — once on [Models.FAST] and once on [Models.REASONING] — and compare per-model scores
+ * on identical inputs (see PromptEvalTest's live-only comparison test). In RECORDED mode
+ * the model id is irrelevant: fixtures assert the harness plumbing and the parsing,
+ * not model choice.
+ */
+class ReflectEvalSuite(
+    private val cases: List<ReflectEvalCase>,
+    private val model: String = Models.REASONING,
+) {
+    /**
+     * [report] plus the two costly failure modes over scored cases:
+     * [falseRevise] — expected OK but got REVISE (wastes a full ReAct revision loop);
+     * [missedRevise] — expected REVISE but got OK (a wrong answer reaches the user).
+     */
+    data class Scores(
+        val model: String,
+        val report: EvalReport,
+        val falseRevise: Int,
+        val missedRevise: Int,
+    )
+
+    suspend fun run(completer: EvalCompleter): Scores {
+        var falseRevise = 0
+        var missedRevise = 0
+        val results = cases.map { case ->
+            val ctx = AgentContext(
+                llm = EvalLlmProvider(completer, NAME, case.id),
+                tools = ToolRegistry(),
+                governor = ToolGovernor(),
+            )
+            val out = ReflectNode(model = model).run(ctx, stateFor(case))
+            // The fast paths ("skipped"/"stop") mean the reviewer LLM was never consulted;
+            // a case that hits them is malformed (too trivial) and must fail loudly rather
+            // than pass as a fake OK.
+            val reviewed = out.trace.lastOrNull { it.node == "reflect" }?.detail in REVIEWED_DETAILS
+            val actual = out.scratch[ReflectNode.VERDICT]
+            val passed = reviewed && actual == case.expectedVerdict
+            if (reviewed && !case.knownFailure && actual != case.expectedVerdict) {
+                if (actual == ReflectNode.REVISE) falseRevise++ else missedRevise++
+            }
+            CaseResult(
+                id = case.id,
+                passed = passed,
+                knownFailure = case.knownFailure,
+                detail = "expected=${case.expectedVerdict} actual=$actual" +
+                    if (reviewed) "" else " (review was policy-skipped — make the case non-trivial)",
+            )
+        }
+        return Scores(model, EvalReport(NAME, results), falseRevise, missedRevise)
+    }
+
+    /**
+     * Rebuilds the end-of-run [AgentState] ReflectNode sees: SYSTEM grounding, the user
+     * request, one ASSISTANT(toolCalls)+TOOL pair per step (TOOL omitted when the step's
+     * result is null, exercising the "(no result recorded)" path), the final answer, and
+     * the react trace events ReflectPolicy reads.
+     */
+    private fun stateFor(case: ReflectEvalCase): AgentState {
+        val messages = buildList {
+            add(Message(Message.Role.SYSTEM, "You are Kortex, an on-device assistant with live tools."))
+            add(Message(Message.Role.USER, case.request))
+            case.tools.forEachIndexed { i, step ->
+                add(
+                    Message(
+                        Message.Role.ASSISTANT, "",
+                        toolCalls = listOf(ToolCall("c$i", step.name, step.argumentsJson)),
+                    )
+                )
+                step.result?.let { add(Message(Message.Role.TOOL, it, toolCallId = "c$i")) }
+            }
+            add(Message(Message.Role.ASSISTANT, case.answer))
+        }
+        val trace = case.tools.map { TraceEvent("react", "tool", "${it.name}->true", 0L) }
+        return AgentState(messages = messages, trace = trace)
+    }
+
+    companion object {
+        const val NAME = "reflect"
+        private val REVIEWED_DETAILS = setOf("ok", "revise")
     }
 }

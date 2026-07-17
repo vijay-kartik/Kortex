@@ -45,3 +45,33 @@ data class MemoryEvalCase(
     val expectedCount: Int,
     val knownFailure: Boolean = false,
 )
+
+/**
+ * One tool call the assistant made during a reflect case's run. [result] is the content
+ * of the matching TOOL message; null means the result was never recorded, so the reviewer
+ * sees ReflectPrompt's "(no result recorded)" placeholder.
+ */
+data class ReflectToolStep(
+    val name: String,
+    val argumentsJson: String,
+    val result: String?,
+)
+
+/**
+ * Reflect-reviewer case (T4.4): given a finished run — user [request], the [tools]
+ * exchanges, and the final [answer] — the real ReflectNode's verdict should be
+ * [expectedVerdict] (`ReflectNode.OK` or `ReflectNode.REVISE`).
+ *
+ * Cases must be non-trivial enough that ReflectPolicy does NOT fast-path them (two or
+ * more tool calls, or a hedging answer); the suite fails a case that got policy-skipped
+ * instead of reviewed. Case ids are stable so LIVE runs can compare reviewer models
+ * (Models.FAST vs Models.REASONING) on identical inputs.
+ */
+data class ReflectEvalCase(
+    val id: String,
+    val request: String,
+    val answer: String,
+    val tools: List<ReflectToolStep>,
+    val expectedVerdict: String,
+    val knownFailure: Boolean = false,
+)

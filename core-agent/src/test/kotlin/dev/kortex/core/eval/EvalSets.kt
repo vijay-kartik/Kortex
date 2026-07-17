@@ -8,17 +8,20 @@ import dev.kortex.core.ambient.SignalKind
 import dev.kortex.core.ambient.SignalSource
 import dev.kortex.core.ambient.TriageContext
 import dev.kortex.core.ambient.TriageDecision
+import dev.kortex.core.pattern.ReflectNode
 import dev.kortex.core.state.Message
 
 /**
  * The committed eval sets (T0.3). Fixture responses live in
  * `src/test/resources/eval/<suite>/<caseId>.txt`.
  *
- * Router history (T1.3/T1.5): the 4 F3 known-failure follow-up cases were retired —
+ * Router history (T1.3/T1.5/T4.2): the 4 F3 known-failure follow-up cases were retired —
  * Kortex is a tool-execution agent, not conversational, per the design direction in
- * docs/PROMPT_IMPROVEMENT_PLAN.md §2 — and the dead `plan` route was dropped, so
- * multi-step cases now expect `tool_task`. The router prompt now carries the tool
- * inventory (F6), so requests no registered tool can help with expect `simple_qa`;
+ * docs/PROMPT_IMPROVEMENT_PLAN.md §2. The `plan` route, dropped as a dead label in T1.3,
+ * was restored in T4.2 with a real PlanNode: `plan_*` cases expect it for multi-sub-goal
+ * requests, while the `multi_step_*` single-goal chains stay `tool_task` (boundary
+ * documented in docs/eval-baselines.md). The router prompt carries the tool inventory
+ * (F6), so requests no registered tool can help with expect `simple_qa`;
  * [RouterEvalSuite] runs with the `defaultTools()` registry to match production.
  */
 object EvalSets {
@@ -59,7 +62,23 @@ object EvalSets {
             conversation = listOf(user("What's 234823 multiplied by 98123?")),
             expectedRoute = "tool_task",
         ),
-        // --- multi-step tool work (T1.3: the `plan` route is gone; tool_task covers these) ---
+        // --- plan (T4.2: real PlanNode; multiple distinct sub-goals / cross-topic deps) ---
+        RouterEvalCase(
+            id = "plan_compare_recommend",
+            conversation = listOf(
+                user("Compare the iPhone 17 and the Pixel 11 on price, camera quality, and battery life, then recommend one"),
+            ),
+            expectedRoute = "plan",
+        ),
+        RouterEvalCase(
+            id = "plan_multi_topic",
+            conversation = listOf(
+                user("Find the weather in Tokyo this weekend, and also get the latest USD to JPY exchange rate"),
+            ),
+            expectedRoute = "plan",
+        ),
+        // --- multi-step but single-goal: stays tool_task (T4.2 boundary cases; see
+        // docs/eval-baselines.md for where the tool_task/plan line is drawn) ---
         RouterEvalCase(
             id = "multi_step_trip",
             conversation = listOf(
@@ -287,6 +306,213 @@ object EvalSets {
                 newSignals = listOf(signal("s1", "my new number is +91 98200 11223, save it")),
             ),
             expectedCount = 1,
+        ),
+    )
+
+    // ---------------------------------------------------------------------------------
+
+    private fun tool(name: String, args: String, result: String?) =
+        ReflectToolStep(name, args, result)
+
+    /**
+     * Reflect reviewer cases (T4.4), spanning the T2.2 rubric: (a) factual consistency
+     * with tool results, (b) answers what was asked, (c) no explicitly-requested item
+     * missing — plus the anti-style-revision rule and the grounding preamble (tool
+     * results that postdate the model's training must not be rejected).
+     *
+     * Every case has ≥2 tool calls (or a hedging answer) so ReflectPolicy never
+     * fast-paths it — each case exercises a real reviewer LLM call.
+     */
+    val reflect: List<ReflectEvalCase> = listOf(
+        // --- criterion (a): factual consistency with the tool results ---
+        ReflectEvalCase(
+            id = "revise_contradicts_tools",
+            request = "Who is the CEO of Acme Corp?",
+            answer = "The CEO of Acme Corp is John Smith.",
+            tools = listOf(
+                tool(
+                    "web_search", "{\"query\":\"Acme Corp CEO\"}",
+                    "Acme Corp announces Jane Doe as chief executive officer, effective March 2026. " +
+                        "Doe succeeds retiring CEO Mark Lin after nine years.",
+                ),
+                tool(
+                    "open_url", "{\"url\":\"https://acme.com/leadership\"}",
+                    "Leadership — Jane Doe, Chief Executive Officer. Arun Mehta, CFO. Sofia Reyes, CTO.",
+                ),
+            ),
+            expectedVerdict = ReflectNode.REVISE,
+        ),
+        ReflectEvalCase(
+            id = "revise_fabricated_number",
+            request = "How much is an adult day pass to the Shedd Aquarium?",
+            answer = "An adult day pass to the Shedd Aquarium costs \$89.",
+            tools = listOf(
+                tool(
+                    "web_search", "{\"query\":\"Shedd Aquarium adult day pass price\"}",
+                    "Shedd Aquarium tickets: general admission adult day pass \$129; discounts for Chicago residents.",
+                ),
+                tool(
+                    "open_url", "{\"url\":\"https://www.sheddaquarium.org/tickets\"}",
+                    "Tickets — Adult (12+): \$129. Child (3–11): \$99. Members free.",
+                ),
+            ),
+            expectedVerdict = ReflectNode.REVISE,
+        ),
+        // --- anti-style-revision rule: correct but terse must pass ---
+        ReflectEvalCase(
+            id = "ok_correct_terse",
+            request = "Who is the CEO of Acme Corp?",
+            answer = "Jane Doe.",
+            tools = listOf(
+                tool(
+                    "web_search", "{\"query\":\"Acme Corp CEO\"}",
+                    "Acme Corp announces Jane Doe as chief executive officer, effective March 2026.",
+                ),
+                tool(
+                    "open_url", "{\"url\":\"https://acme.com/leadership\"}",
+                    "Leadership — Jane Doe, Chief Executive Officer. Arun Mehta, CFO.",
+                ),
+            ),
+            expectedVerdict = ReflectNode.OK,
+        ),
+        // --- criterion (c): explicitly requested item missing ---
+        ReflectEvalCase(
+            id = "revise_missing_requested_item",
+            request = "What's the price and battery life of the Pixel 11?",
+            answer = "The Pixel 11 is priced at \$799 for the 128 GB model.",
+            tools = listOf(
+                tool(
+                    "web_search", "{\"query\":\"Pixel 11 price\"}",
+                    "Google Pixel 11 launches at \$799 (128 GB) and \$899 (256 GB).",
+                ),
+                tool(
+                    "web_search", "{\"query\":\"Pixel 11 battery life\"}",
+                    "Pixel 11 battery: 5,000 mAh, rated at 31 hours of typical use in reviews.",
+                ),
+            ),
+            expectedVerdict = ReflectNode.REVISE,
+        ),
+        // --- criterion (b): doesn't answer what was asked ---
+        ReflectEvalCase(
+            id = "revise_wrong_question",
+            request = "What time does the Apple Store on Fifth Avenue close today?",
+            answer = "The Apple Store is located at 767 5th Ave, New York, NY 10153.",
+            tools = listOf(
+                tool(
+                    "web_search", "{\"query\":\"Apple Store Fifth Avenue hours today\"}",
+                    "Apple Fifth Avenue — 767 5th Ave, New York, NY 10153. Today's hours: 8:00 AM – 9:00 PM.",
+                ),
+                tool(
+                    "open_url", "{\"url\":\"https://www.apple.com/retail/fifthavenue/\"}",
+                    "Apple Fifth Avenue. Address: 767 5th Ave. Hours today: 8:00 AM – 9:00 PM.",
+                ),
+            ),
+            expectedVerdict = ReflectNode.REVISE,
+        ),
+        // --- consistent multi-tool synthesis passes ---
+        ReflectEvalCase(
+            id = "ok_synthesized_conversion",
+            request = "Find the current USD to INR exchange rate and work out how much \$2,500 is in rupees",
+            answer = "At the current rate of 88.40 INR per USD, \$2,500 is about ₹221,000.",
+            tools = listOf(
+                tool(
+                    "web_search", "{\"query\":\"USD to INR exchange rate\"}",
+                    "1 USD = 88.40 INR (mid-market rate, updated 5 minutes ago).",
+                ),
+                tool("calculator", "{\"expression\":\"2500*88.40\"}", "221000.0"),
+            ),
+            expectedVerdict = ReflectNode.OK,
+        ),
+        // --- truncated long results (per-result 500-char cap) must not cause a false REVISE;
+        // the claims the answer makes appear early in each result, before the cut ---
+        ReflectEvalCase(
+            id = "ok_truncated_multi_results",
+            request = "Summarize today's top tech headlines",
+            answer = "Top tech stories today: the EU approved the AI Liability Directive, and TSMC " +
+                "broke ground on its second Dresden fab. Both moves are expected to shape " +
+                "chip supply and AI regulation across Europe.",
+            tools = listOf(
+                tool(
+                    "web_search", "{\"query\":\"top tech news today\"}",
+                    "EU approves AI Liability Directive: the European Parliament voted today to adopt " +
+                        "the AI Liability Directive, harmonizing compensation rules for AI-caused harm " +
+                        "across member states. The directive complements the AI Act and takes effect in " +
+                        "2028 after a two-year transposition period. Rapporteur Ana Kovač called it the " +
+                        "final piece of the EU's AI framework. Industry groups warned about compliance " +
+                        "costs for small model providers, while consumer organizations welcomed the " +
+                        "reversal of the burden of proof for high-risk systems. Legal analysts note the " +
+                        "directive's presumption of causality will significantly ease claims. Member " +
+                        "states must now map national tort rules onto the new framework, a process " +
+                        "Brussels expects to be contentious in states with strict liability regimes.",
+                ),
+                tool(
+                    "open_url", "{\"url\":\"https://news.example.com/tech\"}",
+                    "TSMC breaks ground on second Dresden fab: the chipmaker began construction of a " +
+                        "second fabrication plant in Dresden today, doubling planned European capacity. " +
+                        "The €11 billion facility will produce 16nm and 12nm automotive-grade chips from " +
+                        "2029, supported by EU Chips Act subsidies. Saxony's premier called it the " +
+                        "largest industrial investment in the state's history. Analysts said the move " +
+                        "signals confidence in European automotive demand despite the recent slowdown, " +
+                        "and noted that local suppliers have already announced expansion plans around " +
+                        "the site. Construction of the first Dresden fab remains on schedule for " +
+                        "production later this year, TSMC said in its statement.",
+                ),
+            ),
+            expectedVerdict = ReflectNode.OK,
+        ),
+        // --- grounding preamble: tool results that postdate training must not be rejected ---
+        ReflectEvalCase(
+            id = "ok_postdates_training",
+            request = "Who won the 2026 FIFA World Cup final?",
+            answer = "Argentina won the 2026 FIFA World Cup, beating France 2–1 in the final at " +
+                "MetLife Stadium on July 19, 2026.",
+            tools = listOf(
+                tool(
+                    "web_search", "{\"query\":\"2026 FIFA World Cup final winner\"}",
+                    "July 19, 2026 — Argentina defeated France 2–1 in the FIFA World Cup final at " +
+                        "MetLife Stadium, New Jersey, claiming their fourth title.",
+                ),
+                tool(
+                    "open_url", "{\"url\":\"https://www.fifa.com/worldcup/2026/final\"}",
+                    "Final result: Argentina 2–1 France. Venue: MetLife Stadium. Date: 19 July 2026.",
+                ),
+            ),
+            expectedVerdict = ReflectNode.OK,
+        ),
+        // --- unmatched tool call renders "(no result recorded)"; the answer is grounded
+        // in the OTHER result, so the missing one must not sink it ---
+        ReflectEvalCase(
+            id = "ok_unmatched_tool_call",
+            request = "What's the weather in Tokyo right now?",
+            answer = "It's currently 31°C and partly cloudy in Tokyo, with high humidity.",
+            tools = listOf(
+                tool("get_time", "{\"timezone\":\"Asia/Tokyo\"}", null),
+                tool(
+                    "web_search", "{\"query\":\"Tokyo weather now\"}",
+                    "Tokyo current conditions: 31°C, partly cloudy, humidity 78%.",
+                ),
+            ),
+            expectedVerdict = ReflectNode.OK,
+        ),
+        // --- honest empty-handed answer, consistent with what the tools returned, passes;
+        // (the hedging wording is also what forces ReflectPolicy to review this one) ---
+        ReflectEvalCase(
+            id = "ok_honest_failure",
+            request = "Find the release date for the Framework tablet",
+            answer = "I couldn't find any announced Framework tablet — Framework's current lineup " +
+                "is the Laptop 13, Laptop 16, and Desktop, with no tablet release date published.",
+            tools = listOf(
+                tool(
+                    "web_search", "{\"query\":\"Framework tablet release date\"}",
+                    "No results found for \"Framework tablet release date\".",
+                ),
+                tool(
+                    "web_search", "{\"query\":\"Framework new products 2026\"}",
+                    "Framework's product lineup: Framework Laptop 13, Framework Laptop 16, and the " +
+                        "Framework Desktop. No tablet has been announced.",
+                ),
+            ),
+            expectedVerdict = ReflectNode.OK,
         ),
     )
 }

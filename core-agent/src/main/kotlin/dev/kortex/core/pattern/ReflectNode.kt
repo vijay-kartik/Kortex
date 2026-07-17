@@ -18,6 +18,13 @@ import dev.kortex.core.state.Message
  * "revise", and the graph loops back to the executing node to try again.
  *
  * [maxReflections] caps the loop so we can't revise forever (also guarded by the budget).
+ *
+ * [model] selects the reviewer model. T4.4 (docs/PROMPT_IMPROVEMENT_PLAN.md) evaluated
+ * right-sizing this to [Models.FAST]; the default stays [Models.REASONING] until a LIVE
+ * run of the reflect eval suite (PromptEvalTest's FAST-vs-REASONING comparison, see
+ * docs/eval-baselines.md §T4.4) shows FAST matching REASONING on missed-REVISE (the
+ * dangerous failure — a wrong answer reaching the user) and staying within one case on
+ * overall accuracy. Decide with that data, not intuition.
  */
 class ReflectNode(
     private val model: String = Models.REASONING,
@@ -72,9 +79,10 @@ class ReflectNode(
         // the request's attachments it rejects correct vision answers as "the assistant
         // cannot view images" — so the attachments ride along on the review request itself.
         val system = state.messages.firstOrNull { it.role == Message.Role.SYSTEM }?.content
-        val toolsUsed = state.messages
-            .flatMap { it.toolCalls }
-            .joinToString("\n") { "- ${it.name}(${it.argumentsJson})" }
+        // T2.1: pair each tool call with its recorded result so the reviewer can verify
+        // the answer's claims against what the tools actually returned (truncation and
+        // total-cap live in ReflectPrompt).
+        val toolExchanges = ReflectPrompt.pair(state.messages)
         val attachmentNote = if (attachments.isEmpty()) "" else """
 
             The user's request included ${attachments.size} attachment(s), included below
@@ -83,7 +91,7 @@ class ReflectNode(
             their contents. Judge the answer against the attachments themselves.
         """.trimIndent().let { "\n$it" }
 
-        val prompt = ReflectPrompt.build(toolsUsed, request, answer, attachmentNote)
+        val prompt = ReflectPrompt.build(toolExchanges, request, answer, attachmentNote)
 
         val resp = ctx.complete(
             LlmRequest(

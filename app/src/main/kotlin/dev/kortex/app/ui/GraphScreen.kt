@@ -217,6 +217,10 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
     var canvasWidth by remember { mutableStateOf(0f) }
     var canvasHeight by remember { mutableStateOf(0f) }
     val textMeasurer = rememberTextMeasurer()
+    
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    var draggedNodeId by remember { mutableStateOf<Long?>(null) }
 
     // Setup positions if not initialized
     LaunchedEffect(nodes, canvasWidth, canvasHeight) {
@@ -234,8 +238,8 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
     LaunchedEffect(nodes, edges) {
         if (nodes.isEmpty()) return@LaunchedEffect
         while (isActive) {
-            val k = 0.1f // Spring constant
-            val repulsion = 5000f // Repulsion constant
+            val k = 0.015f // Weaker spring constant
+            val repulsion = 50000f // Higher repulsion constant
             val damping = 0.85f // Damping to stabilize
 
             // Repulsion between all nodes
@@ -266,7 +270,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
                 val dx = n2.x - n1.x
                 val dy = n2.y - n1.y
                 val dist = max(sqrt(dx * dx + dy * dy), 1f)
-                val targetDist = 150f
+                val targetDist = 250f
                 val force = (dist - targetDist) * k
                 
                 val fx = force * (dx / dist)
@@ -281,7 +285,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
             // Center gravity to keep graph on screen
             val cx = canvasWidth / 2f
             val cy = canvasHeight / 2f
-            val gravity = 0.05f
+            val gravity = 0.01f
             for (node in nodes) {
                 node.vx += (cx - node.x) * gravity
                 node.vy += (cy - node.y) * gravity
@@ -289,6 +293,11 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
 
             // Apply velocity
             for (node in nodes) {
+                if (node.id == draggedNodeId) {
+                    node.vx = 0f
+                    node.vy = 0f
+                    continue
+                }
                 node.vx *= damping
                 node.vy *= damping
                 node.x += node.vx
@@ -303,9 +312,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
         }
     }
 
-    var scale by remember { mutableStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
-    var draggedNodeId by remember { mutableStateOf<Long?>(null) }
+
     
     // Pulsing animation for node halos
     val infiniteTransition = rememberInfiniteTransition()

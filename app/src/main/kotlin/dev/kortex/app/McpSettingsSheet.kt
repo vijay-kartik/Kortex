@@ -141,6 +141,20 @@ fun McpSettingsScreen(
                 )
             }
 
+            // ── Embedding Provider ───────────────────────────────────────────
+            item { SectionLabel("EMBEDDING PROVIDER", Modifier.padding(top = 16.dp)) }
+            item {
+                EmbeddingSelector(
+                    activeProvider = ui.activeEmbeddingProvider,
+                    activeModel = ui.activeEmbeddingModel,
+                    testResult = ui.testEmbeddingResult,
+                    onProviderSelected = { vm.setActiveEmbeddingProvider(it) },
+                    onModelSelected = { vm.setActiveEmbeddingModel(it) },
+                    onTestConnection = { vm.testEmbeddingConnection() },
+                    onClearTest = { vm.clearTestEmbeddingResult() }
+                )
+            }
+
             // ── Composio (Gmail) ─────────────────────────────────────
             item { SectionLabel("COMPOSIO (GMAIL)", Modifier.padding(top = 16.dp)) }
             item {
@@ -1126,6 +1140,180 @@ private fun ModelSelector(
                         style = MaterialTheme.typography.labelSmall,
                         color = if (editKey.isBlank()) Amber else Muted,
                         modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmbeddingSelector(
+    activeProvider: String,
+    activeModel: String,
+    testResult: String?,
+    onProviderSelected: (String) -> Unit,
+    onModelSelected: (String) -> Unit,
+    onTestConnection: () -> Unit,
+    onClearTest: () -> Unit,
+) {
+    var expandedProvider by remember { mutableStateOf(false) }
+    var expandedModel by remember { mutableStateOf(false) }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Panel,
+        border = BorderStroke(1.dp, Edge),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            // Provider Selection
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expandedProvider = !expandedProvider }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Provider",
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    )
+                    Text(
+                        when (activeProvider) {
+                            "openai" -> "OpenAI"
+                            "ollama-cloud" -> "Ollama Cloud"
+                            else -> "Ollama (Local)"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Synapse,
+                    )
+                }
+                Text(if (expandedProvider) "▲" else "▼", style = MaterialTheme.typography.labelSmall, color = Muted)
+            }
+            AnimatedVisibility(visible = expandedProvider) {
+                Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
+                    listOf(
+                        "openai" to "OpenAI",
+                        "ollama" to "Ollama (Local)",
+                        "ollama-cloud" to "Ollama Cloud",
+                    ).forEach { (id, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onProviderSelected(id)
+                                    expandedProvider = false
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (id == activeProvider) Synapse else Muted,
+                                fontWeight = if (id == activeProvider) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Model Selection
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expandedModel = !expandedModel }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Active Model",
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    )
+                    Text(
+                        activeModel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Synapse,
+                    )
+                }
+                Text(if (expandedModel) "▲" else "▼", style = MaterialTheme.typography.labelSmall, color = Muted)
+            }
+            AnimatedVisibility(visible = expandedModel) {
+                Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
+                    val quickPickModels = listOf(
+                        "all-minilm",
+                        "nomic-embed-text",
+                        "text-embedding-3-small",
+                    )
+                    quickPickModels.forEach { model ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onModelSelected(model)
+                                    expandedModel = false
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                model,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (model == activeModel) Synapse else Muted,
+                                fontWeight = if (model == activeModel) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                    var customModel by remember { mutableStateOf(activeModel) }
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                        SettingsTextField(
+                            value = customModel,
+                            onValueChange = { customModel = it },
+                            label = "Model Name",
+                            placeholder = "e.g. all-minilm"
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        FilledTonalButton(
+                            onClick = { 
+                                onModelSelected(customModel)
+                                expandedModel = false
+                            },
+                            modifier = Modifier.align(Alignment.End),
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
+                        ) {
+                            Text("Save Model")
+                        }
+                    }
+                }
+            }
+
+            // Test Connection
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                FilledTonalButton(
+                    onClick = { 
+                        onClearTest()
+                        onTestConnection() 
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
+                ) {
+                    Text("Test Connection")
+                }
+                if (testResult != null) {
+                    Text(
+                        text = testResult,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (testResult.startsWith("Failed")) Alarm else StatusConnected,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }

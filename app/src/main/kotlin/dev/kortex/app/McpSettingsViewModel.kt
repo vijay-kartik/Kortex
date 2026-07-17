@@ -56,6 +56,8 @@ data class McpSettingsUi(
     val openaiApiKey: String = "",
     /** API key for Ollama Cloud (ollama.com/settings/keys); blank until the user enters one. */
     val ollamaCloudApiKey: String = "",
+    val activeEmbeddingModel: String = "all-minilm",
+    val activeEmbeddingProvider: String = "ollama-cloud",
     val composioApiKey: String = "",
     val composioUserId: String = "",
     /** Null until the first connect attempt (this session or a prior one) resolves. */
@@ -66,6 +68,7 @@ data class McpSettingsUi(
     val composioEditing: Boolean = false,
     val composioToolCount: Int = 0,
     val gmailAccountEmail: String? = null,
+    val testEmbeddingResult: String? = null,
 )
 
 // ── Names of the four builtins, so we can partition them in the UI ──────
@@ -84,6 +87,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     private val container = (application as KortexApp).container
     private val tools: ToolRegistry = container.toolRegistry
     private val store: McpStore = container.mcpStore
+    private val embedder = container.embedder
 
     /**
      * Per-server connection status, keyed by server name. Starts empty; updated as servers
@@ -103,6 +107,8 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     /** True while the user has reopened the credentials form on an already-connected setup. */
     private val _composioEditing = MutableStateFlow(false)
 
+    private val _testEmbeddingResult = MutableStateFlow<String?>(null)
+
     private data class FlagsState(
         val showAddDialog: Boolean = false,
         val pendingDelete: String? = null,
@@ -121,15 +127,30 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         val ollamaToken: String,
         val openaiApiKey: String,
         val ollamaCloudApiKey: String,
+        val embeddingProvider: String,
+        val embeddingModel: String,
     )
 
     val ui: StateFlow<McpSettingsUi> = combine(
         combine(store.disabledTools, store.customServers, _serverStatus, store.oauthStates) { a, b, c, d -> ServerStateBlock(a, b, c, d.keys) },
         combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
-        combine(store.activeProvider, store.ollamaUrl, store.ollamaToken, store.openaiApiKey, store.ollamaCloudApiKey) { p, u, t, k, oc -> ProviderPrefs(p, u, t ?: "", k ?: "", oc ?: "") },
+        combine(
+            combine(store.activeProvider, store.ollamaUrl, store.ollamaToken, store.openaiApiKey) { p, u, t, k -> listOf(p, u, t ?: "", k ?: "") },
+            combine(store.ollamaCloudApiKey, store.activeEmbeddingProvider, store.activeEmbeddingModel) { oc, ep, em -> listOf(oc ?: "", ep, em) }
+        ) { l1, l2 -> 
+            ProviderPrefs(
+                provider = l1[0], ollamaUrl = l1[1], ollamaToken = l1[2], openaiApiKey = l1[3],
+                ollamaCloudApiKey = l2[0], embeddingProvider = l2[1], embeddingModel = l2[2]
+            )
+        },
         combine(store.composioApiKey, store.composioUserId) { k, u -> k to u },
-        combine(_composioError, _composioEditing, store.gmailAccountEmail) { err, editing, gmail -> Triple(err, editing, gmail) },
-    ) { (disabled, customServers, statuses, oauthUrls), (serverTools, flags, activeModel), (activeProvider, ollamaUrl, ollamaToken, openaiApiKey, ollamaCloudApiKey), (composioApiKey, composioUserId), (composioError, composioEditing, gmailAccountEmail) ->
+        combine(_composioError, _composioEditing, store.gmailAccountEmail, _testEmbeddingResult) { err, editing, gmail, testRes -> listOf(err, editing, gmail, testRes) },
+    ) { (disabled, customServers, statuses, oauthUrls), (serverTools, flags, activeModel), prefs, (composioApiKey, composioUserId), fourthBlock ->
+
+        val composioError = fourthBlock[0] as String?
+        val composioEditing = fourthBlock[1] as Boolean
+        val gmailAccountEmail = fourthBlock[2] as String?
+        val testEmbeddingResult = fourthBlock[3] as String?
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -178,11 +199,13 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             showAddDialog = flags.showAddDialog,
             pendingDelete = flags.pendingDelete,
             activeModel = activeModel,
-            activeProvider = activeProvider,
-            ollamaUrl = ollamaUrl,
-            ollamaToken = ollamaToken,
-            openaiApiKey = openaiApiKey,
-            ollamaCloudApiKey = ollamaCloudApiKey,
+            activeProvider = prefs.provider,
+            ollamaUrl = prefs.ollamaUrl,
+            ollamaToken = prefs.ollamaToken,
+            openaiApiKey = prefs.openaiApiKey,
+            ollamaCloudApiKey = prefs.ollamaCloudApiKey,
+            activeEmbeddingModel = prefs.embeddingModel,
+            activeEmbeddingProvider = prefs.embeddingProvider,
             composioApiKey = composioApiKey ?: "",
             composioUserId = composioUserId ?: "",
             composioStatus = composioStatus,
@@ -190,6 +213,7 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             composioEditing = composioEditing,
             composioToolCount = serverTools[COMPOSIO_GMAIL_SERVER_NAME]?.size ?: 0,
             gmailAccountEmail = gmailAccountEmail,
+            testEmbeddingResult = testEmbeddingResult,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), McpSettingsUi())
 
@@ -284,6 +308,34 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             store.setOllamaCloudApiKey(key.trim())
         }
+    }
+
+    fun setActiveEmbeddingProvider(provider: String) {
+        viewModelScope.launch {
+            store.setActiveEmbeddingProvider(provider)
+        }
+    }
+
+    fun setActiveEmbeddingModel(model: String) {
+        viewModelScope.launch {
+            store.setActiveEmbeddingModel(model)
+        }
+    }
+
+    fun testEmbeddingConnection() {
+        viewModelScope.launch {
+            _testEmbeddingResult.value = "Testing..."
+            try {
+                val result = embedder.embed("test connection")
+                _testEmbeddingResult.value = "Success! Dimension: ${result.size}"
+            } catch (e: Exception) {
+                _testEmbeddingResult.value = "Failed: ${e.message}"
+            }
+        }
+    }
+
+    fun clearTestEmbeddingResult() {
+        _testEmbeddingResult.value = null
     }
 
     fun setComposioApiKey(key: String) {

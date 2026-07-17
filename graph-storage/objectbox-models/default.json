@@ -1,0 +1,236 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:6779475201140284860",
+      "lastPropertyId": "4:2346524231335149787",
+      "name": "EdgeEntity",
+      "properties": [
+        {
+          "id": "1:4012511374815417254",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:59474388097578051",
+          "name": "sourceKey",
+          "indexId": "1:8699550695802831828",
+          "type": 6,
+          "flags": 8
+        },
+        {
+          "id": "3:2542562055698831953",
+          "name": "targetKey",
+          "indexId": "2:3622404603311006295",
+          "type": 6,
+          "flags": 8
+        },
+        {
+          "id": "4:2346524231335149787",
+          "name": "relationshipId",
+          "indexId": "3:4999912484244577864",
+          "type": 5,
+          "flags": 8
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "2:1754715011964049813",
+      "lastPropertyId": "5:2920408423366030723",
+      "name": "EmbeddingEntity",
+      "properties": [
+        {
+          "id": "1:7219132326457910393",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:6599669728726521785",
+          "name": "graphKey",
+          "indexId": "4:3771864492250792308",
+          "type": 6,
+          "flags": 40
+        },
+        {
+          "id": "3:190868860961579516",
+          "name": "modelVersion",
+          "type": 5
+        },
+        {
+          "id": "4:6043095364038749610",
+          "name": "dimensions",
+          "type": 5
+        },
+        {
+          "id": "5:2920408423366030723",
+          "name": "embedding",
+          "indexId": "5:8078263466555571604",
+          "type": 28,
+          "flags": 8
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "3:8117012683307091961",
+      "lastPropertyId": "5:1617247606160408691",
+      "name": "GraphRegistryEntity",
+      "properties": [
+        {
+          "id": "1:8694161325382094657",
+          "name": "graphKey",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:4853707366939040193",
+          "name": "graphId",
+          "indexId": "6:6707402080355807284",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:6795506683166671858",
+          "name": "nodeTypeId",
+          "indexId": "7:3861574785889997413",
+          "type": 5,
+          "flags": 8
+        },
+        {
+          "id": "4:2495369313982361352",
+          "name": "entityKindId",
+          "indexId": "8:2562284504363852982",
+          "type": 5,
+          "flags": 8
+        },
+        {
+          "id": "5:1617247606160408691",
+          "name": "businessEntityId",
+          "indexId": "9:8014672377628057805",
+          "type": 6,
+          "flags": 8
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "4:597589065230376564",
+      "lastPropertyId": "6:7824539806001537840",
+      "name": "AssertionEntity",
+      "properties": [
+        {
+          "id": "1:4371807891037209319",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:7073842947416873849",
+          "name": "graphIdStr",
+          "indexId": "10:4189465272542035212",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:4824666109131825301",
+          "name": "predicateId",
+          "type": 5
+        },
+        {
+          "id": "4:1898486827257343806",
+          "name": "confidence",
+          "type": 7
+        },
+        {
+          "id": "5:6889946398633128995",
+          "name": "validFrom",
+          "type": 6
+        },
+        {
+          "id": "6:7824539806001537840",
+          "name": "validTo",
+          "type": 6
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "5:4704843954734222674",
+      "lastPropertyId": "4:8708070917024235155",
+      "name": "PersonEntity",
+      "properties": [
+        {
+          "id": "1:4732546034192871631",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:1150124435681545112",
+          "name": "graphIdStr",
+          "indexId": "11:2935125770921588627",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:4949630842394745467",
+          "name": "name",
+          "type": 9
+        },
+        {
+          "id": "4:8708070917024235155",
+          "name": "notes",
+          "type": 9
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "6:8424465898478200031",
+      "lastPropertyId": "4:2821756559180778415",
+      "name": "TopicEntity",
+      "properties": [
+        {
+          "id": "1:7368995272010743302",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:3326334928679061506",
+          "name": "graphIdStr",
+          "indexId": "12:6924313982995590721",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:5098094570778662111",
+          "name": "label",
+          "type": 9
+        },
+        {
+          "id": "4:2821756559180778415",
+          "name": "description",
+          "type": 9
+        }
+      ],
+      "relations": []
+    }
+  ],
+  "lastEntityId": "6:8424465898478200031",
+  "lastIndexId": "12:6924313982995590721",
+  "lastRelationId": "0:0",
+  "lastSequenceId": "0:0",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 5,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [],
+  "retiredPropertyUids": [],
+  "retiredRelationUids": [],
+  "version": 1
+}

@@ -48,6 +48,8 @@ class McpStore(private val context: Context) {
         val KEY_DEFAULT_DISABLED_SEEN = stringSetPreferencesKey("default_disabled_seen_tools")
         val KEY_ACTIVE_MODEL = stringPreferencesKey("active_model")
         val KEY_ACTIVE_PROVIDER = stringPreferencesKey("active_provider")
+        val KEY_ACTIVE_EMBEDDING_MODEL = stringPreferencesKey("active_embedding_model")
+        val KEY_ACTIVE_EMBEDDING_PROVIDER = stringPreferencesKey("active_embedding_provider")
         val KEY_OLLAMA_URL = stringPreferencesKey("ollama_url")
         val KEY_OLLAMA_TOKEN = stringPreferencesKey("ollama_token")
         val KEY_OLLAMA_CLOUD_API_KEY = stringPreferencesKey("ollama_cloud_api_key")
@@ -87,6 +89,26 @@ class McpStore(private val context: Context) {
     suspend fun setActiveProvider(provider: String) {
         context.mcpDataStore.edit { prefs ->
             prefs[KEY_ACTIVE_PROVIDER] = provider
+        }
+    }
+
+    val activeEmbeddingModel: Flow<String> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_ACTIVE_EMBEDDING_MODEL] ?: "all-minilm"
+    }
+
+    suspend fun setActiveEmbeddingModel(model: String) {
+        context.mcpDataStore.edit { prefs ->
+            prefs[KEY_ACTIVE_EMBEDDING_MODEL] = model
+        }
+    }
+
+    val activeEmbeddingProvider: Flow<String> = context.mcpDataStore.data.map { prefs ->
+        prefs[KEY_ACTIVE_EMBEDDING_PROVIDER] ?: "ollama-cloud"
+    }
+
+    suspend fun setActiveEmbeddingProvider(provider: String) {
+        context.mcpDataStore.edit { prefs ->
+            prefs[KEY_ACTIVE_EMBEDDING_PROVIDER] = provider
         }
     }
 

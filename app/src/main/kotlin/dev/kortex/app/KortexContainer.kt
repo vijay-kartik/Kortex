@@ -68,10 +68,34 @@ class KortexContainer(context: Context) {
     // Gmail OAuth2 token management (uses device's Google accounts).
     val gmailAuth: GmailAuthManager by lazy { GmailAuthManager(appContext) }
 
+    // ObjectBox setup for Knowledge Graph
+    val boxStore: io.objectbox.BoxStore by lazy {
+        dev.kortex.graph_storage.MyObjectBox.builder().androidContext(appContext).build()
+    }
+    
+    val graphRepository: dev.kortex.graph_storage.GraphRepository by lazy {
+        dev.kortex.graph_storage.GraphRepository(boxStore)
+    }
+
+    val graphBuilder: dev.kortex.graph_storage.GraphBuilder by lazy {
+        dev.kortex.graph_storage.GraphBuilder(graphRepository, boxStore)
+    }
+
+    // Embedding provider - tied to the same logic as LLM switching
+    val embedder: dev.kortex.core.llm.EmbeddingProvider by lazy {
+        val defaultOpenAi = BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
+            ?.let { dev.kortex.core.llm.OpenAiEmbeddingProvider(apiKey = it, model = "text-embedding-3-small", logger = AndroidLogger) }
+            ?: StubEmbeddingProvider()
+        DynamicEmbeddingProvider(store = mcpStore, defaultProvider = defaultOpenAi)
+    }
+
+    val memoryTool by lazy { dev.kortex.app.tools.MemoryTool(graphRepository, embedder) }
+    val knowledgeExtractionTool by lazy { dev.kortex.app.tools.KnowledgeExtractionTool(graphBuilder, embedder) }
+
     // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.
     val toolRegistry: ToolRegistry by lazy {
         ToolRegistry(
-            defaultTools() + gmailTool(
+            defaultTools() + memoryTool + knowledgeExtractionTool + gmailTool(
                 context = appContext,
                 tokenProvider = {
                     val email = mcpStore.gmailAccountEmail.first()?.trim()

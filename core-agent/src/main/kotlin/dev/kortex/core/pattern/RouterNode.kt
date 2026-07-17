@@ -24,7 +24,7 @@ import dev.kortex.core.state.Message
  * Pairs with pattern 16: classification runs on the FAST model to save budget.
  */
 class RouterNode(
-    private val routes: List<String> = listOf("simple_qa", "tool_task", "plan"),
+    private val routes: List<String> = listOf("tool_task", "plan"),
     private val model: String = Models.FAST,
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {

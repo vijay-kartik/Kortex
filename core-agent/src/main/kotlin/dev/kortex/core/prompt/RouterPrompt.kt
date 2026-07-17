@@ -23,8 +23,7 @@ object RouterPrompt {
         val inventory = ToolInventory.renderCompact(tools, MAX_TOOL_DESCRIPTION_CHARS)
         return listOfNotNull(
             "Classify the user request into exactly one of: ${routes.joinToString(", ")}.",
-            "- simple_qa: answerable directly with general knowledge, no tools needed.",
-            "- tool_task: needs tool work — one or several tool calls, possibly chained (e.g. search the web, open a result, compute).",
+            "- tool_task: needs tool work — one or several tool calls, possibly chained (e.g. search the web, open a result, compute, or save facts to memory).",
             ("- plan: multiple distinct sub-goals, or steps that depend on earlier results across different topics " +
                 "(e.g. compare X and Y on price, reviews, and availability, then recommend one). " +
                 "A single-goal chain of tool calls is tool_task, not plan.").takeIf { "plan" in routes },

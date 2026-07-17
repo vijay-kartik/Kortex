@@ -43,8 +43,12 @@ class GraphRepository(private val boxStore: BoxStore) {
             .build()
 
             .findFirst()
-
         return entity?.graphKey
+    }
+
+    /** Resolves a graphKey to its GraphRegistryEntity. */
+    fun getRegistryEntity(graphKey: Long): GraphRegistryEntity? {
+        return registryBox.get(graphKey)
     }
 
     /** Resolves a graphKey to its GraphReference. */

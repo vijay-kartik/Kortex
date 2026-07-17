@@ -23,6 +23,27 @@ class GraphBuilder(
     private val topicBox = boxStore.boxFor(TopicEntity::class.java)
     private val assertionBox = boxStore.boxFor(AssertionEntity::class.java)
 
+    fun getNodeSummary(graphKey: Long): String? {
+        val reg = repository.getRegistryEntity(graphKey) ?: return null
+        val type = dev.kortex.graph_core.NodeType.fromId(reg.nodeTypeId) ?: return null
+        
+        return when (type) {
+            dev.kortex.graph_core.NodeType.PERSON -> {
+                val p = personBox.get(reg.businessEntityId) ?: return null
+                "PERSON: ${p.name} (Notes: ${p.notes})"
+            }
+            dev.kortex.graph_core.NodeType.TOPIC -> {
+                val t = topicBox.get(reg.businessEntityId) ?: return null
+                "TOPIC: ${t.label} (Description: ${t.description})"
+            }
+            dev.kortex.graph_core.NodeType.ASSERTION -> {
+                val a = assertionBox.get(reg.businessEntityId) ?: return null
+                "ASSERTION: ${a.predicate?.name}"
+            }
+            else -> "${type.name} (ID: ${reg.graphId})"
+        }
+    }
+
     fun addPerson(name: String, notes: String = "", embedding: FloatArray? = null): GraphReference {
         val graphId = GraphId.random()
         val person = PersonEntity(

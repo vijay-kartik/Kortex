@@ -88,8 +88,7 @@ class KortexContainer(context: Context) {
             ?: StubEmbeddingProvider()
         DynamicEmbeddingProvider(store = mcpStore, defaultProvider = defaultOpenAi)
     }
-
-    val memoryTool by lazy { dev.kortex.app.tools.MemoryTool(graphRepository, embedder) }
+    val memoryTool by lazy { dev.kortex.app.tools.MemoryTool(graphRepository, graphBuilder, embedder) }
     val knowledgeExtractionTool by lazy { dev.kortex.app.tools.KnowledgeExtractionTool(graphBuilder, embedder) }
 
     // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.

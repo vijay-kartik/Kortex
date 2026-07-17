@@ -20,6 +20,7 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 class MemoryTool(
     private val repository: GraphRepository,
+    private val graphBuilder: GraphBuilder,
     private val embedder: EmbeddingProvider
 ) : Tool {
 
@@ -46,9 +47,9 @@ class MemoryTool(
             
             val builder = StringBuilder("Found memories:\n")
             handles.forEach { handle ->
-                val ref = repository.getReference(handle.graphKey)
-                if (ref != null) {
-                    builder.append("- ${ref.nodeType.name} (ID: ${ref.graphId.value})\n")
+                val summary = graphBuilder.getNodeSummary(handle.graphKey)
+                if (summary != null) {
+                    builder.append("- $summary\n")
                 }
             }
             

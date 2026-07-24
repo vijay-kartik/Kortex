@@ -43,6 +43,9 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    implementation(libs.litert)
+    implementation(libs.litert.gpu)
+
     testImplementation(libs.junit.jupiter)
     // Gradle 9 no longer puts the JUnit Platform launcher on the test runtime classpath itself.
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.3")

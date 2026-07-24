@@ -2,6 +2,11 @@ package dev.kortex.app
 
 import android.accounts.AccountManager
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -144,12 +149,8 @@ fun McpSettingsScreen(
             // ── Embedding Provider ───────────────────────────────────────────
             item { SectionLabel("EMBEDDING PROVIDER", Modifier.padding(top = 16.dp)) }
             item {
-                EmbeddingSelector(
-                    activeProvider = ui.activeEmbeddingProvider,
-                    activeModel = ui.activeEmbeddingModel,
+                EmbeddingInfo(
                     testResult = ui.testEmbeddingResult,
-                    onProviderSelected = { vm.setActiveEmbeddingProvider(it) },
-                    onModelSelected = { vm.setActiveEmbeddingModel(it) },
                     onTestConnection = { vm.testEmbeddingConnection() },
                     onClearTest = { vm.clearTestEmbeddingResult() }
                 )
@@ -1148,17 +1149,26 @@ private fun ModelSelector(
 }
 
 @Composable
-private fun EmbeddingSelector(
-    activeProvider: String,
-    activeModel: String,
+private fun EmbeddingInfo(
     testResult: String?,
-    onProviderSelected: (String) -> Unit,
-    onModelSelected: (String) -> Unit,
     onTestConnection: () -> Unit,
     onClearTest: () -> Unit,
 ) {
-    var expandedProvider by remember { mutableStateOf(false) }
-    var expandedModel by remember { mutableStateOf(false) }
+    // MANAGE_EXTERNAL_STORAGE ("All files access") is required to read the model +
+    // tokenizer from public Downloads. It can't be granted via the runtime dialog —
+    // only through a system Settings screen — so we track the current grant state and
+    // re-check when the user returns from that screen.
+    fun hasAllFilesAccess(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+
+    val context = LocalContext.current
+    var storageGranted by remember { mutableStateOf(hasAllFilesAccess()) }
+    val storageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        // The Settings screen returns no result code for this grant; re-read the live state.
+        storageGranted = hasAllFilesAccess()
+    }
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -1167,11 +1177,11 @@ private fun EmbeddingSelector(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column {
-            // Provider Selection
+            // Fixed on-device provider — no configuration; EmbeddingGemma is the
+            // single embedding engine (see KortexContainer.embedder).
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expandedProvider = !expandedProvider }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1184,129 +1194,59 @@ private fun EmbeddingSelector(
                         )
                     )
                     Text(
-                        when (activeProvider) {
-                            "openai" -> "OpenAI"
-                            "ollama-cloud" -> "Ollama Cloud"
-                            else -> "Ollama (Local)"
+                        "On-device — EmbeddingGemma (384-dim)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Synapse,
+                    )
+                }
+            }
+
+            // Storage-access gate: the model lives in Downloads, unreadable without
+            // all-files access. Show status + a grant shortcut when it's missing.
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                Text(
+                    "Model file storage access",
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                )
+                Text(
+                    if (storageGranted) "Granted — model can be read from Downloads."
+                    else "Not granted — embeddings can't load the model until you allow all-files access.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (storageGranted) StatusConnected else Amber,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                if (!storageGranted) {
+                    Spacer(Modifier.height(8.dp))
+                    FilledTonalButton(
+                        onClick = {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                            storageLauncher.launch(intent)
                         },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Synapse,
-                    )
-                }
-                Text(if (expandedProvider) "▲" else "▼", style = MaterialTheme.typography.labelSmall, color = Muted)
-            }
-            AnimatedVisibility(visible = expandedProvider) {
-                Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
-                    listOf(
-                        "openai" to "OpenAI",
-                        "ollama" to "Ollama (Local)",
-                        "ollama-cloud" to "Ollama Cloud",
-                    ).forEach { (id, label) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onProviderSelected(id)
-                                    expandedProvider = false
-                                }
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (id == activeProvider) Synapse else Muted,
-                                fontWeight = if (id == activeProvider) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
+                    ) {
+                        Text("Grant storage access")
                     }
                 }
             }
 
-            // Model Selection
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expandedModel = !expandedModel }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "Active Model",
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    )
-                    Text(
-                        activeModel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Synapse,
-                    )
-                }
-                Text(if (expandedModel) "▲" else "▼", style = MaterialTheme.typography.labelSmall, color = Muted)
-            }
-            AnimatedVisibility(visible = expandedModel) {
-                Column(modifier = Modifier.fillMaxWidth().background(Void.copy(alpha = 0.5f)).padding(bottom = 8.dp)) {
-                    val quickPickModels = listOf(
-                        "all-minilm",
-                        "nomic-embed-text",
-                        "text-embedding-3-small",
-                    )
-                    quickPickModels.forEach { model ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onModelSelected(model)
-                                    expandedModel = false
-                                }
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                model,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (model == activeModel) Synapse else Muted,
-                                fontWeight = if (model == activeModel) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
-                    }
-                    var customModel by remember { mutableStateOf(activeModel) }
-                    Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
-                        SettingsTextField(
-                            value = customModel,
-                            onValueChange = { customModel = it },
-                            label = "Model Name",
-                            placeholder = "e.g. all-minilm"
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        FilledTonalButton(
-                            onClick = { 
-                                onModelSelected(customModel)
-                                expandedModel = false
-                            },
-                            modifier = Modifier.align(Alignment.End),
-                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
-                        ) {
-                            Text("Save Model")
-                        }
-                    }
-                }
-            }
-
-            // Test Connection
+            // Self-test: confirms the on-device model loads and returns a vector.
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
                 FilledTonalButton(
-                    onClick = { 
+                    onClick = {
                         onClearTest()
-                        onTestConnection() 
+                        onTestConnection()
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
                 ) {
-                    Text("Test Connection")
+                    Text("Test Embedding")
                 }
                 if (testResult != null) {
                     Text(

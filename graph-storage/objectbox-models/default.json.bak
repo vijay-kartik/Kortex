@@ -117,10 +117,113 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "4:597589065230376564",
+      "lastPropertyId": "6:7824539806001537840",
+      "name": "AssertionEntity",
+      "properties": [
+        {
+          "id": "1:4371807891037209319",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:7073842947416873849",
+          "name": "graphIdStr",
+          "indexId": "10:4189465272542035212",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:4824666109131825301",
+          "name": "predicateId",
+          "type": 5
+        },
+        {
+          "id": "4:1898486827257343806",
+          "name": "confidence",
+          "type": 7
+        },
+        {
+          "id": "5:6889946398633128995",
+          "name": "validFrom",
+          "type": 6
+        },
+        {
+          "id": "6:7824539806001537840",
+          "name": "validTo",
+          "type": 6
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "5:4704843954734222674",
+      "lastPropertyId": "4:8708070917024235155",
+      "name": "PersonEntity",
+      "properties": [
+        {
+          "id": "1:4732546034192871631",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:1150124435681545112",
+          "name": "graphIdStr",
+          "indexId": "11:2935125770921588627",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:4949630842394745467",
+          "name": "name",
+          "type": 9
+        },
+        {
+          "id": "4:8708070917024235155",
+          "name": "notes",
+          "type": 9
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "6:8424465898478200031",
+      "lastPropertyId": "4:2821756559180778415",
+      "name": "TopicEntity",
+      "properties": [
+        {
+          "id": "1:7368995272010743302",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:3326334928679061506",
+          "name": "graphIdStr",
+          "indexId": "12:6924313982995590721",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:5098094570778662111",
+          "name": "label",
+          "type": 9
+        },
+        {
+          "id": "4:2821756559180778415",
+          "name": "description",
+          "type": 9
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "3:8117012683307091961",
-  "lastIndexId": "9:8014672377628057805",
+  "lastEntityId": "6:8424465898478200031",
+  "lastIndexId": "12:6924313982995590721",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,

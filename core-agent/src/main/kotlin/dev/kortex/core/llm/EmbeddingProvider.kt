@@ -10,4 +10,11 @@ interface EmbeddingProvider {
      * @return A FloatArray representing the vector embedding.
      */
     suspend fun embed(text: String): FloatArray
+
+    /**
+     * Releases any resources held by the provider. Default is a no-op for
+     * stateless (e.g. network-backed) providers; on-device providers that hold
+     * native handles (interpreter, tokenizer) override this.
+     */
+    fun close() {}
 }

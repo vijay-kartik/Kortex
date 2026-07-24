@@ -39,6 +39,7 @@ class ShareAgentRunner(
     private val llm: LlmProvider,
     private val tools: ToolRegistry,
     private val sessionDao: ChatSessionDao,
+    private val runStore: dev.kortex.core.observability.AgentRunStore,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -52,22 +53,36 @@ class ShareAgentRunner(
             var tokens = 0
             var toolCalls = 0
             val startMs = System.currentTimeMillis()
-            val logger = Logger { level, tag, message, error ->
-                AndroidLogger.log(level, tag, message, error)
-                reasoning += ReasoningLine(level, tag, message)
-            }
+            val recorder = dev.kortex.core.observability.AgentRunRecorder(
+                query = query,
+                sessionId = sessionId,
+                delegate = Logger { level, tag, message, error ->
+                    AndroidLogger.log(level, tag, message, error)
+                    reasoning += ReasoningLine(level, tag, message)
+                },
+            )
             val ctx = AgentContext(
                 llm = llm,
                 tools = tools,
-                governor = ToolGovernor(onAudit = { toolCalls++ }),
+                governor = ToolGovernor(onAudit = { entry -> toolCalls++; recorder.audit(entry) }),
                 // Headless: no one is there to approve, so risky tools are declined.
                 approver = Approver { _, _ -> false },
-                logger = logger,
-                onLlmUsage = LlmUsageListener { usage -> tokens += usage.inputTokens + usage.outputTokens },
+                logger = recorder.logger,
+                onLlmUsage = LlmUsageListener { usage ->
+                    tokens += usage.inputTokens + usage.outputTokens
+                    recorder.usage.report(usage)
+                },
             )
 
             val userMessage = Message(Message.Role.USER, query, listOf(attachment))
             val turns = runCatching { Agent(ctx).ask(query, listOf(attachment)) }
+                .also { outcome ->
+                    val run = outcome.fold(
+                        onSuccess = { recorder.finish(it, dev.kortex.core.observability.AgentRun.Status.COMPLETED) },
+                        onFailure = { recorder.finish(dev.kortex.core.state.AgentState(), dev.kortex.core.observability.AgentRun.Status.FAILED) },
+                    )
+                    runCatching { runStore.save(run) }
+                }
                 .fold(
                     onSuccess = { result ->
                         val answer = result.messages

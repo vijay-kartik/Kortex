@@ -387,28 +387,44 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             var toolCalls = 0
             val startMs = System.currentTimeMillis()
             fun statsNow() = ReasoningStats(tokens, toolCalls, System.currentTimeMillis() - startMs)
-            val turnLogger = Logger { level, tag, message, error ->
-                AndroidLogger.log(level, tag, message, error)
-                liveLines += ReasoningLine(level, tag, message)
-                _ui.update { it.copy(liveReasoning = liveLines.toList(), liveStats = statsNow()) }
-            }
+            // Records a structured AgentRun for the dedicated Runs screen while still
+            // driving the live reasoning panel + Logcat via its delegate logger. The run
+            // content is owned by core-agent (dev.kortex.core.observability), not this module.
+            val recorder = dev.kortex.core.observability.AgentRunRecorder(
+                query = agentQuery,
+                sessionId = currentSessionId,
+                delegate = Logger { level, tag, message, error ->
+                    AndroidLogger.log(level, tag, message, error)
+                    liveLines += ReasoningLine(level, tag, message)
+                    _ui.update { it.copy(liveReasoning = liveLines.toList(), liveStats = statsNow()) }
+                },
+            )
             val turnCtx = AgentContext(
                 llm = provider,
                 tools = tools,
-                governor = ToolGovernor(onAudit = {
+                governor = ToolGovernor(onAudit = { entry ->
                     toolCalls++
                     _ui.update { it.copy(liveStats = statsNow()) }
+                    recorder.audit(entry)
                 }),
                 approver = approver,
                 onProgress = progress,
-                logger = turnLogger,
+                logger = recorder.logger,
                 onLlmUsage = LlmUsageListener { usage ->
                     tokens += usage.inputTokens + usage.outputTokens
                     _ui.update { it.copy(liveStats = statsNow()) }
+                    recorder.usage.report(usage)
                 },
             )
 
             val result = Agent(turnCtx).ask(agentQuery, agentAttachments, history = historyMessages)
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    container.runTraceStore.save(
+                        recorder.finish(result, dev.kortex.core.observability.AgentRun.Status.COMPLETED)
+                    )
+                }
+            }
             val answer = result.messages
                 .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
 

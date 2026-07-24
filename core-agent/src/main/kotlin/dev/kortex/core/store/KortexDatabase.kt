@@ -23,6 +23,7 @@ import androidx.room.RoomDatabase
         EntityEntity::class,
         MentionEntity::class,
         RelationEntity::class,
+        RunTraceEntity::class,
     ],
     version = 1,
     exportSchema = false,
@@ -36,4 +37,5 @@ abstract class KortexDatabase : RoomDatabase() {
     abstract fun graphEntityDao(): GraphEntityDao
     abstract fun mentionDao(): MentionDao
     abstract fun relationDao(): RelationDao
+    abstract fun runTraceDao(): RunTraceDao
 }

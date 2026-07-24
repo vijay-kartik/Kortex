@@ -50,6 +50,11 @@ class KortexContainer(context: Context) {
     val mentionDao get() = database.mentionDao()
     val relationDao get() = database.relationDao()
 
+    /** Durable store of agent-run traces for the Runs inspection screen. */
+    val runTraceStore: dev.kortex.core.observability.AgentRunStore by lazy {
+        dev.kortex.core.observability.RoomAgentRunStore(database.runTraceDao())
+    }
+
     val appDatabase: AppDatabase by lazy {
         Room.databaseBuilder(appContext, AppDatabase::class.java, "app.db").build()
     }
@@ -158,6 +163,7 @@ class KortexContainer(context: Context) {
             llm = llm,
             tools = toolRegistry,
             sessionDao = chatSessionDao,
+            runStore = runTraceStore,
         )
     }
 }

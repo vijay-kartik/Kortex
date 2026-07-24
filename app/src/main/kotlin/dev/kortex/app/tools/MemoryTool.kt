@@ -7,6 +7,7 @@ import dev.kortex.core.tool.ToolParam
 import dev.kortex.core.tool.ToolResult
 import dev.kortex.core.tool.ToolSchema
 import dev.kortex.graph_core.AssertionPredicate
+import dev.kortex.graph_core.NodeType
 import dev.kortex.graph_storage.GraphBuilder
 import dev.kortex.graph_storage.GraphRepository
 import dev.kortex.graph_storage.GraphStorageConfig
@@ -44,15 +45,28 @@ class MemoryTool(
             if (handles.isEmpty()) {
                 return ToolResult(true, "No memories found for query: $query")
             }
-            
+
             val builder = StringBuilder("Found memories:\n")
+            val seen = mutableSetOf<Long>()
             handles.forEach { handle ->
-                val summary = graphBuilder.getNodeSummary(handle.graphKey)
-                if (summary != null) {
-                    builder.append("- $summary\n")
+                if (!seen.add(handle.graphKey)) return@forEach
+                val summary = graphBuilder.getNodeSummary(handle.graphKey) ?: return@forEach
+                builder.append("- $summary\n")
+
+                // Expand entity nodes into the facts they participate in. Vector search
+                // returns bare nodes; the relationships live on separate assertion nodes
+                // that may not rank on their own, so pull them in via the graph.
+                if (handle.nodeType == NodeType.PERSON || handle.nodeType == NodeType.TOPIC) {
+                    repository.getConnectedAssertions(handle.graphKey).forEach { assertion ->
+                        if (seen.add(assertion.graphKey)) {
+                            graphBuilder.getNodeSummary(assertion.graphKey)?.let {
+                                builder.append("    • $it\n")
+                            }
+                        }
+                    }
                 }
             }
-            
+
             ToolResult(true, builder.toString())
         } catch (e: Exception) {
             ToolResult(false, "Failed to search memory: ${e.message}")

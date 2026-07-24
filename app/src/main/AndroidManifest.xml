@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Android 13+: the share-intake flow posts a "processing complete" notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- All-files access: the on-device EmbeddingGemma model (and its tokenizer) are
+         read from the public Downloads folder, which scoped storage otherwise blocks.
+         Granted via system Settings (Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION). -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <!-- Android 11+ package visibility: lets SpeechRecognizer find the device's
          speech-recognition service for on-device voice input. -->

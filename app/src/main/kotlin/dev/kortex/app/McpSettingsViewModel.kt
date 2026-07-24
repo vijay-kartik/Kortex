@@ -56,8 +56,6 @@ data class McpSettingsUi(
     val openaiApiKey: String = "",
     /** API key for Ollama Cloud (ollama.com/settings/keys); blank until the user enters one. */
     val ollamaCloudApiKey: String = "",
-    val activeEmbeddingModel: String = "all-minilm",
-    val activeEmbeddingProvider: String = "ollama-cloud",
     val composioApiKey: String = "",
     val composioUserId: String = "",
     /** Null until the first connect attempt (this session or a prior one) resolves. */
@@ -127,8 +125,6 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         val ollamaToken: String,
         val openaiApiKey: String,
         val ollamaCloudApiKey: String,
-        val embeddingProvider: String,
-        val embeddingModel: String,
     )
 
     val ui: StateFlow<McpSettingsUi> = combine(
@@ -136,11 +132,11 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
         combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
         combine(
             combine(store.activeProvider, store.ollamaUrl, store.ollamaToken, store.openaiApiKey) { p, u, t, k -> listOf(p, u, t ?: "", k ?: "") },
-            combine(store.ollamaCloudApiKey, store.activeEmbeddingProvider, store.activeEmbeddingModel) { oc, ep, em -> listOf(oc ?: "", ep, em) }
-        ) { l1, l2 -> 
+            store.ollamaCloudApiKey
+        ) { l1, ollamaCloud ->
             ProviderPrefs(
                 provider = l1[0], ollamaUrl = l1[1], ollamaToken = l1[2], openaiApiKey = l1[3],
-                ollamaCloudApiKey = l2[0], embeddingProvider = l2[1], embeddingModel = l2[2]
+                ollamaCloudApiKey = ollamaCloud ?: ""
             )
         },
         combine(store.composioApiKey, store.composioUserId) { k, u -> k to u },
@@ -204,8 +200,6 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
             ollamaToken = prefs.ollamaToken,
             openaiApiKey = prefs.openaiApiKey,
             ollamaCloudApiKey = prefs.ollamaCloudApiKey,
-            activeEmbeddingModel = prefs.embeddingModel,
-            activeEmbeddingProvider = prefs.embeddingProvider,
             composioApiKey = composioApiKey ?: "",
             composioUserId = composioUserId ?: "",
             composioStatus = composioStatus,
@@ -307,18 +301,6 @@ class McpSettingsViewModel(application: Application) : AndroidViewModel(applicat
     fun setOllamaCloudApiKey(key: String) {
         viewModelScope.launch {
             store.setOllamaCloudApiKey(key.trim())
-        }
-    }
-
-    fun setActiveEmbeddingProvider(provider: String) {
-        viewModelScope.launch {
-            store.setActiveEmbeddingProvider(provider)
-        }
-    }
-
-    fun setActiveEmbeddingModel(model: String) {
-        viewModelScope.launch {
-            store.setActiveEmbeddingModel(model)
         }
     }
 

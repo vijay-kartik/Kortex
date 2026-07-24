@@ -70,7 +70,10 @@ class KortexContainer(context: Context) {
 
     // ObjectBox setup for Knowledge Graph
     val boxStore: io.objectbox.BoxStore by lazy {
-        dev.kortex.graph_storage.MyObjectBox.builder().androidContext(appContext).build()
+        dev.kortex.graph_storage.MyObjectBox.builder()
+            .androidContext(appContext)
+            .name(dev.kortex.graph_storage.GraphStorageConfig.STORE_NAME)
+            .build()
     }
     
     val graphRepository: dev.kortex.graph_storage.GraphRepository by lazy {
@@ -81,12 +84,10 @@ class KortexContainer(context: Context) {
         dev.kortex.graph_storage.GraphBuilder(graphRepository, boxStore)
     }
 
-    // Embedding provider - tied to the same logic as LLM switching
+    // Embedding provider — on-device EmbeddingGemma is the single, default provider
+    // for all embeddings (384-dim Matryoshka, matching GraphStorageConfig.EMBEDDING_DIMENSIONS).
     val embedder: dev.kortex.core.llm.EmbeddingProvider by lazy {
-        val defaultOpenAi = BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
-            ?.let { dev.kortex.core.llm.OpenAiEmbeddingProvider(apiKey = it, model = "text-embedding-3-small", logger = AndroidLogger) }
-            ?: StubEmbeddingProvider()
-        DynamicEmbeddingProvider(store = mcpStore, defaultProvider = defaultOpenAi)
+        dev.kortex.core.llm.EmbeddingGemmaProvider()
     }
     val memoryTool by lazy { dev.kortex.app.tools.MemoryTool(graphRepository, graphBuilder, embedder) }
     val knowledgeExtractionTool by lazy { dev.kortex.app.tools.KnowledgeExtractionTool(graphBuilder, embedder) }

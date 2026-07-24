@@ -5,6 +5,7 @@ import dev.kortex.graph_core.GraphNode
 import dev.kortex.graph_core.NodeType
 import io.objectbox.annotation.Entity
 import io.objectbox.annotation.Id
+import io.objectbox.annotation.Index
 import io.objectbox.annotation.Unique
 
 /**
@@ -16,9 +17,11 @@ class PersonEntity(
     
     @Unique
     var graphIdStr: String = "",
-    
+
+    /** Indexed for resolve-or-create lookups by name (entity dedup). */
+    @Index
     var name: String = "",
-    
+
     var notes: String = ""
 ) : GraphNode {
     

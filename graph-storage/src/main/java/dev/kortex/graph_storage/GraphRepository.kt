@@ -130,6 +130,24 @@ class GraphRepository(private val boxStore: BoxStore) {
         return results
     }
 
+    /**
+     * Assertions that reference [nodeKey] as their SUBJECT or OBJECT — i.e. the
+     * reified facts this node participates in.
+     *
+     * Vector search returns bare entity nodes; the facts about them live on
+     * separate ASSERTION nodes that often don't rank in the same top-K. Callers
+     * use this to expand a retrieved entity into its relationships. Edges run
+     * ASSERTION -> endpoint, so from the endpoint we follow SUBJECT/OBJECT
+     * INCOMING to reach the assertions.
+     */
+    fun getConnectedAssertions(nodeKey: Long): List<NodeHandle> {
+        val asSubject = getNeighbors(nodeKey, EdgeType.SUBJECT, Direction.INCOMING)
+        val asObject = getNeighbors(nodeKey, EdgeType.OBJECT, Direction.INCOMING)
+        return (asSubject + asObject)
+            .filter { it.nodeType == NodeType.ASSERTION }
+            .distinctBy { it.graphKey }
+    }
+
     /** Sets or updates the embedding for a node. */
     fun setEmbedding(graphKey: Long, vector: FloatArray) {
         require(vector.size.toLong() == GraphStorageConfig.EMBEDDING_DIMENSIONS) {

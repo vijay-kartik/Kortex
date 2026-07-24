@@ -25,9 +25,16 @@ class KnowledgeExtractionTool(
     override val description = "Save a derived fact or assertion about a person or topic into the memory graph."
     override val parameters = ToolSchema(
         listOf(
-            ToolParam("personName", "string", "Name of the person"),
-            ToolParam("predicate", "string", "The relation (WORKS_AT, LIVES_IN, INTERESTED_IN, etc)"),
-            ToolParam("objectName", "string", "The target of the relation (e.g., organization or topic)"),
+            ToolParam("personName", "string", "Name of the person (the SUBJECT the fact is about)"),
+            ToolParam(
+                "predicate", "string",
+                "The relation, stated SUBJECT→OBJECT. Prefer one of: WORKS_AT, STUDIED_AT, " +
+                    "LIVES_IN, TRAVELING_TO, VISITED, FAMILY_OF, COLLEAGUE_OF, FRIEND_OF, " +
+                    "MANAGER_OF (subject manages object), KNOWS, INTERESTED_IN, WORKING_ON, " +
+                    "OWNS, PREFERS, BIRTHDAY_ON, ANNIVERSARY_ON. Use MANAGER_OF for a " +
+                    "manager relationship. Free-form phrasings are canonicalized where possible.",
+            ),
+            ToolParam("objectName", "string", "The target of the relation (the OBJECT — e.g. organization, topic, or person)"),
         )
     )
 
@@ -36,31 +43,32 @@ class KnowledgeExtractionTool(
         val predicateStr = args["predicate"]?.jsonPrimitive?.contentOrNull ?: return ToolResult(false, "Missing predicate")
         val objectName = args["objectName"]?.jsonPrimitive?.contentOrNull ?: return ToolResult(false, "Missing objectName")
 
-        val predicate = try {
-            AssertionPredicate.valueOf(predicateStr.uppercase())
-        } catch (e: IllegalArgumentException) {
-            AssertionPredicate.OTHER
-        }
+        val predicate = AssertionPredicate.canonicalize(predicateStr)
 
         return try {
             // Embed nodes and assertion using the real embedding provider
             val personEmbedding = embedder.embed(personName)
-            val topicEmbedding = embedder.embed(objectName)
+            val objectEmbedding = embedder.embed(objectName)
             val assertionEmbedding = embedder.embed("$personName $predicateStr $objectName")
 
-            // 1. Create nodes
-            val personRef = graphBuilder.addPerson(name = personName, notes = "", embedding = personEmbedding)
-            val topicRef = graphBuilder.addTopic(label = objectName, description = "", embedding = topicEmbedding)
-            
-            // 2. Create assertion
-            val assertionRef = graphBuilder.addAssertion(
+            // 1. Resolve-or-create nodes (dedup by name). The object is a PERSON for
+            //    person↔person predicates (e.g. MANAGER_OF), otherwise a TOPIC — so a
+            //    manager fact attaches to the real person, not a stray topic node.
+            val personRef = graphBuilder.getOrCreatePerson(name = personName, embedding = personEmbedding)
+            val objectRef = if (predicate.objectIsPerson) {
+                graphBuilder.getOrCreatePerson(name = objectName, embedding = objectEmbedding)
+            } else {
+                graphBuilder.getOrCreateTopic(label = objectName, embedding = objectEmbedding)
+            }
+
+            // 2. Create the fact, reusing an existing assertion if the same
+            //    subject-predicate-object already exists (idempotent save).
+            graphBuilder.assertFact(
+                subject = personRef,
                 predicate = predicate,
-                embedding = assertionEmbedding
+                obj = objectRef,
+                embedding = assertionEmbedding,
             )
-            
-            // 3. Connect them via GraphBuilder (which validates via GraphSchema)
-            graphBuilder.connect(assertionRef, personRef, dev.kortex.graph_core.EdgeType.SUBJECT)
-            graphBuilder.connect(assertionRef, topicRef, dev.kortex.graph_core.EdgeType.OBJECT)
             
             ToolResult(true, "Successfully saved knowledge: $personName $predicateStr $objectName")
         } catch (e: Exception) {

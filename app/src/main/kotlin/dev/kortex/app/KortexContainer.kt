@@ -94,8 +94,16 @@ class KortexContainer(context: Context) {
     val embedder: dev.kortex.core.llm.EmbeddingProvider by lazy {
         dev.kortex.core.llm.EmbeddingGemmaProvider()
     }
+    // Learned predicate vocabulary: counts the relation phrases the fixed enum
+    // doesn't cover, and applies any promotions recorded against them.
+    val predicateVocabulary: dev.kortex.graph_storage.PredicateVocabulary by lazy {
+        dev.kortex.graph_storage.PredicateVocabulary(boxStore)
+    }
+
     val memoryTool by lazy { dev.kortex.app.tools.MemoryTool(graphRepository, graphBuilder, embedder) }
-    val knowledgeExtractionTool by lazy { dev.kortex.app.tools.KnowledgeExtractionTool(graphBuilder, embedder) }
+    val knowledgeExtractionTool by lazy {
+        dev.kortex.app.tools.KnowledgeExtractionTool(graphBuilder, embedder, predicateVocabulary)
+    }
 
     // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.
     val toolRegistry: ToolRegistry by lazy {

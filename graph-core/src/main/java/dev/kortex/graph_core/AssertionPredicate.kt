@@ -60,10 +60,23 @@ enum class AssertionPredicate(val id: Int) {
      */
     val objectIsPerson: Boolean get() = this in PERSON_TO_PERSON
 
+    /**
+     * Whether this predicate's value IS a date rather than an entity — the date
+     * is the fact ("Kartik BIRTHDAY_ON 1996-03-12"), not a time bound on some
+     * other fact ("staying at the hotel, 16-17 Jul"). Callers store these on the
+     * assertion's validity interval and create no object node at all: a TOPIC
+     * labelled "1996-03-12" is a junk entity that pollutes vector search, one per
+     * date ever recorded.
+     */
+    val objectIsDate: Boolean get() = this in DATE_VALUED
+
     companion object {
         /** Predicates whose OBJECT is another person (the "Person ↔ Person" group). */
         private val PERSON_TO_PERSON: Set<AssertionPredicate> =
             setOf(FAMILY_OF, COLLEAGUE_OF, FRIEND_OF, MANAGER_OF, KNOWS)
+
+        /** Predicates whose value is a date, not an entity (the "Temporal" group). */
+        private val DATE_VALUED: Set<AssertionPredicate> = setOf(BIRTHDAY_ON, ANNIVERSARY_ON)
 
         private val byId: Map<Int, AssertionPredicate> = buildMap {
             for (predicate in AssertionPredicate.entries) {
@@ -117,10 +130,21 @@ enum class AssertionPredicate(val id: Int) {
          * collapsed almost every real phrasing ("manager", "works for") to OTHER.
          */
         fun canonicalize(raw: String): AssertionPredicate {
-            val normalized = raw.trim().uppercase().replace(Regex("[\\s-]+"), "_")
+            val normalized = normalize(raw)
             if (normalized.isEmpty()) return OTHER
             entries.firstOrNull { it.name == normalized }?.let { return it }
             return ALIASES[normalized] ?: OTHER
         }
+
+        /**
+         * The canonical spelling of a free-form relation phrase: uppercase, with
+         * spaces and hyphens folded to underscores. Exposed so that anything
+         * *keying* on un-canonicalized phrases (the learned-vocabulary table)
+         * buckets them exactly the way [canonicalize] does — otherwise
+         * "booked through", "BOOKED_THROUGH" and "booked-through" would be
+         * counted as three separate long-tail relations instead of one.
+         */
+        fun normalize(raw: String): String =
+            raw.trim().uppercase().replace(Regex("[\\s-]+"), "_")
     }
 }

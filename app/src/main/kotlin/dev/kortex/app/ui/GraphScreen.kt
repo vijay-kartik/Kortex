@@ -113,7 +113,12 @@ class GraphViewModel(application: Application) : AndroidViewModel(application) {
                     NodeType.TOPIC -> topicBox.get(reg.businessEntityId)?.label ?: "Topic"
                     NodeType.ASSERTION -> {
                         val ast = assertionBox.get(reg.businessEntityId)
-                        ast?.predicate?.name ?: "Assertion"
+                        // Prefer the extractor's own phrase for long-tail relations:
+                        // the predicate enum reports every one of them as OTHER, which
+                        // renders a graph full of identical unreadable nodes.
+                        ast?.rawPredicate?.takeIf { it.isNotBlank() }
+                            ?: ast?.predicate?.name
+                            ?: "Assertion"
                     }
                     else -> type.name
                 }

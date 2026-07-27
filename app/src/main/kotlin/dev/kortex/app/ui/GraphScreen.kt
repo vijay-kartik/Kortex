@@ -321,8 +321,8 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
         if (canvasWidth > 0 && canvasHeight > 0) {
             nodes.forEach {
                 if (it.x == 0f && it.y == 0f) {
-                    it.x = canvasWidth / 2f + (Random.nextFloat() - 0.5f) * 200f
-                    it.y = canvasHeight / 2f + (Random.nextFloat() - 0.5f) * 200f
+                    it.x = canvasWidth / 2f + (Random.nextFloat() - 0.5f) * 1000f
+                    it.y = canvasHeight / 2f + (Random.nextFloat() - 0.5f) * 1000f
                 }
             }
         }
@@ -333,7 +333,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
         if (nodes.isEmpty()) return@LaunchedEffect
         while (isActive) {
             val k = 0.015f // Weaker spring constant
-            val repulsion = 50000f // Higher repulsion constant
+            val repulsion = 80000f // Higher repulsion constant for infinite canvas
             val damping = 0.85f // Damping to stabilize
 
             // Repulsion between all nodes
@@ -364,7 +364,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
                 val dx = n2.x - n1.x
                 val dy = n2.y - n1.y
                 val dist = max(sqrt(dx * dx + dy * dy), 1f)
-                val targetDist = 250f
+                val targetDist = 400f
                 val force = (dist - targetDist) * k
                 
                 val fx = force * (dx / dist)
@@ -379,7 +379,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
             // Center gravity to keep graph on screen
             val cx = canvasWidth / 2f
             val cy = canvasHeight / 2f
-            val gravity = 0.01f
+            val gravity = 0.002f // Very weak gravity to allow expansion
             for (node in nodes) {
                 node.vx += (cx - node.x) * gravity
                 node.vy += (cy - node.y) * gravity
@@ -398,8 +398,9 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
                 node.y += node.vy
                 
                 // Boundaries
-                node.x = node.x.coerceIn(50f, max(canvasWidth - 50f, 50f))
-                node.y = node.y.coerceIn(50f, max(canvasHeight - 50f, 50f))
+                // Infinite Canvas Boundaries
+                node.x = node.x.coerceIn(-10000f, 10000f)
+                node.y = node.y.coerceIn(-10000f, 10000f)
             }
 
             delay(16) // ~60fps
@@ -426,7 +427,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, _ ->
                     if (draggedNodeId == null) {
-                        scale = (scale * zoom).coerceIn(0.5f, 5f)
+                        scale = (scale * zoom).coerceIn(0.1f, 5f)
                         offset += pan
                     }
                 }
@@ -434,9 +435,11 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
             .pointerInput(nodes) {
                 detectDragGestures(
                     onDragStart = { pointer ->
-                        // Reverse transform pointer to graph space
-                        val graphX = (pointer.x - offset.x) / scale
-                        val graphY = (pointer.y - offset.y) / scale
+                        // Reverse transform pointer to graph space (accounting for center scale origin)
+                        val cx = canvasWidth / 2f
+                        val cy = canvasHeight / 2f
+                        val graphX = (pointer.x - cx - offset.x) / scale + cx
+                        val graphY = (pointer.y - cy - offset.y) / scale + cy
                         val clicked = nodes.find {
                             val dx = it.x - graphX
                             val dy = it.y - graphY

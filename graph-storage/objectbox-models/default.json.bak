@@ -120,7 +120,7 @@
     },
     {
       "id": "4:597589065230376564",
-      "lastPropertyId": "6:7824539806001537840",
+      "lastPropertyId": "7:2547667441100868758",
       "name": "AssertionEntity",
       "properties": [
         {
@@ -155,6 +155,11 @@
           "id": "6:7824539806001537840",
           "name": "validTo",
           "type": 6
+        },
+        {
+          "id": "7:2547667441100868758",
+          "name": "rawPredicate",
+          "type": 9
         }
       ],
       "relations": []
@@ -224,10 +229,56 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "7:562870297519162899",
+      "lastPropertyId": "7:4392043172832713663",
+      "name": "PredicateVocabularyEntity",
+      "properties": [
+        {
+          "id": "1:4071290952230711674",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:8142354888272097885",
+          "name": "phrase",
+          "indexId": "15:8928730497749919851",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:1926171785717445301",
+          "name": "sample",
+          "type": 9
+        },
+        {
+          "id": "4:5550637247322146042",
+          "name": "occurrences",
+          "type": 6
+        },
+        {
+          "id": "5:3804235345495043502",
+          "name": "firstSeenMillis",
+          "type": 6
+        },
+        {
+          "id": "6:8824611544656936270",
+          "name": "lastSeenMillis",
+          "type": 6
+        },
+        {
+          "id": "7:4392043172832713663",
+          "name": "promotedToId",
+          "type": 5
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "6:8424465898478200031",
-  "lastIndexId": "14:4030703622676779027",
+  "lastEntityId": "7:562870297519162899",
+  "lastIndexId": "15:8928730497749919851",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,

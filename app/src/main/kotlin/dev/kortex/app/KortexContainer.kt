@@ -105,10 +105,12 @@ class KortexContainer(context: Context) {
         dev.kortex.app.tools.KnowledgeExtractionTool(graphBuilder, embedder, predicateVocabulary)
     }
 
+    val saveItineraryTool by lazy { dev.kortex.app.tools.SaveItineraryTool() }
+
     // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.
     val toolRegistry: ToolRegistry by lazy {
         ToolRegistry(
-            defaultTools() + memoryTool + knowledgeExtractionTool + gmailTool(
+            defaultTools() + memoryTool + knowledgeExtractionTool + saveItineraryTool + gmailTool(
                 context = appContext,
                 tokenProvider = {
                     val email = mcpStore.gmailAccountEmail.first()?.trim()

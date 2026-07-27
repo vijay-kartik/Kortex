@@ -60,6 +60,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -207,22 +208,24 @@ fun RootScreen(
                                         )
                                     }
                                 }
-                                IconButton(onClick = { showMcpSettings = true }) {
-                                    Icon(
-                                        painterResource(R.drawable.ic_tune),
-                                        contentDescription = "MCP Settings",
-                                        tint = Muted,
-                                    )
-                                }
+                            }
+                            IconButton(onClick = { showMcpSettings = true }) {
+                                Icon(
+                                    painterResource(R.drawable.ic_tune),
+                                    contentDescription = "MCP Settings",
+                                    tint = Muted,
+                                )
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = MaterialTheme.colorScheme.background,
                         ),
                     )
-                    TabRow(
+                    ScrollableTabRow(
                         selectedTabIndex = tab,
                         containerColor = MaterialTheme.colorScheme.background,
+                        edgePadding = 8.dp,
+                        divider = {},
                     ) {
                         tabs.forEachIndexed { i, title ->
                             Tab(

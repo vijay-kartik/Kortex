@@ -73,21 +73,14 @@ class KortexContainer(context: Context) {
     // Gmail OAuth2 token management (uses device's Google accounts).
     val gmailAuth: GmailAuthManager by lazy { GmailAuthManager(appContext) }
 
-    // ObjectBox setup for Knowledge Graph
-    val boxStore: io.objectbox.BoxStore by lazy {
-        dev.kortex.graph_storage.MyObjectBox.builder()
-            .androidContext(appContext)
-            .name(dev.kortex.graph_storage.GraphStorageConfig.STORE_NAME)
-            .build()
-    }
-    
-    val graphRepository: dev.kortex.graph_storage.GraphRepository by lazy {
-        dev.kortex.graph_storage.GraphRepository(boxStore)
-    }
+    val graphManager by lazy { GraphManager(appContext) }
 
-    val graphBuilder: dev.kortex.graph_storage.GraphBuilder by lazy {
-        dev.kortex.graph_storage.GraphBuilder(graphRepository, boxStore)
-    }
+    // ObjectBox setup for Knowledge Graph (Default)
+    val boxStore: io.objectbox.BoxStore get() = graphManager.defaultEnvironment.boxStore
+    
+    val graphRepository: dev.kortex.graph_storage.GraphRepository get() = graphManager.defaultEnvironment.graphRepository
+
+    val graphBuilder: dev.kortex.graph_storage.GraphBuilder get() = graphManager.defaultEnvironment.graphBuilder
 
     // Embedding provider — on-device EmbeddingGemma is the single, default provider
     // for all embeddings (384-dim Matryoshka, matching GraphStorageConfig.EMBEDDING_DIMENSIONS).
@@ -96,9 +89,7 @@ class KortexContainer(context: Context) {
     }
     // Learned predicate vocabulary: counts the relation phrases the fixed enum
     // doesn't cover, and applies any promotions recorded against them.
-    val predicateVocabulary: dev.kortex.graph_storage.PredicateVocabulary by lazy {
-        dev.kortex.graph_storage.PredicateVocabulary(boxStore)
-    }
+    val predicateVocabulary: dev.kortex.graph_storage.PredicateVocabulary get() = graphManager.defaultEnvironment.predicateVocabulary
 
     val memoryTool by lazy { dev.kortex.app.tools.MemoryTool(graphRepository, graphBuilder, embedder) }
     val knowledgeExtractionTool by lazy {

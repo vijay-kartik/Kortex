@@ -57,6 +57,7 @@ data class SettingsUi(
     val ollamaCloudApiKey: String = "",
     val gmailAccountEmail: String? = null,
     val testEmbeddingResult: String? = null,
+    val testLlmResult: String? = null,
 )
 
 // ── Names of the four builtins, so we can partition them in the UI ──────
@@ -102,6 +103,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _flags = MutableStateFlow(FlagsState())
 
     private val _testEmbeddingResult = MutableStateFlow<String?>(null)
+    private val _testLlmResult = MutableStateFlow<String?>(null)
 
     private data class FlagsState(
         val showAddDialog: Boolean = false,
@@ -135,10 +137,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 ollamaCloudApiKey = ollamaCloud ?: ""
             )
         },
-        combine(store.gmailAccountEmail, _testEmbeddingResult) { gmail, testRes -> listOf(gmail, testRes) },
+        combine(store.gmailAccountEmail, _testEmbeddingResult, _testLlmResult) { gmail, testRes, llmRes -> listOf(gmail, testRes, llmRes) },
     ) { (disabled, customServers, statuses, oauthUrls), (serverTools, flags, activeModel), prefs, fourthBlock ->
         val gmailAccountEmail = fourthBlock[0] as String?
         val testEmbeddingResult = fourthBlock[1] as String?
+        val testLlmResult = fourthBlock[2] as String?
 
         // Built-in tools
         val builtins = tools.allIncludingDisabled()
@@ -180,6 +183,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             ollamaCloudApiKey = prefs.ollamaCloudApiKey,
             gmailAccountEmail = gmailAccountEmail,
             testEmbeddingResult = testEmbeddingResult,
+            testLlmResult = testLlmResult,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUi())
 
@@ -299,6 +303,27 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun clearTestEmbeddingResult() {
         _testEmbeddingResult.value = null
+    }
+
+    fun testLlmConnection() {
+        viewModelScope.launch {
+            _testLlmResult.value = "Testing LLM..."
+            try {
+                val req = dev.kortex.core.llm.LlmRequest(
+                    model = store.activeModel.first(),
+                    messages = listOf(dev.kortex.core.state.Message(dev.kortex.core.state.Message.Role.USER, "Respond with a single word: OK")),
+                    maxTokens = 10
+                )
+                val resp = container.llm.complete(req)
+                _testLlmResult.value = "Success! Response: ${resp.message.content}"
+            } catch (e: Exception) {
+                _testLlmResult.value = "Failed: ${e.message}"
+            }
+        }
+    }
+
+    fun clearTestLlmResult() {
+        _testLlmResult.value = null
     }
 
     fun setGmailAccountEmail(email: String?) {

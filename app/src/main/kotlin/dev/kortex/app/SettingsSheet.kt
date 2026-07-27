@@ -78,6 +78,7 @@ import dev.kortex.app.auth.GmailAuthManager
 import dev.kortex.app.ui.Amber
 import kotlinx.coroutines.launch
 import android.widget.Toast
+import androidx.compose.ui.graphics.Color.Companion.Green
 import dev.kortex.app.ui.Alarm
 import dev.kortex.app.ui.Edge
 import dev.kortex.app.ui.Mono
@@ -137,12 +138,15 @@ fun SettingsScreen(
                     ollamaToken = ui.ollamaToken,
                     openaiApiKey = ui.openaiApiKey,
                     ollamaCloudApiKey = ui.ollamaCloudApiKey,
+                    testResult = ui.testLlmResult,
                     onProviderSelected = { vm.setActiveProvider(it) },
                     onModelSelected = { vm.setActiveModel(it) },
                     onOllamaUrlChange = { vm.setOllamaUrl(it) },
                     onOllamaTokenChange = { vm.setOllamaToken(it) },
                     onOpenaiApiKeyChange = { vm.setOpenaiApiKey(it) },
                     onOllamaCloudApiKeyChange = { vm.setOllamaCloudApiKey(it) },
+                    onTestConnection = { vm.testLlmConnection() },
+                    onClearTest = { vm.clearTestLlmResult() },
                 )
             }
 
@@ -693,12 +697,15 @@ private fun ModelSelector(
     ollamaToken: String,
     openaiApiKey: String,
     ollamaCloudApiKey: String,
+    testResult: String?,
     onProviderSelected: (String) -> Unit,
     onModelSelected: (String) -> Unit,
     onOllamaUrlChange: (String) -> Unit,
     onOllamaTokenChange: (String) -> Unit,
     onOpenaiApiKeyChange: (String) -> Unit,
     onOllamaCloudApiKeyChange: (String) -> Unit,
+    onTestConnection: () -> Unit,
+    onClearTest: () -> Unit,
 ) {
     var expandedProvider by remember { mutableStateOf(false) }
     var expandedModel by remember { mutableStateOf(false) }
@@ -945,6 +952,27 @@ private fun ModelSelector(
                         style = MaterialTheme.typography.labelSmall,
                         color = if (editKey.isBlank()) Amber else Muted,
                         modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
+
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                FilledTonalButton(
+                    onClick = {
+                        onClearTest()
+                        onTestConnection()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse)
+                ) {
+                    Text("Test Model Connection")
+                }
+                if (testResult != null) {
+                    Text(
+                        text = testResult,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (testResult.startsWith("Success")) Green else Amber,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }

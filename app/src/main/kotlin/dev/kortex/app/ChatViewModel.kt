@@ -35,6 +35,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import dev.kortex.app.store.ChatSessionEntity
+import kotlinx.coroutines.flow.stateIn
 import java.util.UUID
 
 /** One line of the agent's internal reasoning (router decision, LLM call, tool call, reflection verdict). */
@@ -90,7 +91,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (application as KortexApp).container
 
     private val _ui = MutableStateFlow(ChatUi())
-    val ui: StateFlow<ChatUi> = _ui.asStateFlow()
+    val ui: StateFlow<ChatUi> = kotlinx.coroutines.flow.combine(
+        _ui, container.settingsStore.activeProvider, container.settingsStore.activeModel
+    ) { state, provider, model ->
+        state.copy(activeProvider = provider, activeModel = if (provider == "ollama" || provider == "ollama-cloud") model else "gpt-4o")
+    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), ChatUi())
 
     private val _stagedAttachments = MutableStateFlow<List<dev.kortex.core.state.Attachment>>(emptyList())
     val stagedAttachments: StateFlow<List<dev.kortex.core.state.Attachment>> = _stagedAttachments.asStateFlow()
@@ -365,7 +370,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     turns = it.turns + ChatTurn(Message(Message.Role.USER, query, attachmentsToSend)),
                     busy = true,
-                    status = "Thinking…",
+                    status = "thinking…",
                     liveReasoning = emptyList(),
                     activeProvider = activeProviderName,
                     activeModel = model ?: "unknown model",

@@ -69,7 +69,7 @@ class SettingsStore(private val context: Context) {
     }
 
     val activeModel: Flow<String> = context.mcpDataStore.data.map { prefs ->
-        prefs[KEY_ACTIVE_MODEL] ?: "gpt-4o"
+        prefs[KEY_ACTIVE_MODEL] ?: "gemma4:31b"
     }
 
     suspend fun setActiveModel(model: String) {
@@ -79,7 +79,7 @@ class SettingsStore(private val context: Context) {
     }
 
     val activeProvider: Flow<String> = context.mcpDataStore.data.map { prefs ->
-        prefs[KEY_ACTIVE_PROVIDER] ?: "openai"
+        prefs[KEY_ACTIVE_PROVIDER] ?: "ollama-cloud"
     }
 
     suspend fun setActiveProvider(provider: String) {

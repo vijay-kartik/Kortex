@@ -455,11 +455,11 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
                 state = voice,
                 onCancel = { vm.cancelVoiceInput() },
                 onDone = { vm.stopVoiceInput() },
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
             )
         } else {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -544,6 +544,21 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
                     }
                 }
             }
+        }
+
+        if (ui.activeModel != null) {
+            val providerName = when (ui.activeProvider) {
+                "ollama" -> "Ollama"
+                "ollama-cloud" -> "Ollama Cloud"
+                else -> "OpenAI"
+            }
+            Text(
+                text = "${ui.activeModel} • $providerName",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                color = Muted.copy(alpha = 0.7f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+            )
         }
     }
 }

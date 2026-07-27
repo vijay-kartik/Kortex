@@ -13,6 +13,7 @@
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
     <!-- Android 11+ package visibility: lets SpeechRecognizer find the device's
          speech-recognition service for on-device voice input. -->

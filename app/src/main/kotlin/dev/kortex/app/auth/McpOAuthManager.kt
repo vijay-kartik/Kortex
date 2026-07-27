@@ -5,7 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import dev.kortex.app.McpOAuthState
-import dev.kortex.app.McpStore
+import dev.kortex.app.SettingsStore
 import dev.kortex.core.mcp.McpOAuth
 import dev.kortex.core.mcp.McpServer
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +16,7 @@ import kotlinx.coroutines.withContext
 
 class McpOAuthManager(
     private val context: Context,
-    private val mcpStore: McpStore,
+    private val settingsStore: SettingsStore,
     private val appScope: kotlinx.coroutines.CoroutineScope
 ) {
     companion object {
@@ -27,7 +27,7 @@ class McpOAuthManager(
 
     suspend fun beginSignIn(server: McpServer) {
         try {
-            val storedState = mcpStore.oauthStates.first()[server.url]
+            val storedState = settingsStore.oauthStates.first()[server.url]
             val discovery = McpOAuth.discover(server.url)
             val authMeta = discovery.authServerMetadata
 
@@ -45,7 +45,7 @@ class McpOAuthManager(
                 scope = discovery.scope ?: ""
             )
 
-            mcpStore.setPendingAuth(pendingAuth)
+            settingsStore.setPendingAuth(pendingAuth)
 
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(pendingAuth.authorizationUrl)).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -59,7 +59,7 @@ class McpOAuthManager(
     }
 
     suspend fun handleCallback(uri: Uri) {
-        val pendingAuth = mcpStore.consumePendingAuth()
+        val pendingAuth = settingsStore.consumePendingAuth()
         if (pendingAuth == null) {
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "No pending authorization found", Toast.LENGTH_SHORT).show()
@@ -100,12 +100,12 @@ class McpOAuthManager(
             expiresAtMillis = tokens.expiresAtMillis,
             tokenEndpoint = pendingAuth.tokenEndpoint
         )
-        mcpStore.setOauthState(pendingAuth.serverUrl, oauthState)
+        settingsStore.setOauthState(pendingAuth.serverUrl, oauthState)
     }
 
     fun tokenProviderFor(url: String): suspend (forceRefresh: Boolean) -> String? {
         return { forceRefresh ->
-            val currentState = mcpStore.oauthStates.first()[url]
+            val currentState = settingsStore.oauthStates.first()[url]
             if (currentState == null) {
                 null
             } else {
@@ -116,7 +116,7 @@ class McpOAuthManager(
                     if (currentState.refreshToken != null) {
                         refreshMutex.withLock {
                             // Double-checked locking
-                            val stateDuringLock = mcpStore.oauthStates.first()[url]
+                            val stateDuringLock = settingsStore.oauthStates.first()[url]
                             if (stateDuringLock?.accessToken != currentState.accessToken && stateDuringLock?.accessToken != null) {
                                 // Another thread already refreshed
                                 stateDuringLock.accessToken
@@ -134,16 +134,16 @@ class McpOAuthManager(
                                         refreshToken = tokens.refreshToken,
                                         expiresAtMillis = tokens.expiresAtMillis
                                     )
-                                    mcpStore.setOauthState(url, newState)
+                                    settingsStore.setOauthState(url, newState)
                                     newState.accessToken
                                 } catch (e: Exception) {
-                                    mcpStore.setOauthState(url, null)
+                                    settingsStore.setOauthState(url, null)
                                     null
                                 }
                             }
                         }
                     } else {
-                        mcpStore.setOauthState(url, null)
+                        settingsStore.setOauthState(url, null)
                         null
                     }
                 } else {

@@ -97,9 +97,9 @@ private val StatusError = Alarm
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun McpSettingsScreen(
+fun SettingsScreen(
     onDismiss: () -> Unit,
-    vm: McpSettingsViewModel = viewModel(),
+    vm: SettingsViewModel = viewModel(),
 ) {
     val ui by vm.ui.collectAsStateWithLifecycle()
 
@@ -156,23 +156,7 @@ fun McpSettingsScreen(
                 )
             }
 
-            // ── Composio (Gmail) ─────────────────────────────────────
-            item { SectionLabel("COMPOSIO (GMAIL)", Modifier.padding(top = 16.dp)) }
-            item {
-                ComposioSettings(
-                    apiKey = ui.composioApiKey,
-                    userId = ui.composioUserId,
-                    status = ui.composioStatus,
-                    error = ui.composioError,
-                    editing = ui.composioEditing,
-                    toolCount = ui.composioToolCount,
-                    onApiKeyChange = { vm.setComposioApiKey(it) },
-                    onUserIdChange = { vm.setComposioUserId(it) },
-                    onConnect = { vm.reconnectComposio() },
-                    onEdit = { vm.editComposio() },
-                    onCancelEdit = { vm.cancelComposioEdit() },
-                )
-            }
+
 
             // ── Native Gmail ─────────────────────────────────────────
             item { SectionLabel("NATIVE GMAIL (REST API)", Modifier.padding(top = 16.dp)) }
@@ -206,6 +190,7 @@ fun McpSettingsScreen(
                         ServerCard(
                             server = server,
                             onToggleTool = { name, enabled -> vm.toggleTool(name, enabled) },
+                            onToggleServer = { enabled -> vm.toggleServer(server.name, enabled) },
                             onSignIn = { vm.signIn(server.name) },
                             onSignOut = { vm.signOut(server.name) },
                         )
@@ -235,6 +220,7 @@ fun McpSettingsScreen(
                         ServerCard(
                             server = server,
                             onToggleTool = { name, enabled -> vm.toggleTool(name, enabled) },
+                            onToggleServer = { enabled -> vm.toggleServer(server.name, enabled) },
                             onDelete = { vm.requestDelete(server.name) },
                             onSignIn = { vm.signIn(server.name) },
                             onSignOut = { vm.signOut(server.name) },
@@ -368,6 +354,7 @@ private fun ToolRow(
 private fun ServerCard(
     server: ServerEntry,
     onToggleTool: (String, Boolean) -> Unit,
+    onToggleServer: (Boolean) -> Unit,
     onDelete: (() -> Unit)? = null,
     onSignIn: (() -> Unit)? = null,
     onSignOut: (() -> Unit)? = null,
@@ -425,6 +412,22 @@ private fun ServerCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = Muted,
                 )
+
+                if (server.tools.isNotEmpty()) {
+                    Spacer(Modifier.width(12.dp))
+                    Switch(
+                        checked = server.tools.any { it.enabled },
+                        onCheckedChange = onToggleServer,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = Synapse,
+                            checkedThumbColor = Void,
+                            uncheckedTrackColor = Edge,
+                            uncheckedThumbColor = Muted,
+                            uncheckedBorderColor = Color.Transparent,
+                        ),
+                        modifier = Modifier.height(28.dp)
+                    )
+                }
 
                 if (server.hasOAuthSession) {
                     Spacer(Modifier.width(8.dp))
@@ -679,206 +682,7 @@ private fun SettingsTextField(
     }
 }
 
-/**
- * Composio has no fixed MCP server: a Tool Router session is minted per connection from an
- * API key + user_id, scoped to whatever toolkits (here, Gmail) were authorized under that
- * user_id in Composio. The card has two faces: a credentials form (first setup, a failed
- * attempt, or an explicit edit) and a compact status row once a session is live — [onEdit]
- * is the only way back from the latter to the former, so a working setup never sits next
- * to a blank, re-typeable API key field.
- */
-@Composable
-private fun ComposioSettings(
-    apiKey: String,
-    userId: String,
-    status: ServerStatus?,
-    error: String?,
-    editing: Boolean,
-    toolCount: Int,
-    onApiKeyChange: (String) -> Unit,
-    onUserIdChange: (String) -> Unit,
-    onConnect: () -> Unit,
-    onEdit: () -> Unit,
-    onCancelEdit: () -> Unit,
-) {
-    val configured = apiKey.isNotBlank() && userId.isNotBlank()
-    val showForm = editing || !configured || status == ServerStatus.ERROR
 
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Panel,
-        border = BorderStroke(1.dp, Edge),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        AnimatedContent(
-            targetState = showForm,
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
-            label = "composio-card",
-        ) { formVisible ->
-            if (formVisible) {
-                ComposioForm(
-                    apiKey = apiKey,
-                    userId = userId,
-                    status = status,
-                    error = error,
-                    canCancel = editing && configured,
-                    onApiKeyChange = onApiKeyChange,
-                    onUserIdChange = onUserIdChange,
-                    onConnect = onConnect,
-                    onCancel = onCancelEdit,
-                )
-            } else {
-                ComposioStatusRow(
-                    status = status ?: ServerStatus.CONNECTING,
-                    toolCount = toolCount,
-                    onEdit = onEdit,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ComposioForm(
-    apiKey: String,
-    userId: String,
-    status: ServerStatus?,
-    error: String?,
-    canCancel: Boolean,
-    onApiKeyChange: (String) -> Unit,
-    onUserIdChange: (String) -> Unit,
-    onConnect: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-        if (error != null) {
-            Text(
-                error,
-                style = MaterialTheme.typography.bodySmall,
-                color = StatusError,
-                modifier = Modifier.padding(bottom = 6.dp),
-            )
-            Text(
-                "Double-check the key and user_id below, then try again.",
-                style = MaterialTheme.typography.labelSmall,
-                color = Muted,
-                modifier = Modifier.padding(bottom = 12.dp),
-            )
-        } else {
-            Text(
-                "Requires a Composio API key and the user_id whose Gmail connection you " +
-                    "already authorized in Composio — tools are only visible to the session " +
-                    "that matches that user_id.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Muted,
-                modifier = Modifier.padding(bottom = 12.dp),
-            )
-        }
-
-        val connecting = status == ServerStatus.CONNECTING
-        var editKey by remember { mutableStateOf(apiKey) }
-        var showKey by remember { mutableStateOf(false) }
-        SettingsTextField(
-            value = editKey,
-            onValueChange = { editKey = it; onApiKeyChange(it) },
-            label = "Composio API Key",
-            placeholder = "ak_...",
-            isPassword = !showKey,
-            trailingContent = {
-                TextButton(onClick = { showKey = !showKey }) {
-                    Text(
-                        if (showKey) "hide" else "show",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Synapse,
-                    )
-                }
-            },
-        )
-        Spacer(Modifier.height(12.dp))
-        var editUserId by remember { mutableStateOf(userId) }
-        SettingsTextField(
-            value = editUserId,
-            onValueChange = { editUserId = it; onUserIdChange(it) },
-            label = "User ID (must match the Gmail connection in Composio)",
-            placeholder = "user123",
-        )
-        Spacer(Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (canCancel) {
-                TextButton(onClick = onCancel) {
-                    Text("Cancel", style = MaterialTheme.typography.labelSmall, color = Muted)
-                }
-                Spacer(Modifier.width(8.dp))
-            }
-            FilledTonalButton(
-                onClick = onConnect,
-                enabled = !connecting && editKey.isNotBlank() && editUserId.isNotBlank(),
-                colors = ButtonDefaults.filledTonalButtonColors(containerColor = SynapseDim, contentColor = Synapse),
-            ) {
-                Text(
-                    when {
-                        connecting -> "Connecting…"
-                        error != null -> "Try Again"
-                        canCancel -> "Save & Reconnect"
-                        else -> "Connect"
-                    }
-                )
-            }
-        }
-    }
-}
-
-/** Compact steady-state row shown once Composio is configured — mirrors [ServerCard]'s
- *  header (status dot, title, subtitle) so it reads as the same family of status row. */
-@Composable
-private fun ComposioStatusRow(
-    status: ServerStatus,
-    toolCount: Int,
-    onEdit: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .size(8.dp)
-                .background(
-                    when (status) {
-                        ServerStatus.CONNECTED -> StatusConnected
-                        ServerStatus.CONNECTING -> StatusConnecting
-                        ServerStatus.ERROR -> StatusError
-                        ServerStatus.NEEDS_AUTH -> Amber
-                    },
-                    CircleShape,
-                ),
-        )
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                "Composio (Gmail)",
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-            )
-            Text(
-                when (status) {
-                    ServerStatus.CONNECTED -> "Connected — $toolCount tool${if (toolCount == 1) "" else "s"} available"
-                    ServerStatus.CONNECTING -> "Connecting…"
-                    ServerStatus.ERROR -> "Connection failed"
-                    ServerStatus.NEEDS_AUTH -> "Sign in required"
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = Muted,
-            )
-        }
-        TextButton(onClick = onEdit) {
-            Text("Edit", style = MaterialTheme.typography.labelSmall, color = Synapse)
-        }
-    }
-}
 
 @Composable
 private fun ModelSelector(

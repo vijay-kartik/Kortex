@@ -110,7 +110,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val provider: LlmProvider = container.llm
     private val tools: ToolRegistry = container.toolRegistry
-    private val mcpStore: McpStore = container.mcpStore
+    private val settingsStore: SettingsStore = container.settingsStore
     private val sessionDao = container.chatSessionDao
 
     val sessions = sessionDao.getAll()
@@ -126,7 +126,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     init {
         // Apply persisted disabled-tool set, then connect MCP servers (default + custom).
         viewModelScope.launch {
-            val disabled = mcpStore.disabledTools.first()
+            val disabled = settingsStore.disabledTools.first()
             tools.setDisabled(disabled)
         }
         viewModelScope.launch {
@@ -134,13 +134,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
         // Keep the registry in sync whenever the user toggles tools from the settings sheet.
         viewModelScope.launch {
-            mcpStore.disabledTools.collect { disabled -> tools.setDisabled(disabled) }
+            settingsStore.disabledTools.collect { disabled -> tools.setDisabled(disabled) }
         }
         // Update the active reasoning/routing models globally whenever they change. Ollama
         // hosts (local or cloud) don't serve OpenAI's mini model, so the router and other
         // FAST-tier nodes must run on the same user-selected model there.
         viewModelScope.launch {
-            combine(mcpStore.activeProvider, mcpStore.activeModel) { provider, model -> provider to model }
+            combine(settingsStore.activeProvider, settingsStore.activeModel) { provider, model -> provider to model }
                 .collect { (provider, model) ->
                     dev.kortex.core.llm.Models.REASONING = model
                     dev.kortex.core.llm.Models.FAST =
@@ -150,12 +150,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Connects the hardcoded default MCP servers plus any user-added custom servers and,
-     * if configured, a fresh Composio Gmail Tool Router session. Called once at init; new
-     * custom servers added mid-session are connected by [McpSettingsViewModel] directly.
+     * Connects the hardcoded default MCP servers plus any user-added custom servers.
+     * Called once at init; new custom servers added mid-session are connected by [SettingsViewModel] directly.
      */
     private suspend fun connectMcpServers() {
-        val customServers = mcpStore.customServers.first().map {
+        val customServers = settingsStore.customServers.first().map {
             McpServer(
                 name = it.name,
                 url = it.url,
@@ -163,8 +162,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 tokenProvider = container.mcpOAuthManager.tokenProviderFor(it.url)
             )
         }
-        val composioServer = resolveComposioGmailServer(mcpStore, AndroidLogger)
-        val allServers = mcpServers + customServers + listOfNotNull(composioServer)
+        val allServers = mcpServers + customServers
         
         val connector = McpToolConnector(tools, AndroidLogger)
         for (server in allServers) {
@@ -176,11 +174,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 AndroidLogger.w("ChatViewModel", "Failed to connect to MCP server: ${server.name}", e)
             }
-        }
-        // Composio Gmail tools are opt-in: first-seen ones land in the disabled set, and
-        // the disabledTools collector above applies that to the registry.
-        if (composioServer != null) {
-            mcpStore.defaultDisableNewTools(composioGmailToolNames(tools))
         }
     }
 
@@ -360,9 +353,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         if (agentQuery.isBlank() && attachmentsToSend.isEmpty()) return
         viewModelScope.launch {
-            val activeProviderName = mcpStore.activeProvider.first()
+            val activeProviderName = settingsStore.activeProvider.first()
             val model = when (activeProviderName) {
-                "ollama", "ollama-cloud" -> mcpStore.activeModel.first()
+                "ollama", "ollama-cloud" -> settingsStore.activeModel.first()
                 else -> "gpt-4o"
             }
             // Snapshot history before appending this turn — Agent.ask() adds the query as a

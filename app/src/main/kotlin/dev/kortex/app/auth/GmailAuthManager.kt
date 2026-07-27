@@ -17,7 +17,7 @@ import kotlin.coroutines.resumeWithException
  *
  * The flow:
  * 1. Call [pickGoogleAccount] to get a chooser Intent → launch it from the Activity.
- * 2. The result gives you the chosen account email → persist it in [McpStore].
+ * 2. The result gives you the chosen account email → persist it in [SettingsStore].
  * 3. Call [getToken] with that email to obtain (or refresh) an OAuth2 token
  *    with the `gmail.readonly` scope.
  *

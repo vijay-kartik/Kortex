@@ -167,7 +167,7 @@ fun RootScreen(
     onSessionRequestConsumed: () -> Unit = {},
 ) {
     var tab by remember { mutableIntStateOf(0) }
-    var showMcpSettings by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     val tabs = listOf("Chat", "Cards", "Graph", "Context", "History", "Runs")
     val vm: ChatViewModel = viewModel()
     val chatUi by vm.ui.collectAsStateWithLifecycle()
@@ -182,8 +182,8 @@ fun RootScreen(
         }
     }
 
-    if (showMcpSettings) {
-        McpSettingsScreen(onDismiss = { showMcpSettings = false })
+    if (showSettings) {
+        SettingsScreen(onDismiss = { showSettings = false })
     } else {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -209,7 +209,7 @@ fun RootScreen(
                                     }
                                 }
                             }
-                            IconButton(onClick = { showMcpSettings = true }) {
+                            IconButton(onClick = { showSettings = true }) {
                                 Icon(
                                     painterResource(R.drawable.ic_tune),
                                     contentDescription = "MCP Settings",

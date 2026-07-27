@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 
 class DynamicLlmProvider(
-    private val store: McpStore,
+    private val store: SettingsStore,
     private val defaultProvider: LlmProvider,
 ) : LlmProvider {
     private var ollamaProvider: LlmProvider? = null

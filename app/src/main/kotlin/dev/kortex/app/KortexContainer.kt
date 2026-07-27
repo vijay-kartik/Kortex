@@ -67,7 +67,7 @@ class KortexContainer(context: Context) {
             ?: BuildConfig.DEEPSEEK_API_KEY.takeIf { it.isNotBlank() }
             ?.let { DeepseekProvider(apiKey = it, logger = AndroidLogger) }
             ?: StubLlmProvider()
-        DynamicLlmProvider(store = mcpStore, defaultProvider = defaultOpenAi)
+        DynamicLlmProvider(store = settingsStore, defaultProvider = defaultOpenAi)
     }
 
     // Gmail OAuth2 token management (uses device's Google accounts).
@@ -106,14 +106,16 @@ class KortexContainer(context: Context) {
     }
 
     val saveItineraryTool by lazy { dev.kortex.app.tools.SaveItineraryTool() }
+    val reminderTool by lazy { dev.kortex.app.tools.reminderTool(appContext) }
+    val calendarEventTool by lazy { dev.kortex.app.tools.calendarEventTool(appContext) }
 
-    // Shared tool registry — one instance for ChatViewModel + McpSettingsViewModel.
+    // Shared tool registry — one instance for ChatViewModel + SettingsViewModel.
     val toolRegistry: ToolRegistry by lazy {
         ToolRegistry(
-            defaultTools() + memoryTool + knowledgeExtractionTool + saveItineraryTool + gmailTool(
+            defaultTools() + memoryTool + knowledgeExtractionTool + saveItineraryTool + reminderTool + calendarEventTool + gmailTool(
                 context = appContext,
                 tokenProvider = {
-                    val email = mcpStore.gmailAccountEmail.first()?.trim()
+                    val email = settingsStore.gmailAccountEmail.first()?.trim()
                         ?.takeIf { it.isNotBlank() } ?: return@gmailTool null
                     when (val result = gmailAuth.getToken(email)) {
                         is GmailAuthManager.AuthResult.Success -> result.token
@@ -125,12 +127,12 @@ class KortexContainer(context: Context) {
     }
 
     // MCP settings persistence (user-added servers + disabled tool names).
-    val mcpStore: McpStore by lazy { McpStore(appContext) }
+    val settingsStore: SettingsStore by lazy { SettingsStore(appContext) }
 
     val mcpOAuthManager: McpOAuthManager by lazy { 
         McpOAuthManager(
             context = appContext,
-            mcpStore = mcpStore,
+            settingsStore = settingsStore,
             appScope = appScope
         )
     }

@@ -38,7 +38,7 @@ data class McpOAuthState(
  *  - custom (user-added) MCP servers
  *  - set of disabled tool names (applies to builtins + all MCP tools alike)
  */
-class McpStore(private val context: Context) {
+class SettingsStore(private val context: Context) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -51,8 +51,6 @@ class McpStore(private val context: Context) {
         val KEY_OLLAMA_URL = stringPreferencesKey("ollama_url")
         val KEY_OLLAMA_TOKEN = stringPreferencesKey("ollama_token")
         val KEY_OLLAMA_CLOUD_API_KEY = stringPreferencesKey("ollama_cloud_api_key")
-        val KEY_COMPOSIO_API_KEY = stringPreferencesKey("composio_api_key")
-        val KEY_COMPOSIO_USER_ID = stringPreferencesKey("composio_user_id")
         val KEY_OPENAI_API_KEY = stringPreferencesKey("openai_api_key")
         val KEY_GMAIL_ACCOUNT = stringPreferencesKey("gmail_account_email")
         val KEY_OAUTH_STATES = stringPreferencesKey("mcp_oauth_states")
@@ -125,29 +123,6 @@ class McpStore(private val context: Context) {
         }
     }
 
-    // ── Composio (Gmail via Tool Router session) ──────────────────────────
-
-    val composioApiKey: Flow<String?> = context.mcpDataStore.data.map { prefs ->
-        prefs[KEY_COMPOSIO_API_KEY]
-    }
-
-    suspend fun setComposioApiKey(key: String?) {
-        context.mcpDataStore.edit { prefs ->
-            if (key.isNullOrBlank()) prefs.remove(KEY_COMPOSIO_API_KEY) else prefs[KEY_COMPOSIO_API_KEY] = key
-        }
-    }
-
-    /** Must match the user_id the Gmail toolkit was authorized under in Composio. */
-    val composioUserId: Flow<String?> = context.mcpDataStore.data.map { prefs ->
-        prefs[KEY_COMPOSIO_USER_ID]
-    }
-
-    suspend fun setComposioUserId(userId: String?) {
-        context.mcpDataStore.edit { prefs ->
-            if (userId.isNullOrBlank()) prefs.remove(KEY_COMPOSIO_USER_ID) else prefs[KEY_COMPOSIO_USER_ID] = userId
-        }
-    }
-
     // ── Gmail (direct REST API via OAuth2) ────────────────────────────────
 
     /** The Google account email whose OAuth token is used for the Gmail tool. */
@@ -195,9 +170,23 @@ class McpStore(private val context: Context) {
 
     suspend fun setToolDisabled(toolName: String, disabled: Boolean) {
         context.mcpDataStore.edit { prefs ->
-            val current = prefs[KEY_DISABLED_TOOLS]?.toMutableSet() ?: mutableSetOf()
-            if (disabled) current += toolName else current -= toolName
-            prefs[KEY_DISABLED_TOOLS] = current
+            val set = prefs[KEY_DISABLED_TOOLS] ?: emptySet()
+            if (disabled) {
+                prefs[KEY_DISABLED_TOOLS] = set + toolName
+            } else {
+                prefs[KEY_DISABLED_TOOLS] = set - toolName
+            }
+        }
+    }
+
+    suspend fun setServerToolsDisabled(toolNames: List<String>, disabled: Boolean) {
+        context.mcpDataStore.edit { prefs ->
+            val set = prefs[KEY_DISABLED_TOOLS] ?: emptySet()
+            if (disabled) {
+                prefs[KEY_DISABLED_TOOLS] = set + toolNames
+            } else {
+                prefs[KEY_DISABLED_TOOLS] = set - toolNames.toSet()
+            }
         }
     }
 

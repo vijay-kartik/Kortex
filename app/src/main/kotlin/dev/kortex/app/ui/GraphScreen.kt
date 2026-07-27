@@ -10,6 +10,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -86,6 +87,12 @@ data class GraphUiEdge(
     val type: EdgeType
 )
 
+data class NodeDetails(
+    val node: GraphUiNode,
+    val connectedEdges: List<GraphUiEdge>,
+    val details: Map<String, String>
+)
+
 class GraphViewModel(application: Application) : AndroidViewModel(application) {
     private val boxStore = (application as dev.kortex.app.KortexApp).container.boxStore
     
@@ -94,6 +101,53 @@ class GraphViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _edges = MutableStateFlow<List<GraphUiEdge>>(emptyList())
     val edges: StateFlow<List<GraphUiEdge>> = _edges.asStateFlow()
+
+    private val _selectedNodeDetails = MutableStateFlow<NodeDetails?>(null)
+    val selectedNodeDetails: StateFlow<NodeDetails?> = _selectedNodeDetails.asStateFlow()
+
+    fun selectNode(nodeId: Long?) {
+        if (nodeId == null) {
+            _selectedNodeDetails.value = null
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val node = _nodes.value.find { it.id == nodeId } ?: return@launch
+            val connectedEdges = _edges.value.filter { it.sourceId == nodeId || it.targetId == nodeId }
+            
+            val registryBox = boxStore.boxFor(GraphRegistryEntity::class.java)
+            val reg = registryBox.all.find { it.graphKey == nodeId }
+            
+            val detailsMap = mutableMapOf<String, String>()
+            if (reg != null) {
+                when (node.type) {
+                    NodeType.PERSON -> {
+                        val p = boxStore.boxFor(PersonEntity::class.java).get(reg.businessEntityId)
+                        if (p != null) {
+                            detailsMap["Name"] = p.name
+                            if (p.notes.isNotBlank()) detailsMap["Notes"] = p.notes
+                        }
+                    }
+                    NodeType.TOPIC -> {
+                        val t = boxStore.boxFor(TopicEntity::class.java).get(reg.businessEntityId)
+                        if (t != null) {
+                            detailsMap["Label"] = t.label
+                            if (t.description.isNotBlank()) detailsMap["Description"] = t.description
+                        }
+                    }
+                    NodeType.ASSERTION -> {
+                        val a = boxStore.boxFor(AssertionEntity::class.java).get(reg.businessEntityId)
+                        if (a != null) {
+                            detailsMap["Predicate"] = a.displayPredicate
+                            detailsMap["Confidence"] = "%.2f".format(a.confidence)
+                        }
+                    }
+                    else -> {}
+                }
+            }
+            
+            _selectedNodeDetails.value = NodeDetails(node, connectedEdges, detailsMap)
+        }
+    }
 
     fun loadGraph() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -161,22 +215,57 @@ class GraphViewModel(application: Application) : AndroidViewModel(application) {
 fun GraphScreen(vm: GraphViewModel) {
     val nodes by vm.nodes.collectAsState()
     val edges by vm.edges.collectAsState()
+    val selectedNodeDetails by vm.selectedNodeDetails.collectAsState()
     var showResetDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         vm.loadGraph()
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF090A0C))) {
         if (nodes.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Graph is empty.", color = dev.kortex.app.ui.Muted)
+                Text("Graph is empty.", color = Color(0xFF587291))
             }
         } else {
-            ForceDirectedGraphCanvas(nodes, edges)
+            ForceDirectedGraphCanvas(nodes, edges) { nodeId ->
+                vm.selectNode(nodeId)
+            }
+        }
+
+        // HUD Overlay
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(24.dp)
+                .background(Color(0xFF16191E).copy(alpha = 0.8f), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .border(1.dp, Color(0xFF2A2F3A), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .padding(16.dp)
+        ) {
+            Text("KORTEX SEMANTIC NETWORK", style = MaterialTheme.typography.labelMedium.copy(color = Color(0xFFE2C044), letterSpacing = 1.sp))
+            Text("NODES: ${nodes.size} // EDGES: ${edges.size}", style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF8B949E), letterSpacing = 1.sp), modifier = Modifier.padding(top = 4.dp))
+        }
+
+        selectedNodeDetails?.let { details ->
+            androidx.compose.foundation.layout.Column(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(24.dp)
+                    .background(Color(0xFF16191E).copy(alpha = 0.95f), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .border(1.dp, Color(0xFF2A2F3A), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .padding(16.dp)
+            ) {
+                Text(details.node.type.name, style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFFE2C044), letterSpacing = 1.sp))
+                Text(details.node.label, style = MaterialTheme.typography.titleMedium.copy(color = Color.White), modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+                
+                details.details.forEach { (k, v) ->
+                    Text("$k:", style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF8B949E)))
+                    Text(v, style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFC5C6C7)), modifier = Modifier.padding(bottom = 6.dp))
+                }
+            }
         }
 
         // Floating Settings/Reset Button
@@ -187,7 +276,7 @@ fun GraphScreen(vm: GraphViewModel) {
             Icon(
                 painter = painterResource(R.drawable.ic_tune),
                 contentDescription = "Memory Settings",
-                tint = dev.kortex.app.ui.Muted
+                tint = Color(0xFF8B949E)
             )
         }
     }
@@ -217,7 +306,7 @@ fun GraphScreen(vm: GraphViewModel) {
 }
 
 @Composable
-fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>) {
+fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>, onNodeSelected: (Long?) -> Unit) {
     val coroutineScope = rememberCoroutineScope()
     var canvasWidth by remember { mutableStateOf(0f) }
     var canvasHeight by remember { mutableStateOf(0f) }
@@ -319,13 +408,13 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
 
 
     
-    // Pulsing animation for node halos
+    // Subtle ambient pulsing animation for nodes
     val infiniteTransition = rememberInfiniteTransition()
     val pulseRatio by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.3f,
+        targetValue = 1.15f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
+            animation = tween(2000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         )
     )
@@ -333,7 +422,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
     Canvas(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D1117)) // Deep GitHub dark background
+            .background(Color(0xFF090A0C))
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, _ ->
                     if (draggedNodeId == null) {
@@ -355,6 +444,9 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
                         }
                         if (clicked != null) {
                             draggedNodeId = clicked.id
+                            onNodeSelected(clicked.id)
+                        } else {
+                            onNodeSelected(null)
                         }
                     },
                     onDragEnd = { draggedNodeId = null },
@@ -387,6 +479,9 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
             val source = nodes.find { it.id == edge.sourceId }
             val target = nodes.find { it.id == edge.targetId }
             if (source != null && target != null) {
+                val isActiveEdge = draggedNodeId != null && (source.id == draggedNodeId || target.id == draggedNodeId)
+                val edgeColor = if (isActiveEdge) Color(0xFF587291).copy(alpha = 0.8f) else Color(0xFF2A2F3A).copy(alpha = 0.6f)
+                
                 val path = androidx.compose.ui.graphics.Path().apply {
                     moveTo(source.x, source.y)
                     // Bezier curve for organic feel
@@ -397,18 +492,8 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
                 
                 drawPath(
                     path = path,
-                    color = Synapse.copy(alpha = 0.5f),
-                    style = Stroke(width = 2f)
-                )
-                
-                // Draw edge label
-                val midX = (source.x + target.x) / 2f + (target.y - source.y) * 0.1f
-                val midY = (source.y + target.y) / 2f + (source.x - target.x) * 0.1f
-                drawText(
-                    textMeasurer = textMeasurer,
-                    text = edge.type.name,
-                    topLeft = Offset(midX - 25f, midY - 10f),
-                    style = TextStyle(color = Synapse.copy(alpha = 0.8f), fontSize = 9.sp)
+                    color = edgeColor,
+                    style = Stroke(width = if (isActiveEdge) 3f else 1.5f)
                 )
             }
         }
@@ -416,45 +501,57 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
         // Draw nodes
         for (node in nodes) {
             val nodeColor = when (node.type.category) {
-                dev.kortex.graph_core.NodeCategory.IDENTITY -> Color(0xFF58A6FF) // Blue
-                dev.kortex.graph_core.NodeCategory.EVENT -> Color(0xFFD2A8FF) // Purple
-                dev.kortex.graph_core.NodeCategory.KNOWLEDGE -> Color(0xFF3FB950) // Green
+                dev.kortex.graph_core.NodeCategory.IDENTITY -> Color(0xFFE2C044) // Gold
+                dev.kortex.graph_core.NodeCategory.EVENT -> Color(0xFFD96C06) // Terracotta
+                dev.kortex.graph_core.NodeCategory.KNOWLEDGE -> Color(0xFF587291) // Slate Blue
                 else -> Color(0xFF8B949E) // Gray
             }
 
-            // Glow / Pulse effect
+            val isActiveNode = node.id == draggedNodeId
             val radius = 20f
+            
+            // Ambient pulse effect
             drawCircle(
-                color = nodeColor.copy(alpha = 0.2f),
-                radius = radius * 1.5f * pulseRatio,
+                color = nodeColor.copy(alpha = 0.15f),
+                radius = radius * 1.4f * pulseRatio,
                 center = Offset(node.x, node.y)
             )
             
+            // Orbital ring for active node
+            if (isActiveNode) {
+                drawCircle(
+                    color = nodeColor.copy(alpha = 0.4f),
+                    radius = radius * 1.8f,
+                    center = Offset(node.x, node.y),
+                    style = Stroke(width = 2f)
+                )
+            }
+            
             // Outer ring
             drawCircle(
-                color = nodeColor.copy(alpha = 0.8f),
+                color = nodeColor,
                 radius = radius + 2f,
                 center = Offset(node.x, node.y)
             )
             
             // Inner circle (Solid dark)
             drawCircle(
-                color = Color(0xFF161B22),
+                color = Color(0xFF090A0C),
                 radius = radius,
                 center = Offset(node.x, node.y)
             )
             
             // Inner core glow
             drawCircle(
-                color = nodeColor.copy(alpha = 0.3f),
+                color = nodeColor.copy(alpha = if (isActiveNode) 0.6f else 0.3f),
                 radius = radius * 0.6f,
                 center = Offset(node.x, node.y)
             )
 
             // Text Label
             val textLayoutResult = textMeasurer.measure(
-                text = node.label,
-                style = TextStyle(color = Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                text = node.label.uppercase(),
+                style = TextStyle(color = Color(0xFFC5C6C7), fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, letterSpacing = 0.5.sp)
             )
             
             // Label background for readability
@@ -464,9 +561,9 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>)
             val ty = node.y + 28f
             
             drawRoundRect(
-                color = Color(0xFF0D1117).copy(alpha = 0.8f),
-                topLeft = Offset(tx - 4f, ty - 2f),
-                size = androidx.compose.ui.geometry.Size(tw + 8f, th + 4f),
+                color = Color(0xFF090A0C).copy(alpha = 0.85f),
+                topLeft = Offset(tx - 6f, ty - 2f),
+                size = androidx.compose.ui.geometry.Size(tw + 12f, th + 4f),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f)
             )
 

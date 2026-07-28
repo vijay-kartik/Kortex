@@ -17,23 +17,30 @@ fun tool(name: String, description: String, block: ToolBuilder.() -> Unit): Tool
 class ToolBuilder(private val name: String, private val description: String) {
     private val params = mutableListOf<ToolParam>()
     private var risk = RiskLevel.LOW
+    private var promptHint: String? = null
     private var body: (suspend (JsonObject) -> ToolResult)? = null
 
     fun param(name: String, type: String, description: String, required: Boolean = true) =
         apply { params += ToolParam(name, type, description, required) }
 
     fun risk(level: RiskLevel) = apply { risk = level }
+
+    /** Sets [Tool.promptHint] — a one-line usage hint shown in the system prompt's tool inventory. */
+    fun promptHint(hint: String) = apply { promptHint = hint }
+
     fun execute(body: suspend (JsonObject) -> ToolResult) = apply { this.body = body }
 
     fun build(): Tool {
         val exec = requireNotNull(body) { "tool '$name' needs an execute { } block" }
         val schema = ToolSchema(params)
         val r = risk
+        val hint = promptHint
         return object : Tool {
             override val name = this@ToolBuilder.name
             override val description = this@ToolBuilder.description
             override val parameters = schema
             override val risk = r
+            override val promptHint = hint
             override suspend fun execute(args: JsonObject) = exec(args)
         }
     }

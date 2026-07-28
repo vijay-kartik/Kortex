@@ -2,8 +2,10 @@ package dev.kortex.core.pattern
 
 import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
+import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.Models
+import dev.kortex.core.log.d
 import dev.kortex.core.state.AgentState
 
 /**
@@ -15,7 +17,8 @@ import dev.kortex.core.state.AgentState
 class DirectAnswerNode(private val model: String = Models.FAST) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
         ctx.onProgress.report("Answering…")
-        val resp = ctx.llm.complete(LlmRequest(model = model, messages = state.messages))
+        ctx.logger.d(TAG, "answering directly with $model (${state.messages.size} messages)")
+        val resp = ctx.complete(LlmRequest(model = model, messages = state.messages))
         return state.withMessage(resp.message)
             .copy(
                 done = true,
@@ -24,5 +27,9 @@ class DirectAnswerNode(private val model: String = Models.FAST) : Node {
                 ),
             )
             .trace("direct", "llm", "answer")
+    }
+
+    companion object {
+        private const val TAG = "DirectAnswerNode"
     }
 }

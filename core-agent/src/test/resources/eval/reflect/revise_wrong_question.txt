@@ -1,0 +1,1 @@
+REVISE: (b) The user asked for the closing time, but the answer only gives the store's address. The tool results show today's hours end at 9:00 PM.

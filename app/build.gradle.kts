@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.ksp)
 }
 
 // Read the OpenAI key from local.properties (gitignored) so secrets never enter VCS.
@@ -30,6 +31,11 @@ android {
             "OPENAI_API_KEY",
             "\"${localProps.getProperty("OPENAI_API_KEY", "")}\"",
         )
+        buildConfigField(
+            "String",
+            "DEEPSEEK_API_KEY",
+            "\"${localProps.getProperty("DEEPSEEK_API_KEY", "")}\"",
+        )
     }
 
     buildFeatures {
@@ -41,7 +47,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions { 
+        jvmTarget = "17" 
+        freeCompilerArgs += listOf("-Xskip-metadata-version-check")
+    }
 
     buildTypes {
         release {
@@ -52,12 +61,15 @@ android {
 
 dependencies {
     implementation(project(":core-agent"))
+    implementation(project(":graph-core"))
+    implementation(project(":graph-storage"))
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
@@ -70,4 +82,7 @@ dependencies {
 
     implementation(libs.datastore.preferences)
     implementation(libs.security.crypto)
+
+    implementation(libs.richtext.commonmark)
+    implementation(libs.richtext.material3)
 }

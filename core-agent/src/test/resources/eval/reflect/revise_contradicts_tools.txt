@@ -1,0 +1,1 @@
+REVISE: (a) The answer names John Smith as CEO, but both tool results identify Jane Doe as Acme Corp's chief executive officer.

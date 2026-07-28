@@ -33,6 +33,13 @@ fun webSearchTool(client: HttpClient = defaultHttpClient()): Tool = tool(
     param("query", "string", "The search query.")
     param("limit", "integer", "Max results to return (1-8, default 5).", required = false)
     risk(RiskLevel.LOW)
+    // Rides into the system prompt via ToolInventory — this guidance used to be hardcoded
+    // in SystemPrompt.DEFAULT, where it drifted whenever tools were renamed.
+    promptHint(
+        "Results are only short snippets: if a snippet is incomplete, references a page with " +
+            "more detail, or is a live/real-time page, call open_url on that result's URL and " +
+            "read the actual page.",
+    )
     execute { args ->
         val query = args.string("query")
         val limit = args.int("limit", default = 5).coerceIn(1, 8)
@@ -55,7 +62,7 @@ fun webSearchTool(client: HttpClient = defaultHttpClient()): Tool = tool(
 
 internal data class SearchResult(val title: String, val snippet: String, val url: String)
 
-private const val USER_AGENT =
+internal const val USER_AGENT =
     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) " +
         "Chrome/124.0 Mobile Safari/537.36"
 

@@ -4,12 +4,17 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import dev.kortex.core.state.Attachment
 
 /** How dangerous a tool is — drives the Human-in-the-Loop gate (pattern 13). */
 enum class RiskLevel { LOW, MEDIUM, HIGH }
 
 /** Result of running a tool; fed back to the LLM as a TOOL message. */
-data class ToolResult(val ok: Boolean, val content: String)
+data class ToolResult(
+    val ok: Boolean, 
+    val content: String,
+    val attachments: List<Attachment> = emptyList()
+)
 
 /**
  * Pattern 5: Tool Use. A tool is typed, self-describing (so we can emit a JSON schema
@@ -20,15 +25,28 @@ interface Tool {
     val description: String
     val parameters: ToolSchema
     val risk: RiskLevel get() = RiskLevel.LOW
+
+    /** Optional one-line usage hint appended to this tool's bullet in the system prompt's
+     *  tool inventory (see [dev.kortex.core.prompt.ToolInventory]). Use it for guidance the
+     *  model needs *before* it decides to call the tool (e.g. "results are short snippets —
+     *  follow up with open_url"); anything else belongs in [description]. */
+    val promptHint: String? get() = null
+
     suspend fun execute(args: JsonObject): ToolResult
 }
 
 /** Minimal JSON-schema model for function-calling parameters. */
 data class ToolParam(val name: String, val type: String, val description: String, val required: Boolean = true)
 
-data class ToolSchema(val params: List<ToolParam>) {
+data class ToolSchema(
+    val params: List<ToolParam>,
+    /** Verbatim JSON Schema override — MCP tools carry their server's schema (nested objects,
+     *  enums, arrays) which the flat [params] list can't express. [params] still lists the
+     *  top-level fields so the governor's required-param validation keeps working. */
+    val raw: JsonObject? = null,
+) {
     /** Render as the JSON schema shape providers expect for function calling. */
-    fun toJsonSchema(): JsonObject = buildJsonObject {
+    fun toJsonSchema(): JsonObject = raw ?: buildJsonObject {
         put("type", "object")
         put("properties", buildJsonObject {
             params.forEach { p ->

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon foreground: the Kortex node-graph K, sized for the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#7C8CFF"
+        android:pathData="M33 36a8 8 0 1 0 16 0a8 8 0 1 0 -16 0ZM59 36a8 8 0 1 0 16 0a8 8 0 1 0 -16 0ZM33 72a8 8 0 1 0 16 0a8 8 0 1 0 -16 0ZM59 72a8 8 0 1 0 16 0a8 8 0 1 0 -16 0ZM46 72L46 36A5 5 0 0 0 36 36L36 72A5 5 0 0 0 46 72ZM43.85 58.11L69.85 40.11A5 5 0 0 0 64.15 31.89L38.15 49.89A5 5 0 0 0 43.85 58.11ZM38.15 58.11L64.15 76.11A5 5 0 0 0 69.85 67.89L43.85 49.89A5 5 0 0 0 38.15 58.11Z" />
+</vector>

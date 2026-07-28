@@ -1,5 +1,8 @@
 package dev.kortex.core.llm
 
+import dev.kortex.core.log.Logger
+import dev.kortex.core.log.d
+import dev.kortex.core.log.e
 import dev.kortex.core.state.Message
 import dev.kortex.core.state.ToolCall
 import io.ktor.client.HttpClient
@@ -21,6 +24,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -28,6 +32,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+
+class LlmException(message: String) : RuntimeException(message)
 
 /**
  * Default LLM provider: OpenAI Chat Completions API with function calling.
@@ -40,27 +46,53 @@ import kotlinx.serialization.json.putJsonObject
 class OpenAiProvider(
     private val apiKey: String,
     private val baseUrl: String = "https://api.openai.com/v1",
+    private val logger: Logger = Logger.CONSOLE,
+    /** The `type: "file"` content part (base64 PDFs) is an OpenAI-only Chat Completions
+     *  extension — Ollama's OpenAI-compat endpoint rejects it as an invalid message. Set
+     *  false for non-OpenAI-compatible hosts so PDFs fall back to a text placeholder. */
+    private val supportsPdfAttachments: Boolean = true,
 ) : LlmProvider {
 
     private val client: HttpClient = defaultClient()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-    override suspend fun complete(req: LlmRequest): LlmResponse {
-        val response: JsonObject = client.post("$baseUrl/chat/completions") {
-            header("Authorization", "Bearer $apiKey")
-            contentType(ContentType.Application.Json)
-            setBody(buildRequestBody(req, stream = false).toString())
-        }.body<String>().let { json.parseToJsonElement(it).jsonObject }
+    override suspend fun complete(req: LlmRequest, logger: Logger?): LlmResponse {
+        val log = logger ?: this.logger
+        log.d(TAG, "POST /chat/completions model=${req.model} messages=${req.messages.size} tools=${req.tools.size}")
+        return runCatching {
+            val response: JsonObject = client.post("$baseUrl/chat/completions") {
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(buildRequestBody(req, stream = false).toString())
+            }.body<String>().let { json.parseToJsonElement(it).jsonObject }
 
-        val choice = response["choices"]!!.jsonArray.first().jsonObject
-        val msg = choice["message"]!!.jsonObject
-        val usage = response["usage"]?.jsonObject
+            (response["error"] as? JsonObject)?.let { err ->
+                val text = err["message"]?.jsonPrimitive?.contentOrNull ?: err.toString()
+                throw LlmException("OpenAI request failed: $text")
+            }
+            val choice = response["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+                ?: throw LlmException("OpenAI response had no choices: $response")
+            val msg = choice["message"]?.jsonObject
+                ?: throw LlmException("OpenAI choice had no message: $choice")
+            val usage = response["usage"]?.jsonObject
 
-        return LlmResponse(
-            message = msg.toDomainMessage(),
-            inputTokens = usage?.get("prompt_tokens")?.jsonPrimitive?.int ?: 0,
-            outputTokens = usage?.get("completion_tokens")?.jsonPrimitive?.int ?: 0,
-        )
+            LlmResponse(
+                message = msg.toDomainMessage(),
+                inputTokens = usage?.get("prompt_tokens")?.jsonPrimitive?.int ?: 0,
+                outputTokens = usage?.get("completion_tokens")?.jsonPrimitive?.int ?: 0,
+            )
+        }.onSuccess { resp ->
+            val parts = buildList {
+                add("${resp.inputTokens}in/${resp.outputTokens}out tokens")
+                if (resp.message.content.isNotBlank()) add("content=\"${resp.message.content}\"")
+                if (resp.message.toolCalls.isNotEmpty()) {
+                    add("tool_calls=[${resp.message.toolCalls.joinToString { "${it.name}(${it.argumentsJson})" }}]")
+                }
+            }
+            log.d(TAG, "response: ${parts.joinToString(", ")}")
+        }.onFailure { err ->
+            log.e(TAG, "request to $baseUrl failed: ${err.message}", err)
+        }.getOrThrow()
     }
 
     /** Minimal streaming: for now we complete() and emit the text once. Real SSE in a later pass. */
@@ -96,7 +128,86 @@ class OpenAiProvider(
 
     private fun Message.toApiMessage(): JsonObject = buildJsonObject {
         put("role", role.name.lowercase())
-        put("content", content)
+        
+        if (attachments.isEmpty()) {
+            put("content", content)
+        } else {
+            putJsonArray("content") {
+                if (content.isNotEmpty()) {
+                    add(buildJsonObject {
+                        put("type", "text")
+                        put("text", content)
+                    })
+                }
+                attachments.forEach { attachment ->
+                    when {
+                        attachment.mimeType.startsWith("image/") -> {
+                            add(buildJsonObject {
+                                put("type", "image_url")
+                                putJsonObject("image_url") {
+                                    put("url", "data:${attachment.mimeType};base64,${attachment.dataBase64}")
+                                }
+                            })
+                        }
+                        attachment.mimeType == "application/pdf" && supportsPdfAttachments -> {
+                            add(buildJsonObject {
+                                put("type", "file")
+                                putJsonObject("file") {
+                                    put("filename", attachment.filename ?: "document.pdf")
+                                    put("file_data", "data:application/pdf;base64,${attachment.dataBase64}")
+                                }
+                            })
+                        }
+                        attachment.mimeType == "application/pdf" -> {
+                            // Host has no PDF content type (e.g. Ollama) — render pages to
+                            // images instead of a text placeholder, so the model actually
+                            // sees the document rather than guessing at a local file path.
+                            val tmp = java.io.File.createTempFile("attach_pdf", ".pdf").apply {
+                                writeBytes(java.util.Base64.getDecoder().decode(attachment.dataBase64))
+                            }
+                            try {
+                                renderPdfPagesAsImages(tmp, attachment.filename ?: "document").forEach { page ->
+                                    add(buildJsonObject {
+                                        put("type", "image_url")
+                                        putJsonObject("image_url") {
+                                            put("url", "data:${page.mimeType};base64,${page.dataBase64}")
+                                        }
+                                    })
+                                }
+                            } finally {
+                                tmp.delete()
+                            }
+                        }
+                        // Dictated voice notes carry a transcript and no audio bytes; send the
+                        // text so any chat model can read it (input_audio needs audio-capable
+                        // models and real bytes).
+                        attachment.mimeType.startsWith("audio/") && attachment.transcript != null -> {
+                            add(buildJsonObject {
+                                put("type", "text")
+                                put("text", "[Voice message transcript]: ${attachment.transcript}")
+                            })
+                        }
+                        attachment.mimeType.startsWith("audio/") -> {
+                            add(buildJsonObject {
+                                put("type", "input_audio")
+                                putJsonObject("input_audio") {
+                                    put("data", attachment.dataBase64)
+                                    put("format", attachment.mimeType.substringAfter("/"))
+                                }
+                            })
+                        }
+                        else -> {
+                            // Fallback for unsupported types if passed
+                            add(buildJsonObject {
+                                put("type", "text")
+                                put("text", "Attached file: ${attachment.filename ?: "unknown"} (${attachment.mimeType})")
+                            })
+                        }
+                    }
+                }
+            }
+        }
+
         if (toolCallId != null) put("tool_call_id", toolCallId)
         if (toolCalls.isNotEmpty()) {
             putJsonArray("tool_calls") {
@@ -133,6 +244,8 @@ class OpenAiProvider(
     }
 
     companion object {
+        private const val TAG = "OpenAiProvider"
+
         fun defaultClient(): HttpClient = HttpClient(OkHttp) {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
             install(HttpTimeout) {

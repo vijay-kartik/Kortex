@@ -15,20 +15,16 @@ work = "2.10.0"
 junit = "5.11.3"
 kotest = "5.9.1"
 turbine = "1.2.0"
-okhttp = "4.12.0"
-bouncycastle = "1.78.1"
-wire = "5.1.0"
-curve25519 = "0.5.0"
-signal-protocol = "2.8.1"
-zxing = "3.5.3"
+core-ktx = "1.10.1"
+junit-version = "4.13.2"
+androidx-junit = "1.1.5"
+espresso-core = "3.5.1"
+appcompat = "1.6.1"
+material = "1.10.0"
+litert = "1.4.2"
+litertgpu = "1.4.2"
 
 [libraries]
-zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
-okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
-bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
-wire-runtime = { module = "com.squareup.wire:wire-runtime", version.ref = "wire" }
-curve25519 = { module = "org.whispersystems:curve25519-java", version.ref = "curve25519" }
-signal-protocol = { module = "org.whispersystems:signal-protocol-java", version.ref = "signal-protocol" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
@@ -37,6 +33,7 @@ ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
@@ -62,6 +59,17 @@ kotest-assertions = { module = "io.kotest:kotest-assertions-core", version.ref =
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 
+richtext-commonmark = { module = "com.halilibo.compose-richtext:richtext-commonmark", version = "0.20.0" }
+richtext-material3 = { module = "com.halilibo.compose-richtext:richtext-ui-material3", version = "0.20.0" }
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
+junit = { group = "junit", name = "junit", version.ref = "junit-version" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidx-junit" }
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso-core" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert"}
+litert-gpu = { group = "com.google.ai.edge.litert", name = "litert-gpu", version.ref = "litert"}
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
@@ -71,4 +79,3 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version = "2.1.0-1.0.29" }
-wire = { id = "com.squareup.wire", version.ref = "wire" }

@@ -1,5 +1,6 @@
 package dev.kortex.core.llm
 
+import dev.kortex.core.log.Logger
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.Tool
 import kotlinx.coroutines.flow.Flow
@@ -10,7 +11,13 @@ import kotlinx.coroutines.flow.Flow
  * but Claude / Gemini / on-device (Gemini Nano) can implement the same contract.
  */
 interface LlmProvider {
-    suspend fun complete(req: LlmRequest): LlmResponse
+    /**
+     * [logger] overrides the provider's own logger for this one call. Graph nodes pass
+     * `ctx.logger` here so per-turn observers (e.g. the chat UI's reasoning panel and its
+     * token stats) see request/response logs; callers that omit it (the ambient pipeline)
+     * get the provider's constructor-configured logger.
+     */
+    suspend fun complete(req: LlmRequest, logger: Logger? = null): LlmResponse
     fun stream(req: LlmRequest): Flow<LlmChunk>
 }
 
@@ -36,8 +43,39 @@ sealed interface LlmChunk {
     data object Done : LlmChunk
 }
 
-/** Catalog of model ids we route between (OpenAI defaults — change in one place). */
+/** Catalog of model ids we route between. */
 object Models {
-    const val REASONING = "gpt-4o"
-    const val FAST = "gpt-4o-mini"
+    var REASONING = "gpt-4o"
+    var FAST = "gpt-4o-mini"
+    
+    val supportedOpenAi = listOf(
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4-turbo",
+        "gpt-4",
+        "gpt-3.5-turbo",
+        "o1-preview",
+        "o1-mini"
+    )
+
+    /**
+     * Curated Ollama Cloud models (ollama.com/search?c=cloud) as of July 2026. The catalog
+     * changes often, so the settings UI also lets the user type any model id. Vision-capable
+     * models (image attachments work) are listed first.
+     */
+    val supportedOllamaCloud = listOf(
+        // Vision / multimodal
+        "qwen3.5:122b",
+        "qwen3.5:27b",
+        "gemma4:31b",
+        "kimi-k2.7-code",
+        "minimax-m3",
+        // Text-only
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
+        "gpt-oss:120b",
+        "gpt-oss:20b",
+        "qwen3-coder:480b",
+        "glm-5.2",
+    )
 }

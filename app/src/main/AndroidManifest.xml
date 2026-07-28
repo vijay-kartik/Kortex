@@ -1,20 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
-    <uses-permission android:name="android.permission.EXECUTE_APP_FUNCTIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Android 13+: the share-intake flow posts a "processing complete" notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- All-files access: the on-device EmbeddingGemma model (and its tokenizer) are
+         read from the public Downloads folder, which scoped storage otherwise blocks.
+         Granted via system Settings (Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION). -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
+    <!-- Android 11+ package visibility: lets SpeechRecognizer find the device's
+         speech-recognition service for on-device voice input. -->
     <queries>
-        <package android:name="com.whatsapp" />
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
     </queries>
 
     <application
         android:name=".KortexApp"
         android:label="Kortex"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.Kortex"
         android:supportsRtl="true">
 
@@ -26,10 +39,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.ASSIST" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
             <!-- Phase 8: "process this with Kortex" share-sheet entry -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -38,34 +47,37 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".AssistantService"
-            android:permission="android.permission.BIND_VOICE_INTERACTION"
-            android:exported="true">
+        <activity
+            android:name=".OAuthCallbackActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
-                <action android:name="android.service.voice.VoiceInteractionService" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="kortex"
+                    android:host="oauth"
+                    android:path="/callback" />
             </intent-filter>
-            <meta-data
-                android:name="android.voice_interaction"
-                android:resource="@xml/assistant_config" />
-        </service>
+        </activity>
 
-        <service
-            android:name=".AssistantSessionService"
-            android:permission="android.permission.BIND_VOICE_INTERACTION"
-            android:exported="true" />
-
-        <service
-            android:name=".AssistantRecognitionService"
-            android:exported="true">
+        <!-- Share intake: photos and PDFs shared from other apps open a floating
+             composer over the host app; the agent then runs in the background. -->
+        <activity
+            android:name=".ShareToKortexActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Kortex.Share"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
-                <action android:name="android.speech.RecognitionService" />
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
             </intent-filter>
-        </service>
-
-        <service
-            android:name=".WaForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
+        </activity>
     </application>
 </manifest>

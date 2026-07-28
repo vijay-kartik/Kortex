@@ -22,5 +22,8 @@ fun clockTool(): Tool = tool(
 fun defaultTools(): List<Tool> = listOf(
     calculatorTool(),
     webSearchTool(),
+    openUrlTool(),
     clockTool(),
+    analyzeStatementTool(),
+    readFileTool(),
 )

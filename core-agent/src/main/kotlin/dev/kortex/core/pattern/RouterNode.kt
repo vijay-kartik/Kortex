@@ -2,36 +2,38 @@ package dev.kortex.core.pattern
 
 import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
+import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.Models
+import dev.kortex.core.log.d
+import dev.kortex.core.log.i
+import dev.kortex.core.prompt.RouterPrompt
 import dev.kortex.core.state.AgentState
 import dev.kortex.core.state.Message
 
 /**
  * Pattern 2 (Routing). Uses a cheap/fast model to classify the latest user query into a
  * route label, stored in state.scratch["route"]. The graph's conditional edges then send
- * the query to the right sub-strategy (e.g. "simple_qa", "tool_task", "plan").
+ * the query to the right sub-strategy (e.g. "simple_qa", "tool_task").
+ *
+ * The classification prompt includes a compact rendering of the live tool registry
+ * (T1.5, finding F6) so requests no registered tool can help with stay on `simple_qa`.
+ * `plan` (restored in T4.2, backed by a real PlanNode — pattern 6) is for requests with
+ * multiple distinct sub-goals; single-goal chained tool work stays `tool_task`.
  *
  * Pairs with pattern 16: classification runs on the FAST model to save budget.
  */
 class RouterNode(
-    private val routes: List<String> = listOf("simple_qa", "tool_task", "plan"),
+    private val routes: List<String> = listOf("tool_task", "plan"),
     private val model: String = Models.FAST,
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
         ctx.onProgress.report("Analyzing your request…")
         val query = state.messages.lastOrNull { it.role == Message.Role.USER }?.content.orEmpty()
-        val prompt = """
-            Classify the user request into exactly one of: ${routes.joinToString(", ")}.
-            - simple_qa: answerable directly with general knowledge, no tools, no multi-step work.
-            - tool_task: needs one or a few tool calls (e.g. sending messages, checking time, calculations).
-            - plan: open-ended/multi-step; needs decomposition first.
-            Respond with ONLY the label.
+        ctx.logger.d(TAG, "classifying request: \"$query\"")
+        val prompt = RouterPrompt.build(routes, query, ctx.tools.all())
 
-            Request: $query
-        """.trimIndent()
-
-        val resp = ctx.llm.complete(
+        val resp = ctx.complete(
             LlmRequest(
                 model = model,
                 messages = listOf(Message(Message.Role.USER, prompt)),
@@ -39,7 +41,16 @@ class RouterNode(
             )
         )
         val route = routes.firstOrNull { resp.message.content.trim().contains(it) } ?: routes.first()
-        return state.copy(scratch = state.scratch + ("route" to route))
-            .trace("router", "route", route)
+        ctx.logger.i(TAG, "routed to '$route'")
+        return state.copy(
+            scratch = state.scratch + ("route" to route),
+            budget = state.budget.copy(
+                tokensUsed = state.budget.tokensUsed + resp.inputTokens + resp.outputTokens,
+            ),
+        ).trace("router", "route", route)
+    }
+
+    companion object {
+        private const val TAG = "RouterNode"
     }
 }

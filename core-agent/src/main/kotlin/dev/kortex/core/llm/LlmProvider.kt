@@ -7,8 +7,6 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * Provider-agnostic LLM interface. Default impl is [OpenAiProvider]
- * (gpt-4o for hard reasoning, gpt-4o-mini for cheap routing — pattern 16),
- * but Claude / Gemini / on-device (Gemini Nano) can implement the same contract.
  */
 interface LlmProvider {
     /**

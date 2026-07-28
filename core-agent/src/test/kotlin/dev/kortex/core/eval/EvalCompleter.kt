@@ -43,8 +43,8 @@ class LiveCompleter(private val provider: LlmProvider) : EvalCompleter {
 
 /**
  * Adapts an [EvalCompleter] to the [LlmProvider] seam so eval suites can run the real
- * components (RouterNode / AmbientTriage / LlmMemoryWriter) unmodified. Each eval case
- * makes exactly one completion call, so the adapter is bound to a single (suite, case).
+ * components (RouterNode / ReflectNode) unmodified. Each eval case makes exactly one
+ * completion call, so the adapter is bound to a single (suite, case).
  */
 class EvalLlmProvider(
     private val completer: EvalCompleter,

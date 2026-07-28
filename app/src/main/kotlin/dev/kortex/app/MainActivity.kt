@@ -168,7 +168,7 @@ fun RootScreen(
 ) {
     var tab by remember { mutableIntStateOf(0) }
     var showSettings by remember { mutableStateOf(false) }
-    val tabs = listOf("Chat", "Cards", "Graph", "Context", "History", "Runs")
+    val tabs = listOf("Chat", "Graph", "History", "Runs")
     val vm: ChatViewModel = viewModel()
     val chatUi by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -243,10 +243,8 @@ fun RootScreen(
             Box(Modifier.padding(innerPadding)) {
                 when (tab) {
                     0 -> ChatScreen(vm = vm)
-                    1 -> CardsScreen()
-                    2 -> dev.kortex.app.ui.GraphScreen(vm = viewModel())
-                    3 -> ContextScreen()
-                    4 -> HistoryScreen(
+                    1 -> dev.kortex.app.ui.GraphScreen(vm = viewModel())
+                    2 -> HistoryScreen(
                         vm = vm,
                         onSelectSession = { sessionId ->
                             vm.loadSession(sessionId)

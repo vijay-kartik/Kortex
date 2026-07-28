@@ -1,4 +1,0 @@
-[
-  { "content": "Sameer is moving to Pune in August 2026", "kind": "EVENT", "salience": 0.8, "tags": ["move", "pune"] },
-  { "content": "Sameer's daughter Diya got into DPS Pune and starts in June", "kind": "FACT", "salience": 0.6, "tags": ["family", "school"] }
-]

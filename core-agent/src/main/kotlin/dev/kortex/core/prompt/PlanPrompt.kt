@@ -8,8 +8,8 @@ import dev.kortex.core.tool.Tool
  *
  * The compact tool inventory grounds the steps in what tools actually exist, so the
  * planner never emits a step requiring an unavailable capability. Output contract:
- * a JSON array of step strings and nothing else — parsed by PlanNode with the same
- * fence-stripping/first-bracket idiom as LlmMemoryWriter.
+ * a JSON array of step strings and nothing else — parsed by PlanNode with a
+ * fence-stripping/first-bracket idiom.
  */
 object PlanPrompt {
 

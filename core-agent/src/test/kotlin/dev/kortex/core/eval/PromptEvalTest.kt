@@ -32,16 +32,6 @@ class PromptEvalTest {
     }
 
     @Test
-    fun `triage eval meets baseline`() = runTest {
-        check(TriageEvalSuite(EvalSets.triage).run(EvalMode.resolveCompleter()), TRIAGE_BASELINE)
-    }
-
-    @Test
-    fun `memory writer eval meets baseline`() = runTest {
-        check(MemoryEvalSuite(EvalSets.memory).run(EvalMode.resolveCompleter()), MEMORY_BASELINE)
-    }
-
-    @Test
     fun `reflect eval meets baseline`() = runTest {
         val scores = ReflectEvalSuite(EvalSets.reflect).run(EvalMode.resolveCompleter())
         check(scores.report, REFLECT_BASELINE)
@@ -80,8 +70,6 @@ class PromptEvalTest {
         // Committed RECORDED baselines — keep in sync with docs/eval-baselines.md.
         // Fixtures are hand-written plausible responses, so all scored cases pass today.
         const val ROUTER_BASELINE = 1.0
-        const val TRIAGE_BASELINE = 1.0
-        const val MEMORY_BASELINE = 1.0
         const val REFLECT_BASELINE = 1.0
     }
 }

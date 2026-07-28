@@ -1,7 +1,5 @@
 package dev.kortex.core.eval
 
-import dev.kortex.core.ambient.AmbientTriage
-import dev.kortex.core.ambient.LlmMemoryWriter
 import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.llm.Models
 import dev.kortex.core.pattern.ReflectNode
@@ -73,48 +71,6 @@ class RouterEvalSuite(private val cases: List<RouterEvalCase>) {
 
     companion object {
         const val NAME = "router"
-    }
-}
-
-/** Runs [TriageEvalCase]s through the real [AmbientTriage] (real TriagePrompt + parse()). */
-class TriageEvalSuite(private val cases: List<TriageEvalCase>) {
-    suspend fun run(completer: EvalCompleter): EvalReport {
-        val results = cases.map { case ->
-            val triage = AmbientTriage(EvalLlmProvider(completer, NAME, case.id))
-            val result = triage.triage(case.context)
-            CaseResult(
-                id = case.id,
-                passed = result.decision == case.expected,
-                knownFailure = case.knownFailure,
-                detail = "expected=${case.expected} actual=${result.decision} (${result.rationale.take(80)})",
-            )
-        }
-        return EvalReport(NAME, results)
-    }
-
-    companion object {
-        const val NAME = "triage"
-    }
-}
-
-/** Runs [MemoryEvalCase]s through the real [LlmMemoryWriter] (real MemoryPrompt + parseDrafts()). */
-class MemoryEvalSuite(private val cases: List<MemoryEvalCase>) {
-    suspend fun run(completer: EvalCompleter): EvalReport {
-        val results = cases.map { case ->
-            val writer = LlmMemoryWriter(EvalLlmProvider(completer, NAME, case.id))
-            val entries = writer.write(case.context)
-            CaseResult(
-                id = case.id,
-                passed = entries.size == case.expectedCount,
-                knownFailure = case.knownFailure,
-                detail = "expected=${case.expectedCount} entries actual=${entries.size}",
-            )
-        }
-        return EvalReport(NAME, results)
-    }
-
-    companion object {
-        const val NAME = "memory"
     }
 }
 

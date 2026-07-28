@@ -68,9 +68,9 @@ class PlanNode(
     }
 
     /**
-     * Same fence-stripping / first-bracket parse idiom as LlmMemoryWriter: strip code
-     * fences, take the outermost `[...]`, decode as a JSON array of strings. Null (not
-     * empty) on any parse failure so the caller can distinguish "garbage" from "[]".
+     * Fence-stripping / first-bracket parse idiom: strip code fences, take the outermost
+     * `[...]`, decode as a JSON array of strings. Null (not empty) on any parse failure
+     * so the caller can distinguish "garbage" from "[]".
      */
     private fun parseSteps(content: String): List<String>? {
         val text = content.trim().removeCodeFences()

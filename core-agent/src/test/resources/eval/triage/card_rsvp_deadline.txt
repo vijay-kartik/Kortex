@@ -1,2 +1,0 @@
-GENERATE_CARD
-Direct question with a same-day deadline for the RSVP headcount.

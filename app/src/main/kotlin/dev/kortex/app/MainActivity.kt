@@ -45,7 +45,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -338,8 +338,9 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
         }
     }
 
-    LaunchedEffect(ui.turns.size) {
-        if (ui.turns.isNotEmpty()) listState.animateScrollToItem(ui.turns.lastIndex)
+    LaunchedEffect(ui.turns.size, ui.streamingResponse.length / 48) {
+        val lastItem = ui.turns.lastIndex + if (ui.streamingResponse.isNotBlank()) 1 else 0
+        if (lastItem >= 0) listState.animateScrollToItem(lastItem)
     }
 
     ui.pendingApproval?.let { pending ->
@@ -367,7 +368,23 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(vertical = 12.dp),
             ) {
-                items(ui.turns) { turn -> MessageBubble(turn) }
+                itemsIndexed(ui.turns) { index, turn ->
+                    MessageBubble(
+                        turn = turn,
+                        onRetry = if (turn.interrupted && index == ui.turns.lastIndex) {
+                            vm::retryInterruptedResponse
+                        } else {
+                            null
+                        },
+                    )
+                }
+                if (ui.streamingResponse.isNotBlank()) {
+                    item(key = "streaming-response") {
+                        MessageBubble(
+                            ChatTurn(Message(Message.Role.ASSISTANT, ui.streamingResponse))
+                        )
+                    }
+                }
             }
         }
 
@@ -497,10 +514,22 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                // The trailing action morphs: mic when there's nothing to send (dictation is
-                // an offer, in the dimmer accent), solid send once text or attachments exist.
+                // While a run is active this becomes a stop control in the same reliable
+                // position as send, rather than leaving the user with a disabled composer.
                 val canSend = input.isNotBlank() || stagedAttachments.isNotEmpty()
-                if (canSend) {
+                if (ui.busy) {
+                    FilledIconButton(
+                        onClick = { vm.stopAgent() },
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = Alarm,
+                            contentColor = Void,
+                        ),
+                        modifier = Modifier.size(52.dp),
+                    ) {
+                        Text("■", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else if (canSend) {
                     FilledIconButton(
                         onClick = { vm.send(input); input = "" },
                         enabled = !ui.busy,
@@ -671,7 +700,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(turn: ChatTurn) {
+private fun MessageBubble(turn: ChatTurn, onRetry: (() -> Unit)? = null) {
     val msg = turn.message
     val isUser = msg.role == Message.Role.USER
     val clipboard = LocalClipboardManager.current
@@ -683,11 +712,12 @@ private fun MessageBubble(turn: ChatTurn) {
     var selectedAttachment by remember { mutableStateOf<dev.kortex.core.state.Attachment?>(null) }
 
     Column(Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-        ) {
-            Surface(
+        if (msg.content.isNotBlank() || msg.attachments.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+            ) {
+                Surface(
                 color = if (isUser) Synapse else Panel,
                 contentColor = if (isUser) Void else MaterialTheme.colorScheme.onSurface,
                 border = if (isUser) null else BorderStroke(1.dp, Edge),
@@ -708,8 +738,8 @@ private fun MessageBubble(turn: ChatTurn) {
                             Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
                         },
                     ),
-            ) {
-                if (isUser) {
+                ) {
+                    if (isUser) {
                     val voiceNotes = msg.attachments.filter { it.mimeType.startsWith("audio/") }
                     val fileAttachments = msg.attachments - voiceNotes.toSet()
                     Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
@@ -756,8 +786,8 @@ private fun MessageBubble(turn: ChatTurn) {
                             )
                         }
                     }
-                } else {
-                    Column {
+                    } else {
+                        Column {
                         if (parsed.text.isNotEmpty()) {
                             RichText(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                                 Markdown(content = parsed.text)
@@ -773,6 +803,7 @@ private fun MessageBubble(turn: ChatTurn) {
                                 }
                             }
                         }
+                        }
                     }
                 }
             }
@@ -782,6 +813,12 @@ private fun MessageBubble(turn: ChatTurn) {
                 lines = turn.reasoning,
                 stats = turn.stats,
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            )
+        }
+        if (turn.interrupted) {
+            InterruptedResponseNotice(
+                onRetry = onRetry,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
     }
@@ -873,6 +910,30 @@ private fun MessageBubble(turn: ChatTurn) {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** A terminal state, not a toast: it keeps the interruption and recovery action in context. */
+@Composable
+private fun InterruptedResponseNotice(
+    onRetry: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "Response stopped",
+            style = MaterialTheme.typography.labelSmall,
+            color = Alarm,
+        )
+        if (onRetry != null) {
+            TextButton(onClick = onRetry) {
+                Text("Retry", color = Synapse)
             }
         }
     }
@@ -975,10 +1036,17 @@ private fun ReasoningPanel(
     modifier: Modifier = Modifier,
     live: Boolean = false,
 ) {
-    var expanded by remember { mutableStateOf(live) }
+    // Keep a growing live trace compact by default; the agent's answer remains the primary
+    // reading surface, while the latest trace is one tap away.
+    var expanded by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
+    val traceScroll = rememberScrollState()
+
+    LaunchedEffect(expanded, lines.size) {
+        if (expanded) traceScroll.animateScrollTo(traceScroll.maxValue)
+    }
     Row(modifier.height(IntrinsicSize.Min)) {
         Box(
             Modifier
@@ -1034,11 +1102,11 @@ private fun ReasoningPanel(
                 // Selectable so individual lines can be long-press copied like any text.
                 SelectionContainer {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 220.dp)
-                            .verticalScroll(rememberScrollState())
-                            .padding(top = 6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 220.dp)
+                                .verticalScroll(traceScroll)
+                                .padding(top = 6.dp),
                     ) {
                         lines.forEach { line -> TraceLine(line) }
                     }

@@ -52,7 +52,7 @@ class SynthesizeNode(
                     state.messages.firstOrNull { it.role == Message.Role.SYSTEM },
                     Message(Message.Role.USER, prompt),
                 ),
-            )
+            ),
         )
 
         val failed = plan.steps.count { it.status == PlanStep.Status.FAILED }

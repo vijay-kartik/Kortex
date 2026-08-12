@@ -13,8 +13,10 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.utils.io.readUTF8Line
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -52,6 +54,8 @@ class OpenAiProvider(
      *  false for non-OpenAI-compatible hosts so PDFs fall back to a text placeholder. */
     private val supportsPdfAttachments: Boolean = true,
 ) : LlmProvider {
+
+    override val supportsStreaming: Boolean = true
 
     private val client: HttpClient = defaultClient()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -95,10 +99,57 @@ class OpenAiProvider(
         }.getOrThrow()
     }
 
-    /** Minimal streaming: for now we complete() and emit the text once. Real SSE in a later pass. */
-    override fun stream(req: LlmRequest): Flow<LlmChunk> = flow {
-        val resp = complete(req)
-        if (resp.message.content.isNotEmpty()) emit(LlmChunk.Text(resp.message.content))
+    override fun stream(req: LlmRequest): Flow<LlmChunk> = stream(req, null)
+
+    /** Reads OpenAI-compatible server-sent events as they arrive, so cancellation closes
+     *  the underlying HTTP call instead of merely hiding an already-completed answer. */
+    override fun stream(req: LlmRequest, logger: Logger?): Flow<LlmChunk> = flow {
+        val log = logger ?: this@OpenAiProvider.logger
+        log.d(TAG, "POST /chat/completions (stream) model=${req.model} messages=${req.messages.size} tools=${req.tools.size}")
+        val channel = client.post("$baseUrl/chat/completions") {
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(buildRequestBody(req, stream = true).toString())
+        }.bodyAsChannel()
+
+        while (true) {
+            val line = channel.readUTF8Line() ?: break
+            // OpenAI/Deepseek use SSE (`data: {...}`); Ollama commonly returns the same
+            // OpenAI-shaped chunks as newline-delimited JSON. Accept both wire formats.
+            val raw = line.trim()
+            val data = when {
+                raw.startsWith("data:") -> raw.removePrefix("data:").trimStart()
+                raw.startsWith("{") -> raw
+                else -> continue
+            }
+            if (data == "[DONE]") break
+            val event = runCatching { json.parseToJsonElement(data).jsonObject }.getOrNull() ?: continue
+            event["error"]?.jsonObject?.let { error ->
+                throw LlmException("OpenAI request failed: ${error["message"]?.jsonPrimitive?.contentOrNull ?: error}")
+            }
+            val choice = event["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+            val delta = choice?.get("delta")?.jsonObject
+                ?: choice?.get("message")?.jsonObject
+                ?: event["message"]?.jsonObject
+            if (delta != null) {
+                delta["content"]?.jsonPrimitive?.contentOrNull
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { emit(LlmChunk.Text(it)) }
+                delta["tool_calls"]?.jsonArray?.forEach { raw ->
+                    val call = raw.jsonObject
+                    val function = call["function"]?.jsonObject
+                    emit(
+                        LlmChunk.ToolCallDelta(
+                            index = call["index"]?.jsonPrimitive?.int ?: 0,
+                            id = call["id"]?.jsonPrimitive?.contentOrNull,
+                            name = function?.get("name")?.jsonPrimitive?.contentOrNull,
+                            argsDelta = function?.get("arguments")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                        )
+                    )
+                }
+            }
+            if (event["done"]?.jsonPrimitive?.contentOrNull == "true") break
+        }
         emit(LlmChunk.Done)
     }
 

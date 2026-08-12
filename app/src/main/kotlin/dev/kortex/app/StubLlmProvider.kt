@@ -7,13 +7,15 @@ import dev.kortex.core.llm.LlmResponse
 import dev.kortex.core.log.Logger
 import dev.kortex.core.state.Message
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flow
 
 /**
  * Placeholder so the app runs end-to-end before the real Claude client exists.
  * Phase 1 replaces this with a Ktor-based ClaudeProvider in :core-agent (or :llm-claude).
  */
 class StubLlmProvider : LlmProvider {
+    override val supportsStreaming: Boolean = true
+
     override suspend fun complete(req: LlmRequest, logger: Logger?): LlmResponse {
         if (req.tools.isEmpty()) return LlmResponse(Message(Message.Role.ASSISTANT, "tool_task"))
         val user = req.messages.lastOrNull { it.role == Message.Role.USER }?.content ?: ""
@@ -25,5 +27,9 @@ class StubLlmProvider : LlmProvider {
         )
     }
 
-    override fun stream(req: LlmRequest): Flow<LlmChunk> = flowOf(LlmChunk.Done)
+    override fun stream(req: LlmRequest): Flow<LlmChunk> = flow {
+        val response = complete(req)
+        response.message.content.takeIf { it.isNotBlank() }?.let { emit(LlmChunk.Text(it)) }
+        emit(LlmChunk.Done)
+    }
 }

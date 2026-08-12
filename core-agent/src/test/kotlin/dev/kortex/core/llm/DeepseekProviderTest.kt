@@ -13,11 +13,68 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Test
 import io.ktor.http.content.OutgoingContent
 
 class DeepseekProviderTest {
+
+    @Test
+    fun `streams newline-delimited Ollama chunks`() = runTest {
+        val client = HttpClient(MockEngine {
+            respond(
+                content = """
+                    {"message":{"role":"assistant","content":"Local"},"done":false}
+                    {"message":{"role":"assistant","content":" model"},"done":true}
+                """.trimIndent(),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/x-ndjson")
+            )
+        })
+        val provider = DeepseekProvider(
+            apiKey = "mock-api-key",
+            baseUrl = "https://api.deepseek.com",
+            client = client,
+        )
+
+        val chunks = provider.stream(
+            LlmRequest(model = Models.REASONING, messages = listOf(Message(Message.Role.USER, "Hello")))
+        ).toList()
+
+        chunks.filterIsInstance<LlmChunk.Text>().joinToString("") { it.delta } shouldBe "Local model"
+    }
+
+    @Test
+    fun `streams SSE text deltas as they arrive`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            val body = request.body as OutgoingContent.ByteArrayContent
+            body.bytes().decodeToString() shouldContain "\"stream\":true"
+            respond(
+                content = """
+                    data: {"choices":[{"delta":{"content":"Hello"}}]}
+
+                    data: {"choices":[{"delta":{"content":" world"}}]}
+
+                    data: [DONE]
+                """.trimIndent(),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "text/event-stream")
+            )
+        })
+        val provider = DeepseekProvider(
+            apiKey = "mock-api-key",
+            baseUrl = "https://api.deepseek.com",
+            client = client,
+        )
+
+        val chunks = provider.stream(
+            LlmRequest(model = Models.REASONING, messages = listOf(Message(Message.Role.USER, "Hello")))
+        ).toList()
+
+        chunks.filterIsInstance<LlmChunk.Text>().joinToString("") { it.delta } shouldBe "Hello world"
+        chunks.last() shouldBe LlmChunk.Done
+    }
 
     @Test
     fun `completes with correct model mapping and response structure`() = runTest {

@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.Flow
  * Provider-agnostic LLM interface. Default impl is [OpenAiProvider]
  */
 interface LlmProvider {
+    /** Providers opt in once they deliver incremental chunks rather than a terminal value. */
+    val supportsStreaming: Boolean get() = false
+
     /**
      * [logger] overrides the provider's own logger for this one call. Graph nodes pass
      * `ctx.logger` here so per-turn observers (e.g. the chat UI's reasoning panel and its
@@ -17,6 +20,12 @@ interface LlmProvider {
      */
     suspend fun complete(req: LlmRequest, logger: Logger? = null): LlmResponse
     fun stream(req: LlmRequest): Flow<LlmChunk>
+
+    /**
+     * Streaming counterpart which can use a per-turn logger. Keeping the one-argument
+     * method above lets lightweight providers and existing test doubles stay minimal.
+     */
+    fun stream(req: LlmRequest, logger: Logger?): Flow<LlmChunk> = stream(req)
 }
 
 data class LlmRequest(
@@ -37,7 +46,12 @@ data class LlmResponse(
 
 sealed interface LlmChunk {
     data class Text(val delta: String) : LlmChunk
-    data class ToolCallDelta(val id: String, val name: String, val argsDelta: String) : LlmChunk
+    data class ToolCallDelta(
+        val index: Int,
+        val id: String? = null,
+        val name: String? = null,
+        val argsDelta: String = "",
+    ) : LlmChunk
     data object Done : LlmChunk
 }
 

@@ -14,6 +14,8 @@ class DynamicLlmProvider(
     private val store: SettingsStore,
     private val defaultProvider: LlmProvider,
 ) : LlmProvider {
+    override val supportsStreaming: Boolean = true
+
     private var ollamaProvider: LlmProvider? = null
     private var currentOllamaUrl: String? = null
     private var currentOllamaToken: String? = null
@@ -86,7 +88,9 @@ class DynamicLlmProvider(
         return getActiveProvider().complete(req, logger)
     }
 
-    override fun stream(req: LlmRequest): Flow<LlmChunk> = flow {
-        getActiveProvider().stream(req).collect { emit(it) }
+    override fun stream(req: LlmRequest): Flow<LlmChunk> = stream(req, null)
+
+    override fun stream(req: LlmRequest, logger: Logger?): Flow<LlmChunk> = flow {
+        getActiveProvider().stream(req, logger).collect { emit(it) }
     }
 }

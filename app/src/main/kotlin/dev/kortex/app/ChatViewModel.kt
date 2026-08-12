@@ -22,6 +22,7 @@ import dev.kortex.core.state.Message
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,10 +57,14 @@ data class ChatTurn(
     val message: Message,
     val reasoning: List<ReasoningLine> = emptyList(),
     val stats: ReasoningStats = ReasoningStats(),
+    /** The user cancelled this assistant turn before it reached a natural completion. */
+    val interrupted: Boolean = false,
 )
 
 data class ChatUi(
     val turns: List<ChatTurn> = emptyList(),
+    /** In-progress assistant text. It is rendered as a transient bubble until the turn settles. */
+    val streamingResponse: String = "",
     /** Reasoning for the turn currently in flight, streamed live while [busy]. */
     val liveReasoning: List<ReasoningLine> = emptyList(),
     val liveStats: ReasoningStats = ReasoningStats(),
@@ -112,6 +117,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var voiceStartMs = 0L
 
     private var approvalGate: CompletableDeferred<Boolean>? = null
+    private var activeRun: Job? = null
 
     private val provider: LlmProvider = container.llm
     private val tools: ToolRegistry = container.toolRegistry
@@ -337,12 +343,75 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startNewSession() {
         currentSessionId = UUID.randomUUID().toString()
-        _ui.update { it.copy(turns = emptyList(), busy = false, status = null) }
+        _ui.update { it.copy(turns = emptyList(), streamingResponse = "", busy = false, status = null) }
     }
 
-    fun send(query: String) {
-        val attachmentsToSend = _stagedAttachments.value
-        _stagedAttachments.value = emptyList()
+    /** Stops the active graph and preserves any answer text that has already arrived. */
+    fun stopAgent() {
+        if (!_ui.value.busy) return
+        approvalGate?.complete(false)
+        approvalGate = null
+        activeRun?.cancel()
+        activeRun = null
+
+        var stoppedTurns = emptyList<ChatTurn>()
+        _ui.update { cur ->
+            stoppedTurns = cur.turns + ChatTurn(
+                Message(Message.Role.ASSISTANT, cur.streamingResponse),
+                cur.liveReasoning,
+                cur.liveStats,
+                interrupted = true,
+            )
+            cur.copy(
+                turns = stoppedTurns,
+                streamingResponse = "",
+                busy = false,
+                status = "Stopped",
+                liveReasoning = emptyList(),
+                liveStats = ReasoningStats(),
+                pendingApproval = null,
+            )
+        }
+        // The cancelled coroutine cannot reliably perform suspend persistence, so save from
+        // a fresh ViewModel job. This keeps a stopped conversation recoverable from History.
+        viewModelScope.launch {
+            val title = sessionDao.getById(currentSessionId)?.title
+                ?: stoppedTurns.firstOrNull { it.message.role == Message.Role.USER }?.message?.content?.take(40)
+                ?: "New Conversation"
+            sessionDao.upsert(
+                ChatSessionEntity(
+                    id = currentSessionId,
+                    title = title,
+                    turnsJson = json.encodeToString(stoppedTurns),
+                    updatedAtMillis = System.currentTimeMillis(),
+                )
+            )
+        }
+    }
+
+    /** Replaces the latest interrupted output with a fresh generation of the same user turn. */
+    fun retryInterruptedResponse() {
+        if (_ui.value.turns.lastOrNull()?.interrupted != true) return
+        val originalUser = _ui.value.turns.dropLast(1)
+            .lastOrNull { it.message.role == Message.Role.USER }
+            ?: return
+        _ui.update { it.copy(turns = it.turns.dropLast(1), status = null) }
+        send(
+            query = originalUser.message.content,
+            retry = true,
+            attachmentsOverride = originalUser.message.attachments,
+        )
+    }
+
+    fun send(
+        query: String,
+        retry: Boolean = false,
+        attachmentsOverride: List<dev.kortex.core.state.Attachment>? = null,
+    ) {
+        if (_ui.value.busy) return
+        val attachmentsToSend = attachmentsOverride ?: _stagedAttachments.value.also {
+            _stagedAttachments.value = emptyList()
+        }
 
         // Voice notes are dictation-only (transcript, no audio bytes): fold their text into
         // the query the agent sees — the router classifies on query text, and an empty query
@@ -357,7 +426,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val agentAttachments = attachmentsToSend - voiceTranscripts.toSet()
 
         if (agentQuery.isBlank() && attachmentsToSend.isEmpty()) return
-        viewModelScope.launch {
+        activeRun = viewModelScope.launch {
             val activeProviderName = settingsStore.activeProvider.first()
             val model = when (activeProviderName) {
                 "ollama", "ollama-cloud" -> settingsStore.activeModel.first()
@@ -365,12 +434,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             // Snapshot history before appending this turn — Agent.ask() adds the query as a
             // fresh USER message itself, so including the just-added turn would send it twice.
-            val historyMessages = _ui.value.turns.map { it.message }
+            val historyMessages = _ui.value.turns
+                .let { turns -> if (retry) turns.dropLast(1) else turns }
+                .map { it.message }
             _ui.update {
                 it.copy(
-                    turns = it.turns + ChatTurn(Message(Message.Role.USER, query, attachmentsToSend)),
+                    turns = if (retry) it.turns else it.turns + ChatTurn(Message(Message.Role.USER, query, attachmentsToSend)),
                     busy = true,
                     status = "thinking…",
+                    streamingResponse = "",
                     liveReasoning = emptyList(),
                     activeProvider = activeProviderName,
                     activeModel = model ?: "unknown model",
@@ -413,9 +485,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     _ui.update { it.copy(liveStats = statsNow()) }
                     recorder.usage.report(usage)
                 },
+                onTextStreamStarted = {
+                    _ui.update { it.copy(streamingResponse = "") }
+                },
+                onTextDelta = { delta ->
+                    _ui.update { it.copy(streamingResponse = it.streamingResponse + delta) }
+                },
+                onTextStreamDiscarded = {
+                    _ui.update { it.copy(streamingResponse = "") }
+                },
+                onFinalAnswer = { answer ->
+                    _ui.update { it.copy(streamingResponse = "") }
+                    // The final answer is confirmed by reflection before it reaches this
+                    // listener. Chunk it here so the user sees a stable, progressive reply.
+                    answer.chunked(16).forEach { chunk ->
+                        _ui.update { it.copy(streamingResponse = it.streamingResponse + chunk) }
+                        delay(12)
+                    }
+                },
             )
 
-            val result = Agent(turnCtx).ask(agentQuery, agentAttachments, history = historyMessages)
+            val result = try {
+                Agent(turnCtx).ask(agentQuery, agentAttachments, history = historyMessages)
+            } catch (_: CancellationException) {
+                // stopAgent() has already retained any partial text and restored the composer.
+                return@launch
+            }
             viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching {
                     container.runTraceStore.save(
@@ -441,12 +536,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 cur.copy(
                     turns = newTurns,
+                    streamingResponse = "",
                     liveReasoning = emptyList(),
                     liveStats = ReasoningStats(),
                     busy = false,
                     status = null,
                 )
             }
+            activeRun = null
         }
     }
 }

@@ -84,7 +84,16 @@ class Agent(private val ctx: AgentContext) {
             ),
             goal = Goal(query),
         )
-        return graph.invoke(ctx, initial)
+        val result = graph.invoke(ctx, initial)
+        // Tool and plan routes pass through reflection. Do not let their pre-review answer
+        // candidates reach the chat UI; emit only the response the graph ultimately accepts.
+        if (result.scratch["route"] != "simple_qa") {
+            result.messages
+                .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
+                ?.content
+                ?.let { ctx.onFinalAnswer.report(it) }
+        }
+        return result
     }
 
     companion object {

@@ -27,7 +27,7 @@ class ReActNode(
             ctx.onProgress.report("Thinking…")
             ctx.logger.d(TAG, "iteration ${iteration + 1}/$maxIterations: $model, ${s.messages.size} messages, ${ctx.tools.all().size} tools available")
             val resp = ctx.complete(
-                LlmRequest(model = model, messages = s.messages, tools = ctx.tools.all())
+                LlmRequest(model = model, messages = s.messages, tools = ctx.tools.all()),
             )
             // The exact response content/tool-call args are logged by the LlmProvider itself
             // (e.g. OpenAiProvider) right above this — this node only marks progression.

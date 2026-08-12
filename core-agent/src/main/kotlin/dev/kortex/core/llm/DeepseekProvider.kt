@@ -13,8 +13,10 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.utils.io.readUTF8Line
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -24,6 +26,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -41,6 +44,8 @@ class DeepseekProvider(
     private val baseUrl: String = "https://api.deepseek.com",
     private val logger: Logger = Logger.CONSOLE,
 ) : LlmProvider {
+
+    override val supportsStreaming: Boolean = true
 
     private var client: HttpClient = defaultClient()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -100,9 +105,54 @@ class DeepseekProvider(
         }.getOrThrow()
     }
 
-    override fun stream(req: LlmRequest): Flow<LlmChunk> = flow {
-        val resp = complete(req)
-        if (resp.message.content.isNotEmpty()) emit(LlmChunk.Text(resp.message.content))
+    override fun stream(req: LlmRequest): Flow<LlmChunk> = stream(req, null)
+
+    override fun stream(req: LlmRequest, logger: Logger?): Flow<LlmChunk> = flow {
+        val log = logger ?: this@DeepseekProvider.logger
+        val mapped = mapModel(req.model)
+        log.d(TAG, "POST /chat/completions (stream) model=$mapped messages=${req.messages.size} tools=${req.tools.size}")
+        val channel = client.post("$baseUrl/chat/completions") {
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(buildRequestBody(req.copy(model = mapped), stream = true).toString())
+        }.bodyAsChannel()
+
+        while (true) {
+            val line = channel.readUTF8Line() ?: break
+            val raw = line.trim()
+            val data = when {
+                raw.startsWith("data:") -> raw.removePrefix("data:").trimStart()
+                raw.startsWith("{") -> raw
+                else -> continue
+            }
+            if (data == "[DONE]") break
+            val event = runCatching { json.parseToJsonElement(data).jsonObject }.getOrNull() ?: continue
+            event["error"]?.jsonObject?.let { error ->
+                throw IllegalStateException("Deepseek API error: ${error["message"]?.jsonPrimitive?.contentOrNull ?: error}")
+            }
+            val choice = event["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+            val delta = choice?.get("delta")?.jsonObject
+                ?: choice?.get("message")?.jsonObject
+                ?: event["message"]?.jsonObject
+            if (delta != null) {
+                delta["content"]?.jsonPrimitive?.contentOrNull
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { emit(LlmChunk.Text(it)) }
+                delta["tool_calls"]?.jsonArray?.forEach { raw ->
+                    val call = raw.jsonObject
+                    val function = call["function"]?.jsonObject
+                    emit(
+                        LlmChunk.ToolCallDelta(
+                            index = call["index"]?.jsonPrimitive?.int ?: 0,
+                            id = call["id"]?.jsonPrimitive?.contentOrNull,
+                            name = function?.get("name")?.jsonPrimitive?.contentOrNull,
+                            argsDelta = function?.get("arguments")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                        )
+                    )
+                }
+            }
+            if (event["done"]?.jsonPrimitive?.contentOrNull == "true") break
+        }
         emit(LlmChunk.Done)
     }
 

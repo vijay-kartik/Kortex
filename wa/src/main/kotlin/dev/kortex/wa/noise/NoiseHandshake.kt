@@ -20,7 +20,7 @@ import dev.kortex.wa.net.FrameTransport
  * task (T5); for an isolated T2 handshake test it may be a placeholder — the handshake crypto
  * still completes (the server then validates the payload separately).
  */
-class NoiseHandshake(
+internal class NoiseHandshake(
     private val certVerifier: CertVerifier = CertVerifier.Noop,
 ) {
     suspend fun perform(

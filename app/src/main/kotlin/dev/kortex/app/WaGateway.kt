@@ -11,7 +11,6 @@ import dev.kortex.core.ambient.Signal
 import dev.kortex.core.ambient.SignalKind
 import dev.kortex.core.ambient.SignalSource
 import dev.kortex.wa.session.WhatsAppManager
-import dev.kortex.wa.signal.MessageDecryptor
 import java.util.UUID
 
 /**
@@ -30,21 +29,21 @@ class WaGateway(
     private val annotate: (id: String, annotation: WhatsAppManager.Annotation) -> Unit = { _, _ -> },
 ) {
 
-    suspend fun onMessages(results: List<MessageDecryptor.Result>) {
-        results.forEach { result ->
-            if (result.fromMe || MessageDecryptor.isProtocolTraffic(result)) return@forEach
+    suspend fun onMessages(messages: List<WhatsAppManager.Received>) {
+        messages.forEach { message ->
+            // Protocol traffic is already filtered out by the SDK; own messages are ours to skip,
+            // since the ambient layer curates what other people send us.
+            if (message.fromMe) return@forEach
 
-            val kind = MessageDecryptor.kindOf(result.message)
-            val text = MessageDecryptor.textOf(result.message)
             Log.i(
                 TAG,
-                "gw id=${result.id} sender=${result.sender} phone=${result.senderPhone} " +
-                    "chat=${result.chat} kind=$kind textLen=${text?.length ?: 0}",
+                "gw id=${message.id} sender=${message.senderJid} phone=${message.phone} " +
+                    "chat=${message.chatJid} kind=${message.kind} textLen=${message.text?.length ?: 0}",
             )
 
-            val outcome = ingest(result, kind, text)
-            Log.i(TAG, "gw id=${result.id} pipeline: ${outcome.describe()}")
-            annotate(result.id, WhatsAppManager.Annotation(outcome.label(), isError = outcome is Outcome.Dropped))
+            val outcome = ingest(message)
+            Log.i(TAG, "gw id=${message.id} pipeline: ${outcome.describe()}")
+            annotate(message.id, WhatsAppManager.Annotation(outcome.label(), isError = outcome is Outcome.Dropped))
         }
     }
 
@@ -55,11 +54,11 @@ class WaGateway(
         data class Dropped(val reason: String) : Outcome
     }
 
-    private suspend fun ingest(result: MessageDecryptor.Result, kind: String, text: String?): Outcome {
-        if (text == null) return Outcome.Dropped("$kind carries no text")
+    private suspend fun ingest(message: WhatsAppManager.Received): Outcome {
+        val text = message.text ?: return Outcome.Dropped("${message.kind} carries no text")
         // A LID is not a phone number: handing one to the identity gate guarantees a miss and
         // would quietly look identical to "this person isn't in your contacts".
-        val phone = result.senderPhone ?: return Outcome.Dropped("sender ${result.sender} has no phone number")
+        val phone = message.phone ?: return Outcome.Dropped("sender ${message.senderJid} has no phone number")
 
         val coordination = coordinator.onSignal(
             Signal(
@@ -69,7 +68,7 @@ class WaGateway(
                 direction = Direction.INCOMING,
                 senderHandle = Handle(HandleType.PHONE, phone),
                 content = text,
-                timestampMillis = result.timestampMillis,
+                timestampMillis = message.timestampMillis,
             )
         )
         return when (coordination) {

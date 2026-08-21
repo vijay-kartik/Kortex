@@ -11,10 +11,10 @@ import org.whispersystems.libsignal.groups.SenderKeyName
 import org.whispersystems.libsignal.protocol.PreKeySignalMessage
 import org.whispersystems.libsignal.protocol.SenderKeyDistributionMessage
 import org.whispersystems.libsignal.protocol.SignalMessage
-import proto.Message
+import dev.kortex.wa.proto.gen.Message
 
 /**
- * Decrypts the `<enc>` payloads inside a WhatsApp `<message>` node into [proto.Message]s,
+ * Decrypts the `<enc>` payloads inside a WhatsApp `<message>` node into [dev.kortex.wa.proto.gen.Message]s,
  * a port of whatsmeow's `decryptDM` / `decryptGroupMsg` / `unpadMessage`:
  *  - `pkmsg` — Signal PreKey message (session setup, X3DH) via [SessionCipher]
  *  - `msg`   — Signal message (Double Ratchet) via [SessionCipher]
@@ -28,7 +28,7 @@ import proto.Message
  *
  * @param ownUser the phone-number part of our own device JID, used to flag [Result.fromMe].
  */
-class MessageDecryptor(
+internal class MessageDecryptor(
     private val store: WaSignalStore,
     private val ownUser: String? = null,
     private val ownLid: String? = null,

@@ -16,7 +16,7 @@ import dev.kortex.wa.store.KeyValueStore
  *
  * Backed by [KeyValueStore], so it is wiped on logout along with the rest of the account state.
  */
-class LidDirectory(private val kv: KeyValueStore) {
+internal class LidDirectory(private val kv: KeyValueStore) {
 
     /**
      * Record every (LID, phone) pair this node exposes. WhatsApp names them by position rather

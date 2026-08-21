@@ -2,9 +2,9 @@ package dev.kortex.wa.auth
 
 import dev.kortex.wa.crypto.Curve25519
 import okio.ByteString.Companion.toByteString
-import proto.ADVEncryptionType
-import proto.ADVSignedDeviceIdentity
-import proto.ADVSignedDeviceIdentityHMAC
+import dev.kortex.wa.proto.gen.ADVEncryptionType
+import dev.kortex.wa.proto.gen.ADVSignedDeviceIdentity
+import dev.kortex.wa.proto.gen.ADVSignedDeviceIdentityHMAC
 import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -17,7 +17,7 @@ import javax.crypto.spec.SecretKeySpec
  * Signature message prefixes (whatsmeow):
  *   account = {6,0}  (hosted {6,5});  device = {6,1}  (hosted {6,6})
  */
-object AdvSignatures {
+internal object AdvSignatures {
     private val ACCOUNT_PREFIX = byteArrayOf(6, 0)
     private val DEVICE_PREFIX = byteArrayOf(6, 1)
     private val HOSTED_ACCOUNT_PREFIX = byteArrayOf(6, 5)

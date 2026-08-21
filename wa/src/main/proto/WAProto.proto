@@ -1,6 +1,11 @@
 syntax = "proto3";
 package proto;
 
+// Generated classes land in this Kotlin/Java package rather than a bare top-level
+// `proto` one. As a published SDK, 200+ classes named Message, Account, Call, Chat in a
+// global package would collide with any consumer that has protobufs of its own.
+option java_package = "dev.kortex.wa.proto.gen";
+
 /// WhatsApp Version: 2.3000.1029496320
 
 message ADVDeviceIdentity {

@@ -25,7 +25,7 @@ import org.whispersystems.libsignal.state.SignedPreKeyRecord
  *
  * All methods are blocking (libsignal's contract) — invoke on a background dispatcher.
  */
-class WaSignalStore(
+internal class WaSignalStore(
     private val credentials: DeviceCredentials,
     private val kv: KeyValueStore,
 ) : SignalProtocolStore, SenderKeyStore {

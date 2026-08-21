@@ -10,7 +10,7 @@ package dev.kortex.wa.noise
  * [Noop] verifier lets the handshake complete but does NOT authenticate the server — must be
  * replaced before this is trusted on real traffic.
  */
-fun interface CertVerifier {
+internal fun interface CertVerifier {
     /** @throws IllegalStateException if the certificate is invalid. */
     fun verify(certDecrypted: ByteArray, serverStatic: ByteArray)
 

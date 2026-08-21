@@ -1,6 +1,7 @@
 package dev.kortex.wa.session
 
 import android.app.Notification
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
@@ -19,6 +20,20 @@ import kotlinx.coroutines.launch
  */
 class WaForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * The SDK owns its own notification channel. Relying on the host app to have registered
+     * [CHANNEL_ID] meant a consumer that had not happened to create it got a foreground service
+     * posting to a channel that does not exist — silently invisible, and a crash risk on the
+     * stricter foreground-service rules. Creating a channel that already exists is a no-op, so
+     * this is safe even when the host registers one too.
+     */
+    override fun onCreate() {
+        super.onCreate()
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
+        )
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIF_ID, buildNotification("Connecting…"))
@@ -52,5 +67,6 @@ class WaForegroundService : Service() {
     companion object {
         const val NOTIF_ID = 1001
         const val CHANNEL_ID = "wa_conn"
+        const val CHANNEL_NAME = "WhatsApp Connection"
     }
 }

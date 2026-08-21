@@ -2,8 +2,8 @@ package dev.kortex.wa.auth
 
 import dev.kortex.wa.crypto.Curve25519
 import okio.ByteString.Companion.toByteString
-import proto.ClientPayload
-import proto.DeviceProps
+import dev.kortex.wa.proto.gen.ClientPayload
+import dev.kortex.wa.proto.gen.DeviceProps
 import java.security.MessageDigest
 
 /**
@@ -14,7 +14,7 @@ import java.security.MessageDigest
  * The WA web client version is version-sensitive: if WhatsApp rejects login, bump [WA_VERSION]
  * to the current web version (and re-check the protobuf schema).
  */
-object ClientPayloadFactory {
+internal object ClientPayloadFactory {
 
     /** Current WhatsApp web client version (whatsmeow `waVersion`). */
     val WA_VERSION = intArrayOf(2, 3000, 1041871181)

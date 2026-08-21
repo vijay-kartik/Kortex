@@ -11,7 +11,7 @@ import org.whispersystems.libsignal.state.SignedPreKeyRecord
  * Adapts Kortex's raw Curve25519 [DeviceCredentials] into libsignal's key types. libsignal
  * encodes public keys with a leading 0x05 "DJB" type byte; private keys are the bare 32 bytes.
  */
-object SignalKeys {
+internal object SignalKeys {
     private const val DJB_TYPE: Byte = 0x05
 
     fun identityKeyPair(credentials: DeviceCredentials): IdentityKeyPair {

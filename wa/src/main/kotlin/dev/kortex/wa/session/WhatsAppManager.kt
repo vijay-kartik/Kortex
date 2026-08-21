@@ -29,21 +29,31 @@ import kotlinx.coroutines.launch
  */
 class WhatsAppManager(
     private val context: Context,
-    private val onMessages: suspend (List<MessageDecryptor.Result>) -> Unit = {},
+    private val onMessages: suspend (List<Received>) -> Unit = {},
 ) {
 
-    /** One message seen on this connection. */
+    /**
+     * One message seen on this connection.
+     *
+     * Deliberately a plain data class rather than the decrypted protobuf: the generated WAProto
+     * types are an implementation detail of this module, and handing them to callers would put
+     * 200+ generated classes and the Wire runtime into every consumer's compile classpath.
+     */
     data class Received(
         val id: String,
         /** The other party in the chat: who sent it, or who we sent it to. */
         val phone: String?,
         /** Message body, or null when the payload carries no text (media, reactions, …). */
         val text: String?,
-        /** Which `proto.Message` field carried the payload, e.g. `conversation`, `imageMessage`. */
+        /** Which `Message` field carried the payload, e.g. `conversation`, `imageMessage`. */
         val kind: String,
         val timestampMillis: Long,
         /** True for messages we sent from another device, mirrored here. */
         val fromMe: Boolean,
+        /** Sender JID, as text — for logging and correlation with the wire trace. */
+        val senderJid: String,
+        /** Chat JID, as text: the peer for a DM, the group for a group message. */
+        val chatJid: String,
         /** A host app's note about this message, attached later via [annotate]. */
         val annotation: Annotation? = null,
     )
@@ -166,20 +176,26 @@ class WhatsAppManager(
         }
     }
 
-    private fun recordReceived(result: MessageDecryptor.Result) {
+    /**
+     * Map a decrypted result to the public [Received] shape, dropping device-to-device plumbing.
+     * Returns null for anything a caller should never see, so the protocol-traffic rule lives in
+     * one place instead of being re-implemented by every consumer.
+     */
+    private fun toReceived(result: MessageDecryptor.Result): Received? {
         if (MessageDecryptor.isProtocolTraffic(result)) {
             Log.i(TAG, "id=${result.id} is protocol traffic (category=${result.category}), not surfaced")
-            return
+            return null
         }
-        val received = Received(
+        return Received(
             id = result.id,
             phone = if (result.fromMe) result.recipientPhone else result.senderPhone,
             text = MessageDecryptor.textOf(result.message),
             kind = MessageDecryptor.kindOf(result.message),
             timestampMillis = result.timestampMillis,
             fromMe = result.fromMe,
+            senderJid = result.sender.toString(),
+            chatJid = result.chat.toString(),
         )
-        _state.update { it.copy(recent = (listOf(received) + it.recent).take(MAX_RECENT)) }
     }
 
     private val listener = object : WAClient.Listener {
@@ -199,10 +215,10 @@ class WhatsAppManager(
         }
 
         override fun onMessage(messages: List<MessageDecryptor.Result>) {
-            scope.launch {
-                messages.forEach(::recordReceived)
-                onMessages(messages)
-            }
+            val received = messages.mapNotNull(::toReceived)
+            if (received.isEmpty()) return
+            _state.update { it.copy(recent = (received.asReversed() + it.recent).take(MAX_RECENT)) }
+            scope.launch { onMessages(received) }
         }
 
         override fun onDisconnected(cause: Throwable?) {

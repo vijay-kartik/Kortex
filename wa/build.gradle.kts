@@ -35,7 +35,11 @@ wire {
 }
 
 dependencies {
-    implementation(libs.kotlinx.coroutines.core)
+    // `api`, not `implementation`: these types appear in the module's own public API, so they
+    // must be on a consumer's compile classpath. WhatsAppManager exposes StateFlow<State> and
+    // takes a suspend callback; without this a consumer cannot even reference them.
+    api(libs.kotlinx.coroutines.core)
+
     implementation(libs.okhttp)
     implementation(libs.bouncycastle)
     implementation(libs.curve25519)
@@ -47,10 +51,13 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
-    // Login/observing UI (WhatsAppScreen)
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.material3)
+    // Login/observing UI (WhatsAppScreen). Compose is `api` because WhatsAppScreen is a
+    // @Composable a consumer calls from their own composition.
+    // TODO(sdk): split into an optional :wa-ui artifact so headless consumers are not forced
+    //  to depend on Compose at all.
+    api(platform(libs.compose.bom))
+    api(libs.compose.ui)
+    api(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

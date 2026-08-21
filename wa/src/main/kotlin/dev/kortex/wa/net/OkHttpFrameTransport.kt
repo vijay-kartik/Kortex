@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * before the first frame. Incoming data is reassembled because a single WS message may carry
  * several frames, or a frame may span multiple messages.
  */
-class OkHttpFrameTransport(
+internal class OkHttpFrameTransport(
     private val url: String = DEFAULT_URL,
     private val origin: String = DEFAULT_ORIGIN,
     private val client: OkHttpClient = defaultClient(),

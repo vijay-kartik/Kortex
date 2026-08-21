@@ -7,7 +7,7 @@ import dev.kortex.wa.noise.NoiseConstants
  * T0). Frames are length-prefixed (3-byte big-endian); the [connectionHeader] is sent once
  * before the first frame and is also mixed into the Noise hash as the prologue.
  */
-interface FrameTransport {
+internal interface FrameTransport {
     /** WAConnHeader — prologue for the handshake and the first-frame prefix. */
     val connectionHeader: ByteArray
         get() = NoiseConstants.WA_CONN_HEADER

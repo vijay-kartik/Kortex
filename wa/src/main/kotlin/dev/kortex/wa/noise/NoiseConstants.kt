@@ -4,7 +4,7 @@ package dev.kortex.wa.noise
  * Exact transport constants, ported verbatim from whatsmeow (`socket/constants.go`,
  * `socket/noisehandshake.go`). Do not "tidy" these — they must match the server.
  */
-object NoiseConstants {
+internal object NoiseConstants {
     /** Noise pattern string + 4 NUL bytes = exactly 32 bytes, used directly as the initial hash. */
     val NOISE_START_PATTERN: ByteArray =
         "Noise_XX_25519_AESGCM_SHA256".toByteArray(Charsets.US_ASCII) + ByteArray(4)

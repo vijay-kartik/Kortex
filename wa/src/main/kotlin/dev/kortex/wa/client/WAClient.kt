@@ -31,10 +31,10 @@ import kotlinx.coroutines.sync.withLock
 import okio.ByteString.Companion.toByteString
 import org.whispersystems.libsignal.util.KeyHelper
 import org.whispersystems.libsignal.util.Medium
-import proto.ADVDeviceIdentity
-import proto.ADVEncryptionType
-import proto.ADVSignedDeviceIdentity
-import proto.ADVSignedDeviceIdentityHMAC
+import dev.kortex.wa.proto.gen.ADVDeviceIdentity
+import dev.kortex.wa.proto.gen.ADVEncryptionType
+import dev.kortex.wa.proto.gen.ADVSignedDeviceIdentity
+import dev.kortex.wa.proto.gen.ADVSignedDeviceIdentityHMAC
 import java.util.Base64
 
 /**
@@ -48,7 +48,7 @@ import java.util.Base64
  *    server disconnects and we reconnect with the login payload.
  *  - Paired creds → login handshake → `success`.
  */
-class WAClient(
+internal class WAClient(
     private val credentialStore: CredentialStore,
     private val keyValueStore: KeyValueStore,
     private val listener: Listener,

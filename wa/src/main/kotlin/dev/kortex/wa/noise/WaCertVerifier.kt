@@ -1,7 +1,7 @@
 package dev.kortex.wa.noise
 
 import dev.kortex.wa.crypto.Curve25519
-import proto.CertChain
+import dev.kortex.wa.proto.gen.CertChain
 
 /**
  * Real WhatsApp Noise certificate verification (whatsmeow `verifyServerCert`): authenticates
@@ -9,7 +9,7 @@ import proto.CertChain
  * [CertVerifier.WA_CERT_PUB_KEY], the issuer-serial chain, and that the leaf's key equals the
  * server static decrypted during the handshake.
  */
-object WaCertVerifier : CertVerifier {
+internal object WaCertVerifier : CertVerifier {
     private const val WA_CERT_ISSUER_SERIAL = 0
 
     override fun verify(certDecrypted: ByteArray, serverStatic: ByteArray) {

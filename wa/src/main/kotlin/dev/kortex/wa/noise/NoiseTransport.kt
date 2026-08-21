@@ -7,7 +7,7 @@ import dev.kortex.wa.crypto.Aead
  * with their own monotonic counters; no associated data in transport mode. Frames sent/received
  * after the handshake are encrypted/decrypted here.
  */
-class NoiseTransport(
+internal class NoiseTransport(
     private val writeKey: ByteArray,
     private val readKey: ByteArray,
 ) {

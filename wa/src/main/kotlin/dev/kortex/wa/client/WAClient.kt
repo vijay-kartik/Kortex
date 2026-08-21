@@ -12,6 +12,7 @@ import dev.kortex.wa.net.OkHttpFrameTransport
 import dev.kortex.wa.noise.NoiseHandshake
 import dev.kortex.wa.noise.NoiseTransport
 import dev.kortex.wa.noise.WaCertVerifier
+import dev.kortex.wa.signal.LidDirectory
 import dev.kortex.wa.signal.MessageDecryptor
 import dev.kortex.wa.signal.WaSignalStore
 import dev.kortex.wa.store.KeyValueStore
@@ -20,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -66,10 +68,27 @@ class WAClient(
     private var transport: OkHttpFrameTransport? = null
     private var noise: NoiseTransport? = null
     private var expectReconnect = false
+    private var closing = false
+    private var ownLid: String? = null
     private val rng = java.security.SecureRandom()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sendMutex = Mutex()
     private var keepAliveJob: Job? = null
+
+    /**
+     * IQs we sent, by request id, so the matching response can be named in the log. Without this
+     * an error reply to the pre-key upload is indistinguishable from silence — and no published
+     * pre-keys means nobody can open a Signal session with us, so no message ever arrives.
+     */
+    private val lids = LidDirectory(keyValueStore)
+
+    private val pendingIqs = java.util.Collections.synchronizedMap(
+        // Bounded: a response we never get (or never match) must not leak. Keepalive pings alone
+        // would add an entry every KEEPALIVE_MS for the life of the connection.
+        object : LinkedHashMap<String, String>(16, 0.75f, false) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>) = size > MAX_PENDING_IQS
+        }
+    )
 
     suspend fun connect() {
         credentials = credentialStore.load() ?: DeviceCredentials.generate().also { credentialStore.save(it) }
@@ -103,8 +122,11 @@ class WAClient(
             // The post-pairing teardown can surface as a clean channel close, a stream:error 515,
             // or a bare TLS close (an SSLException from the read). Reconnect for all of them when a
             // reconnect is expected; only a genuine, unexpected drop is reported as disconnected.
-            Log.w(TAG, "read loop ended (expectReconnect=$expectReconnect): ${e.message}")
-            if (expectReconnect) {
+            Log.w(TAG, "read loop ended (closing=$closing expectReconnect=$expectReconnect): ${e.message}")
+            if (closing) {
+                // A deliberate logout: neither reconnect nor report this as a failure.
+                Log.i(TAG, "socket closed by logout")
+            } else if (expectReconnect) {
                 expectReconnect = false
                 connect() // reconnect with the login payload after pairing
             } else {
@@ -115,10 +137,16 @@ class WAClient(
 
     private suspend fun route(node: Node) {
         Log.d(TAG, "recv <${node.tag}> ${node.attrs}")
+        // Any stanza can be the one that reveals a LID's phone number, so harvest before routing.
+        runCatching { lids.record(node) }
         when (node.tag) {
             "iq" -> handleIq(node)
             "success" -> {
-                Log.i(TAG, "success — logged in")
+                // Our LID: the account's privacy identifier. Incoming stanzas are increasingly
+                // addressed by LID rather than phone number, so without this our own fan-out
+                // messages read as arriving from a stranger.
+                ownLid = node.jidAttr("lid")?.user ?: node.attr("lid")?.substringBefore('@')?.substringBefore(':')
+                Log.i(TAG, "success — logged in (lid=$ownLid)")
                 runCatching { uploadPreKeysIfNeeded() }
                 runCatching { sendActive() }
                 listener.onLoggedIn()
@@ -127,15 +155,34 @@ class WAClient(
             // The server pushes these after login (device/identity/account sync). It waits for our
             // <ack> before it finishes linking, so acking is required to get past "Logging in…".
             "receipt" -> sendAck(node)
-            "notification" -> sendAck(node)
+            "notification" -> handleNotification(node)
             "call" -> sendAck(node)
             "failure" -> {
                 Log.w(TAG, "failure node: ${node.attrs}")
                 listener.onDisconnected(IllegalStateException("stream failure: ${node.attr("reason")}"))
             }
             "stream:error" -> handleStreamError(node)
-            else -> listener.onNode(node)
+            else -> {
+                // No listener implements onNode, so without this line these vanish entirely —
+                // <ib> (offline flush), <presence>, <chatstate> and anything new the server adds.
+                Log.i(TAG, "unhandled <${node.tag}> ${node.attrs} children=${node.children().map { it.tag }}")
+                listener.onNode(node)
+            }
         }
+    }
+
+    /**
+     * `<notification type="encrypt">` is the server telling us the one-time pre-key pool is running
+     * low. Republishing keeps new contacts able to open a session with this device; ignoring it
+     * means incoming messages quietly stop once the initial [PREKEY_BATCH] is consumed.
+     */
+    private suspend fun handleNotification(node: Node) {
+        sendAck(node)
+        if (node.attr("type") != "encrypt") return
+        Log.i(TAG, "server requested more pre-keys; republishing")
+        keyValueStore.delete(META_NS, KEY_PREKEYS_UPLOADED)
+        runCatching { uploadPreKeysIfNeeded() }
+            .onFailure { Log.w(TAG, "pre-key republish failed", it) }
     }
 
     /**
@@ -174,44 +221,147 @@ class WAClient(
     }
 
     private suspend fun handleMessage(node: Node) {
-        val msgId = node.attr("id") ?: return
+        val encTypes = node.childrenWithTag("enc").map { it.attr("type") ?: "?" }
+        val msgId = node.attr("id")
+        if (msgId == null) {
+            Log.w(TAG, "msg without id from=${node.attrs["from"]} enc=$encTypes — cannot ack or dedupe")
+            return
+        }
+        Log.i(
+            TAG,
+            "msg id=$msgId from=${node.attrs["from"]} participant=${node.attrs["participant"]} " +
+                "sender_pn=${node.attrs["sender_pn"]} participant_pn=${node.attrs["participant_pn"]} " +
+                "type=${node.attr("type")} category=${node.attr("category")} " +
+                "offline=${node.attr("offline")} enc=$encTypes",
+        )
         sendAck(node)
 
-        // Deduplication check
-        if (keyValueStore.get(SEEN_NS, msgId) != null) return
+        if (keyValueStore.get(SEEN_NS, msgId) != null) {
+            Log.i(TAG, "msg id=$msgId duplicate, skipping")
+            return
+        }
 
-        val results = runCatching {
-            MessageDecryptor(WaSignalStore(credentials, keyValueStore)).decrypt(node)
-        }.getOrDefault(emptyList())
+        // A message id is only burned once we have actually delivered content from it. WhatsApp
+        // announces an incoming message with a metadata-only <message> (no <enc> at all) and sends
+        // the encrypted copy a beat later under the SAME id, so treating "nothing to decrypt" as
+        // handled would dedupe the real message away — and marking a failed decrypt as seen would
+        // make it unrecoverable even after the underlying fault is fixed.
+        if (encTypes.isEmpty()) {
+            Log.i(TAG, "msg id=$msgId has no enc parts (children=${node.children().map { it.tag }}); awaiting the encrypted copy")
+        }
 
-        keyValueStore.put(SEEN_NS, msgId, byteArrayOf(1))
-        if (results.isNotEmpty()) listener.onMessage(results)
+        var failed = false
+        var delivered = false
+        try {
+            val batch = decryptor().decrypt(node)
+            batch.failures.forEach { failure ->
+                failed = true
+                Log.w(TAG, "msg id=$msgId ${failure.encType} decrypt FAILED — left unseen for retry", failure.cause)
+            }
+            if (batch.results.isNotEmpty()) {
+                Log.i(
+                    TAG,
+                    "msg id=$msgId decrypted ${batch.results.size} part(s): " +
+                        "${batch.results.map { MessageDecryptor.kindOf(it.message) }}",
+                )
+                delivered = true
+                listener.onMessage(batch.results)
+            } else if (!failed && encTypes.isNotEmpty()) {
+                Log.w(TAG, "msg id=$msgId yielded 0 parts (enc=$encTypes)")
+            }
+        } catch (e: Exception) {
+            failed = true
+            Log.w(TAG, "msg id=$msgId decrypt aborted (enc=$encTypes) — left unseen for retry", e)
+        }
 
-        // Send delivery receipt
+        if (delivered && !failed) keyValueStore.put(SEEN_NS, msgId, byteArrayOf(1))
+
+        // Receipt regardless: the sender should see delivery even if we couldn't read the body.
         val from = node.jidAttr("from") ?: return
         val participant = node.jidAttr("participant")
         sendDeliveryReceipt(msgId, from, participant)
     }
 
+    private fun decryptor() = MessageDecryptor(
+        WaSignalStore(credentials, keyValueStore),
+        ownUser = credentials.deviceJid?.substringBefore('@')?.substringBefore(':'),
+        ownLid = ownLid,
+        lids = lids,
+    )
+
     private suspend fun sendDeliveryReceipt(msgId: String, chat: Jid, participant: Jid?) {
+        // Pass the JIDs themselves, not their text: the encoder packs a Jid into the binary JID
+        // form the server expects, while a String would be sent as an opaque token. It also keeps
+        // LID-addressed chats correct now that the decoder reports their real `@lid` server.
         val attrs = buildMap<String, Any?> {
-            put("to", chat.toString())
+            put("to", chat)
             put("id", msgId)
             put("type", "delivery")
             put("t", (System.currentTimeMillis() / 1000).toString())
-            if (participant != null) put("participant", participant.toString())
+            if (participant != null) put("participant", participant)
         }
         runCatching { sendNode(Node("receipt", attrs)) }
     }
 
     private suspend fun handleIq(node: Node) {
+        val id = node.attr("id")
+        val label = id?.let { pendingIqs.remove(it) }
+        if (label != null) {
+            val error = node.child("error")
+            when {
+                node.attr("type") == "error" || error != null ->
+                    Log.w(TAG, "iq $label ERROR ${error?.attrs ?: node.attrs}")
+                // Keepalive replies land every KEEPALIVE_MS; only their failures are interesting.
+                label == LABEL_PING -> Log.d(TAG, "iq $label result")
+                else -> Log.i(TAG, "iq $label result")
+            }
+            return
+        }
+
         val children = node.children()
-        if (children.size != 1 || node.attr("from") != Jid.DEFAULT_USER_SERVER) return
+        if (children.size != 1 || node.attr("from") != Jid.DEFAULT_USER_SERVER) {
+            Log.i(TAG, "unmatched iq ${node.attrs} children=${children.map { it.tag }}")
+            return
+        }
         when (children[0].tag) {
             "pair-device" -> handlePairDevice(node)
             "pair-success" -> handlePairSuccess(node)
+            else -> Log.i(TAG, "unhandled iq <${children[0].tag}> ${node.attrs}")
         }
     }
+
+    /**
+     * Unlink this device and tear the connection down deliberately. Mirrors whatsmeow's `Logout`:
+     * ask the server to remove the companion (so it disappears from the primary's Linked devices
+     * list) before closing. Best-effort — a dead socket must not block the caller's local wipe.
+     */
+    suspend fun logout() {
+        val jid = credentialsOrNull()?.deviceJid
+        if (jid != null) {
+            runCatching {
+                sendNode(
+                    Node(
+                        "iq",
+                        mapOf("to" to SERVER_JID, "type" to "set", "xmlns" to "md", "id" to randomId()),
+                        listOf(
+                            Node(
+                                "remove-companion-device",
+                                mapOf("jid" to Jid.parse(jid), "reason" to "user_initiated"),
+                            ),
+                        ),
+                    )
+                )
+                Log.i(TAG, "sent remove-companion-device for $jid")
+            }.onFailure { Log.w(TAG, "unlink request failed (closing anyway): ${it.message}") }
+        }
+        closing = true
+        keepAliveJob?.cancel()
+        transport?.close()
+        scope.cancel()
+    }
+
+    private fun credentialsOrNull(): DeviceCredentials? =
+        if (::credentials.isInitialized) credentials else null
 
     private suspend fun handlePairDevice(node: Node) {
         // Acknowledge the request.
@@ -348,11 +498,14 @@ class WAClient(
         sendNode(
             Node(
                 "iq",
-                mapOf("to" to SERVER_JID, "type" to "get", "xmlns" to "w:p", "id" to randomId()),
+                mapOf("to" to SERVER_JID, "type" to "get", "xmlns" to "w:p", "id" to trackedId(LABEL_PING)),
                 listOf(Node("ping")),
             )
         )
     }
+
+    /** A fresh request id, remembered so [handleIq] can name the response it belongs to. */
+    private fun trackedId(label: String): String = randomId().also { pendingIqs[it] = label }
 
     /**
      * whatsmeow's `SetPassive(false)`, sent right after `success`. Without it the freshly linked
@@ -362,7 +515,7 @@ class WAClient(
         sendNode(
             Node(
                 "iq",
-                mapOf("to" to SERVER_JID, "type" to "set", "xmlns" to "passive", "id" to randomId()),
+                mapOf("to" to SERVER_JID, "type" to "set", "xmlns" to "passive", "id" to trackedId(LABEL_ACTIVE)),
                 listOf(Node("active")),
             )
         )
@@ -398,7 +551,7 @@ class WAClient(
         sendNode(
             Node(
                 "iq",
-                mapOf("to" to SERVER_JID, "type" to "set", "xmlns" to "encrypt", "id" to randomId()),
+                mapOf("to" to SERVER_JID, "type" to "set", "xmlns" to "encrypt", "id" to trackedId(LABEL_PREKEYS)),
                 listOf(
                     Node("registration", content = be32(credentials.registrationId)),
                     Node("type", content = byteArrayOf(0x05)),
@@ -432,7 +585,11 @@ class WAClient(
         const val PREKEY_BATCH = 30
         const val HEX = "0123456789abcdef"
         const val SEEN_NS = "wa_seen"
+        const val LABEL_PING = "ping"
+        const val LABEL_ACTIVE = "active"
+        const val LABEL_PREKEYS = "prekey-upload"
         const val KEEPALIVE_MS = 20_000L
+        const val MAX_PENDING_IQS = 32
         const val TAG = "KortexWA"
     }
 }

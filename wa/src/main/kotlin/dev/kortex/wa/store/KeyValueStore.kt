@@ -15,11 +15,20 @@ interface KeyValueStore {
     /** All values in a namespace. */
     fun values(namespace: String): List<ByteArray>
 
+    /**
+     * Wipe every namespace. Used on logout: a re-link generates fresh identity keys, so any
+     * surviving session, sender key or `prekeys_uploaded` marker from the previous link would
+     * make incoming messages permanently undecryptable.
+     */
+    fun clearAll()
+
     companion object {
         const val NS_IDENTITY = "signal_identity"
         const val NS_PREKEY = "signal_prekey"
         const val NS_SIGNED_PREKEY = "signal_signed_prekey"
         const val NS_SESSION = "signal_session"
         const val NS_SENDER_KEY = "signal_sender_key"
+        /** LID → phone number, learned from the `*_pn` attributes on incoming stanzas. */
+        const val NS_LID_PN = "wa_lid_pn"
     }
 }

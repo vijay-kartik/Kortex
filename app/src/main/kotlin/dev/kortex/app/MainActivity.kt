@@ -43,7 +43,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,20 +69,22 @@ class MainActivity : ComponentActivity() {
  * First-run gate: show the WhatsApp linking onboarding until the device is linked (or the user
  * skips), then the main tabbed app. Returning users (creds already persisted) skip straight
  * through; a brief splash while [WhatsAppManager] resolves that avoids flashing onboarding.
+ *
+ * The gate reads [WhatsAppManager.State.onboardingDone], which latches once satisfied — logging
+ * out from the WhatsApp tab must not throw the user back into full-screen onboarding.
  */
 @Composable
 fun RootScreen() {
     val context = LocalContext.current
     val manager = remember { (context.applicationContext as KortexApp).container.whatsApp }
     val wa by manager.state.collectAsStateWithLifecycle()
-    var skipped by rememberSaveable { mutableStateOf(false) }
 
     when {
         wa.initializing -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
-        wa.connected || wa.alreadyLinked || skipped -> MainTabs()
-        else -> WhatsAppScreen(onSkip = { skipped = true })
+        wa.onboardingDone -> MainTabs()
+        else -> WhatsAppScreen(onSkip = { manager.skipOnboarding() })
     }
 }
 
@@ -91,7 +92,7 @@ fun RootScreen() {
 @Composable
 fun MainTabs() {
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Cards", "Chat", "Context")
+    val tabs = listOf("Cards", "Chat", "Context", "WhatsApp")
 
     Scaffold(
         topBar = {
@@ -109,7 +110,8 @@ fun MainTabs() {
             when (tab) {
                 0 -> CardsScreen()
                 1 -> ChatScreen()
-                else -> ContextScreen()
+                2 -> ContextScreen()
+                else -> WhatsAppScreen()
             }
         }
     }

@@ -46,6 +46,9 @@ interface WaKvDao {
 
     @Query("SELECT value FROM wa_kv WHERE namespace = :ns")
     fun values(ns: String): List<ByteArray>
+
+    @Query("DELETE FROM wa_kv")
+    fun clearAll()
 }
 
 @Dao
@@ -74,6 +77,7 @@ class RoomKeyValueStore(private val dao: WaKvDao) : KeyValueStore {
     override fun delete(namespace: String, key: String) = dao.delete(namespace, key)
     override fun keys(namespace: String): List<String> = dao.keys(namespace)
     override fun values(namespace: String): List<ByteArray> = dao.values(namespace)
+    override fun clearAll() = dao.clearAll()
 }
 
 class RoomCredentialStore(private val dao: WaCredentialsDao) : CredentialStore {

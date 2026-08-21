@@ -2,6 +2,7 @@ package dev.kortex.app
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.room.Room
 import dev.kortex.core.ambient.AmbientCoordinator
 import dev.kortex.wa.client.WAClient
@@ -31,12 +32,26 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         val initializing: Boolean = true,
         /** Persisted creds existed at launch (returning user) — skip onboarding straight away. */
         val alreadyLinked: Boolean = false,
+        /** The linked device JID, shown on the WhatsApp screen so you know which account this is. */
+        val deviceJid: String? = null,
+        /**
+         * One-shot: the first-run gate has been satisfied (linked or skipped). Latched, so logging
+         * out from the WhatsApp tab leaves you in the app instead of bouncing to full-screen
+         * onboarding mid-session.
+         */
+        val onboardingDone: Boolean = false,
+        /**
+         * Incoming messages this session, newest first, capped at [MAX_RECENT]. In memory only —
+         * it exists to show what arrived and what the pipeline made of it, while the durable
+         * record of anything analyzed already lives in the signal/card stores.
+         */
+        val recent: List<WaGateway.Received> = emptyList(),
     )
 
     private val db = Room.databaseBuilder(context.applicationContext, WaDatabase::class.java, "wa.db").build()
     private val keyValueStore = RoomKeyValueStore(db.kvDao())
     private val credentialStore = RoomCredentialStore(db.credentialsDao())
-    private val gateway = WaGateway(coordinator)
+    private val gateway = WaGateway(coordinator, onReceived = ::recordReceived)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow(State())
@@ -48,15 +63,17 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         // pairing (this session) is tracked via `paired`/`connected` so the onboarding screen can
         // stay visible until login actually completes.
         scope.launch {
-            val linked = runCatching { credentialStore.load()?.deviceJid != null }.getOrDefault(false)
+            val jid = runCatching { credentialStore.load()?.deviceJid }.getOrNull()
             _state.update {
                 it.copy(
                     initializing = false,
-                    alreadyLinked = linked,
-                    status = if (linked) "Linked" else it.status,
+                    alreadyLinked = jid != null,
+                    deviceJid = jid,
+                    onboardingDone = it.onboardingDone || jid != null,
+                    status = if (jid != null) "Linked" else it.status,
                 )
             }
-            if (linked) runCatching { connect() }
+            if (jid != null) runCatching { connect() }
         }
     }
 
@@ -67,6 +84,41 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         if (client != null) return
         _state.update { it.copy(status = "Connecting…") }
         context.startForegroundService(Intent(context, WaForegroundService::class.java))
+    }
+
+    private fun recordReceived(message: WaGateway.Received) {
+        _state.update { it.copy(recent = (listOf(message) + it.recent).take(MAX_RECENT)) }
+    }
+
+    /** Mark the first-run gate satisfied without linking ("Skip for now"). */
+    fun skipOnboarding() {
+        _state.update { it.copy(onboardingDone = true) }
+    }
+
+    /**
+     * Unlink this device and erase its WhatsApp identity. Destructive and irreversible without a
+     * fresh QR scan: the Signal store goes too, because a re-link generates new identity keys and
+     * any surviving session would make incoming messages permanently undecryptable.
+     */
+    fun logout() {
+        scope.launch {
+            Log.i(TAG, "logout requested")
+            _state.update { it.copy(status = "Logging out…") }
+            runCatching { client?.logout() }.onFailure { Log.w(TAG, "client logout failed", it) }
+            client = null
+            service?.stopSelf()
+            service = null
+            context.stopService(Intent(context, WaForegroundService::class.java))
+
+            runCatching {
+                credentialStore.clear()
+                keyValueStore.clearAll()
+            }.onFailure { Log.w(TAG, "credential wipe failed", it) }
+
+            Log.i(TAG, "logout complete; local WhatsApp state erased")
+            // Keep `onboardingDone` latched so we stay in the app rather than reverting to the gate.
+            _state.value = State(initializing = false, onboardingDone = true)
+        }
     }
 
     internal fun attachService(s: WaForegroundService) {
@@ -93,12 +145,12 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         }
 
         override fun onPaired(jid: String) {
-            _state.update { it.copy(paired = true, qrCodes = emptyList(), status = "Paired ($jid)") }
+            _state.update { it.copy(paired = true, qrCodes = emptyList(), deviceJid = jid, status = "Paired ($jid)") }
             service?.updateNotification("Paired: $jid")
         }
 
         override fun onLoggedIn() {
-            _state.update { it.copy(connected = true, status = "Connected") }
+            _state.update { it.copy(connected = true, onboardingDone = true, status = "Connected") }
             service?.updateNotification("Connected")
         }
 
@@ -111,5 +163,10 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
             client = null
             service?.stopSelf()
         }
+    }
+
+    private companion object {
+        const val TAG = "KortexWA"
+        const val MAX_RECENT = 50
     }
 }

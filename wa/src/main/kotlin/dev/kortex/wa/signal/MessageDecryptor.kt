@@ -1,6 +1,7 @@
 package dev.kortex.wa.signal
 
 import android.util.Log
+import dev.kortex.wa.WaLog
 import dev.kortex.wa.binary.Jid
 import dev.kortex.wa.binary.Node
 import org.whispersystems.libsignal.SessionCipher
@@ -265,7 +266,7 @@ internal class MessageDecryptor(
     }
 
     companion object {
-        private const val TAG = "KortexWA"
+        private val TAG: String get() = WaLog.tag
         private const val MAX_UNWRAP_DEPTH = 5
 
         /**

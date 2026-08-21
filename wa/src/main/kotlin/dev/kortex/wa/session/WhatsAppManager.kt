@@ -4,11 +4,13 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.room.Room
+import dev.kortex.wa.WaLog
 import dev.kortex.wa.client.WAClient
 import dev.kortex.wa.signal.MessageDecryptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,9 +30,25 @@ import kotlinx.coroutines.launch
  * without this module needing to know what that pipeline is.
  */
 class WhatsAppManager(
-    private val context: Context,
+    context: Context,
+    private val config: Config = Config(),
     private val onMessages: suspend (List<Received>) -> Unit = {},
-) {
+) : AutoCloseable {
+
+    /**
+     * Host-tunable knobs. Defaults suit a single-WhatsApp app; a host that already owns a file
+     * named `wa.db`, or that wants its own log tag in a shared logcat, overrides them here.
+     */
+    data class Config(
+        val databaseName: String = "wa.db",
+        val logTag: String = "WhatsApp",
+        /** Title on the ongoing foreground-service notification. */
+        val notificationTitle: String = "WhatsApp Connection",
+    )
+
+    // Never hold the caller's Context: a host passing an Activity would have it pinned for the
+    // process lifetime by the `active` reference below.
+    private val appContext = context.applicationContext
 
     /**
      * One message seen on this connection.
@@ -85,15 +103,33 @@ class WhatsAppManager(
         val recent: List<Received> = emptyList(),
     )
 
-    private val db = Room.databaseBuilder(context.applicationContext, WaDatabase::class.java, "wa.db").build()
-    private val keyValueStore = RoomKeyValueStore(db.kvDao())
-    private val credentialStore = RoomCredentialStore(db.credentialsDao())
+    // Lazy so constructing the manager stays free of I/O — the database is not touched until
+    // something actually needs it, which keeps construction cheap and testable.
+    private val dbDelegate = lazy {
+        Room.databaseBuilder(appContext, WaDatabase::class.java, config.databaseName).build()
+    }
+    private val db by dbDelegate
+    private val keyValueStore by lazy { RoomKeyValueStore(db.kvDao()) }
+    private val credentialStore by lazy { RoomCredentialStore(db.credentialsDao()) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
-    init {
+    @Volatile private var started = false
+
+    /**
+     * Bring the session up: read persisted credentials and, if this device is already linked,
+     * reconnect. Idempotent, so a host can call it from `Application.onCreate` without guarding.
+     *
+     * Separate from construction on purpose. Doing this in `init` meant merely creating the
+     * manager opened a database, launched a coroutine and published `this` to a global — before
+     * the caller had asked for anything, and with `this` escaping mid-construction.
+     */
+    fun start() {
+        if (started) return
+        started = true
+        WaLog.tag = config.logTag
         active = this
         // Resolve first-run vs. returning user: if a device JID was persisted at pairing, the
         // onboarding gate skips straight to the app and we bring the connection back up. A fresh
@@ -114,13 +150,33 @@ class WhatsAppManager(
         }
     }
 
+    /**
+     * Release everything without touching the linked account — the session can be brought back up
+     * with a fresh manager and [start]. This is the counterpart to [start]; [logout] is a
+     * different operation that erases credentials.
+     *
+     * Without it the `active` reference kept the manager (and its database) alive for the process
+     * lifetime with no way for a host to let go.
+     */
+    override fun close() {
+        if (!started) return
+        started = false
+        stopService()
+        scope.cancel()
+        // Only if something actually opened it — touching `db` here would build a database purely
+        // in order to close it, which is exactly the construction-time I/O this change removed.
+        if (dbDelegate.isInitialized()) runCatching { if (db.isOpen) db.close() }
+        // Never clear a slot another instance has since claimed.
+        if (active === this) active = null
+    }
+
     private var client: WAClient? = null
     private var service: WaForegroundService? = null
 
     fun connect() {
         if (client != null) return
         _state.update { it.copy(status = "Connecting…") }
-        context.startForegroundService(Intent(context, WaForegroundService::class.java))
+        appContext.startForegroundService(Intent(appContext, WaForegroundService::class.java))
     }
 
     /** Mark the first-run gate satisfied without linking ("Skip for now"). */
@@ -140,23 +196,30 @@ class WhatsAppManager(
      */
     fun logout() {
         scope.launch {
-            Log.i(TAG, "logout requested")
+            Log.i(config.logTag, "logout requested")
             _state.update { it.copy(status = "Logging out…") }
-            runCatching { client?.logout() }.onFailure { Log.w(TAG, "client logout failed", it) }
+            runCatching { client?.logout() }.onFailure { Log.w(config.logTag, "client logout failed", it) }
             client = null
-            service?.stopSelf()
-            service = null
-            context.stopService(Intent(context, WaForegroundService::class.java))
+            stopService()
 
             runCatching {
                 credentialStore.clear()
                 keyValueStore.clearAll()
-            }.onFailure { Log.w(TAG, "credential wipe failed", it) }
+            }.onFailure { Log.w(config.logTag, "credential wipe failed", it) }
 
-            Log.i(TAG, "logout complete; local WhatsApp state erased")
+            Log.i(config.logTag, "logout complete; local WhatsApp state erased")
             // Keep `onboardingDone` latched so we stay in the app rather than reverting to the gate.
             _state.value = State(initializing = false, onboardingDone = true)
         }
+    }
+
+    /** Exposed for [WaForegroundService], which builds its notification outside this class. */
+    internal val notificationTitle: String get() = config.notificationTitle
+
+    private fun stopService() {
+        service?.stopSelf()
+        service = null
+        runCatching { appContext.stopService(Intent(appContext, WaForegroundService::class.java)) }
     }
 
     internal fun attachService(s: WaForegroundService) {
@@ -183,7 +246,7 @@ class WhatsAppManager(
      */
     private fun toReceived(result: MessageDecryptor.Result): Received? {
         if (MessageDecryptor.isProtocolTraffic(result)) {
-            Log.i(TAG, "id=${result.id} is protocol traffic (category=${result.category}), not surfaced")
+            Log.i(config.logTag, "id=${result.id} is protocol traffic (category=${result.category}), not surfaced")
             return null
         }
         return Received(
@@ -229,7 +292,6 @@ class WhatsAppManager(
     }
 
     companion object {
-        private const val TAG = "KortexWA"
         private const val MAX_RECENT = 50
 
         /**

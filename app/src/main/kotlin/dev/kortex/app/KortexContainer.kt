@@ -94,5 +94,12 @@ class KortexContainer(context: Context) {
      * access to either, at which point both lazies resolve without a real construction-time cycle.
      */
     private val waGateway: WaGateway by lazy { WaGateway(coordinator, annotate = { id, ann -> whatsApp.annotate(id, ann) }) }
-    val whatsApp: WhatsAppManager by lazy { WhatsAppManager(appContext, onMessages = { results -> waGateway.onMessages(results) }) }
+    val whatsApp: WhatsAppManager by lazy {
+        WhatsAppManager(
+            appContext,
+            // Keep this app's existing logcat tag so `adb logcat -s KortexWA` still works.
+            config = WhatsAppManager.Config(logTag = "KortexWA"),
+            onMessages = { messages -> waGateway.onMessages(messages) },
+        )
+    }
 }

@@ -1,6 +1,7 @@
 package dev.kortex.wa.client
 
 import android.util.Log
+import dev.kortex.wa.WaLog
 import dev.kortex.wa.auth.AdvSignatures
 import dev.kortex.wa.auth.ClientPayloadFactory
 import dev.kortex.wa.auth.CredentialStore
@@ -722,6 +723,6 @@ internal class WAClient(
         const val LABEL_PREKEYS = "prekey-upload"
         const val KEEPALIVE_MS = 20_000L
         const val MAX_PENDING_IQS = 32
-        const val TAG = "KortexWA"
+        val TAG: String get() = WaLog.tag
     }
 }

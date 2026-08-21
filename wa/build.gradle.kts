@@ -8,7 +8,9 @@ plugins {
 
 android {
     namespace = "dev.kortex.wa"
-    compileSdk = 35
+    // Match the consuming app: an SDK compiled against an older platform than its consumers
+    // cannot see newer APIs and triggers manifest/lint mismatches on their side.
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26

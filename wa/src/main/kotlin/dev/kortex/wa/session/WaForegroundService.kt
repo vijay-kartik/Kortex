@@ -50,7 +50,7 @@ class WaForegroundService : Service() {
 
     private fun buildNotification(text: String): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("WhatsApp Connection")
+            .setContentTitle(WhatsAppManager.current()?.notificationTitle ?: CHANNEL_NAME)
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)

@@ -1,6 +1,7 @@
 package dev.kortex.wa.signal
 
 import android.util.Log
+import dev.kortex.wa.WaLog
 import dev.kortex.wa.binary.Jid
 import dev.kortex.wa.binary.Node
 import dev.kortex.wa.store.KeyValueStore
@@ -49,7 +50,7 @@ internal class LidDirectory(private val kv: KeyValueStore) {
     }
 
     private companion object {
-        const val TAG = "KortexWA"
+        val TAG: String get() = WaLog.tag
 
         /** LID-valued attribute paired with the attribute carrying that party's phone number. */
         val PAIRS = listOf(

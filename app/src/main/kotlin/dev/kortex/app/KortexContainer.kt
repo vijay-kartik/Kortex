@@ -19,6 +19,7 @@ import dev.kortex.core.store.KortexDatabase
 import dev.kortex.core.tool.ToolRegistry
 import dev.kortex.core.tool.builtin.defaultTools
 import dev.kortex.app.tools.whatsappTool
+import dev.kortex.wa.session.WhatsAppManager
 
 /**
  * Manual dependency container (no DI framework — fewer moving parts). Built once in
@@ -85,6 +86,13 @@ class KortexContainer(context: Context) {
         ToolRegistry(defaultTools() + whatsappTool(appContext))
     }
 
-    /** Native WhatsApp connection (QR pairing + message ingest), fed into the pipeline. */
-    val whatsApp by lazy { WhatsAppManager(appContext, coordinator) }
+    /**
+     * The reusable `:wa` session (QR pairing, connection, message observing) and this app's
+     * bridge from it into the ambient pipeline. `whatsApp` and `waGateway` reference each other
+     * lazily — the manager needs a callback to hand off decrypted messages, the gateway needs a
+     * way to annotate them with what the pipeline decided — so neither is built until the first
+     * access to either, at which point both lazies resolve without a real construction-time cycle.
+     */
+    private val waGateway: WaGateway by lazy { WaGateway(coordinator, annotate = { id, ann -> whatsApp.annotate(id, ann) }) }
+    val whatsApp: WhatsAppManager by lazy { WhatsAppManager(appContext, onMessages = { results -> waGateway.onMessages(results) }) }
 }

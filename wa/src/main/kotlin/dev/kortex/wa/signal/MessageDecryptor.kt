@@ -96,17 +96,25 @@ class MessageDecryptor(
             val version = enc.attr("v")?.toIntOrNull() ?: 2
             val content = enc.contentBytes() ?: continue
             try {
+                val address = sender.signalAddress()
+                if (type == "pkmsg" || type == "msg") {
+                    // Whether a session already exists for the canonical address is exactly what
+                    // separates "this bootstraps a new session" from "this should ride an existing
+                    // ratchet" — and a pkmsg arriving with no session is what forces a pre-key
+                    // lookup that can fail.
+                    Log.i(TAG, "msg id=$id $type session=${address.name}.${address.deviceId} exists=${store.containsSession(address)}")
+                }
                 val plaintext = when (type) {
                     "pkmsg" -> unpad(
-                        SessionCipher(store, sender.signalAddress()).decrypt(PreKeySignalMessage(content)),
+                        SessionCipher(store, address).decrypt(PreKeySignalMessage(content)),
                         version,
                     )
                     "msg" -> unpad(
-                        SessionCipher(store, sender.signalAddress()).decrypt(SignalMessage(content)),
+                        SessionCipher(store, address).decrypt(SignalMessage(content)),
                         version,
                     )
                     "skmsg" -> unpad(
-                        GroupCipher(store, SenderKeyName(chat.toString(), sender.signalAddress())).decrypt(content),
+                        GroupCipher(store, SenderKeyName(chat.toString(), address)).decrypt(content),
                         version,
                     )
                     else -> {
@@ -230,7 +238,31 @@ class MessageDecryptor(
         return plaintext.copyOfRange(0, plaintext.size - padLength)
     }
 
-    private fun Jid.signalAddress() = SignalProtocolAddress(user, device)
+    /**
+     * The Signal session address for a JID.
+     *
+     * One physical device can be addressed two ways — by phone number (`…@s.whatsapp.net`, used
+     * for app-state/peer stanzas) and by LID (`…@lid`, used for message fan-out) — but it has a
+     * single Signal identity, and a sender caches a single pre-key bundle for it. Keying sessions
+     * off whichever form happened to arrive splits one device across two session slots: the first
+     * stanza establishes a session and consumes the bundle's one-time pre-key, then the same
+     * device's other addressing finds no session, tries to bootstrap a fresh one from the same
+     * cached bundle, and fails with `InvalidKeyIdException: no pre-key N` — while the rest of the
+     * batch sits unused.
+     *
+     * So the phone number is the canonical name whenever we know it, and a session already stored
+     * under the LID form is migrated across rather than abandoned.
+     */
+    private fun Jid.signalAddress(): SignalProtocolAddress {
+        val canonical = SignalProtocolAddress(if (isLid) lids?.phoneFor(this) ?: user else user, device)
+        if (isLid && canonical.name != user) {
+            val raw = SignalProtocolAddress(user, device)
+            if (store.migrateSession(raw, canonical)) {
+                Log.i(TAG, "migrated session ${raw.name}.${raw.deviceId} -> ${canonical.name}.${canonical.deviceId}")
+            }
+        }
+        return canonical
+    }
 
     companion object {
         private const val TAG = "KortexWA"
@@ -264,6 +296,26 @@ class MessageDecryptor(
             m.protocolMessage != null -> "protocolMessage"
             m.senderKeyDistributionMessage != null -> "senderKeyDistributionMessage"
             else -> "unknown"
+        }
+
+        /** The plain-text body, or null when the payload carries no text (media, reactions, …). */
+        fun textOf(m: Message): String? =
+            m.conversation?.takeIf { it.isNotBlank() }
+                ?: m.extendedTextMessage?.text?.takeIf { it.isNotBlank() }
+
+        /**
+         * Device-to-device plumbing rather than anything a person sent: app-state sync between
+         * your own devices (`category=peer`), protocol payloads like revokes and
+         * disappearing-message settings, and group sender-key distribution. These are still
+         * decrypted — that is how sender keys get installed and sessions advance — but callers
+         * that observe or act on "real" messages should skip them. Linking alone produces a burst
+         * of them.
+         */
+        fun isProtocolTraffic(result: Result): Boolean {
+            val kind = kindOf(result.message)
+            return result.category == "peer" ||
+                kind == "protocolMessage" ||
+                kind == "senderKeyDistributionMessage"
         }
     }
 }

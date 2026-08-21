@@ -55,16 +55,13 @@ dependencies {
     implementation(project(":core-agent"))
     implementation(project(":wa"))
 
-    // QR rendering for the WhatsApp linking screen (WhatsAppScreen uses ZXing directly).
-    implementation(libs.zxing.core)
-
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    // WaDatabase (@Database/@Dao in WaStorage.kt) needs Room's codegen, or databaseBuilder
-    // throws "cannot find implementation for WaDatabase" at runtime.
+    // KortexDatabase (@Database/@Dao in core-agent's store package) needs Room's codegen, or
+    // databaseBuilder throws "cannot find implementation for KortexDatabase" at runtime.
     ksp(libs.room.compiler)
 
     implementation(platform(libs.compose.bom))

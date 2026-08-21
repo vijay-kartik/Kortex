@@ -1,4 +1,4 @@
-package dev.kortex.app
+package dev.kortex.wa.ui
 
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -28,7 +28,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -37,18 +36,24 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import dev.kortex.wa.session.WhatsAppManager
+import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * The WhatsApp account space. Doubles as the first-run onboarding gate (pass [onSkip]) and as the
- * "WhatsApp" tab, where a linked account shows what has been received and can be unlinked.
+ * The WhatsApp account space: QR pairing (also usable as a first-run onboarding gate via
+ * [onSkip]), and — once linked — account status plus a running list of what has been observed on
+ * the connection, with log out.
+ *
+ * A host app supplies its own [manager] instance (there is exactly one connection per process);
+ * this composable has no dependency on any particular app's DI container or pipeline. A
+ * [WhatsAppManager.Received.annotation], if the host app attaches one via
+ * [WhatsAppManager.annotate], is rendered under the message it belongs to.
  */
 @Composable
-fun WhatsAppScreen(modifier: Modifier = Modifier, onSkip: (() -> Unit)? = null) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val manager = remember { (context.applicationContext as KortexApp).container.whatsApp }
+fun WhatsAppScreen(manager: WhatsAppManager, modifier: Modifier = Modifier, onSkip: (() -> Unit)? = null) {
     val state by manager.state.collectAsStateWithLifecycle()
     var confirmLogout by remember { mutableStateOf(false) }
 
@@ -102,7 +107,7 @@ private fun LinkedAccount(
     modifier: Modifier,
     status: String,
     deviceJid: String?,
-    recent: List<WaGateway.Received>,
+    recent: List<WhatsAppManager.Received>,
     onLogout: () -> Unit,
 ) {
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
@@ -152,10 +157,10 @@ private fun LinkedAccount(
 
 /**
  * Messages we sent are shown for visibility only — offset and tinted like a chat bubble so they
- * read as ours at a glance, and with no analysis line, since they never enter the pipeline.
+ * read as ours at a glance.
  */
 @Composable
-private fun ReceivedRow(message: WaGateway.Received) {
+private fun ReceivedRow(message: WhatsAppManager.Received) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.fromMe) Arrangement.End else Arrangement.Start,
@@ -191,27 +196,18 @@ private fun ReceivedRow(message: WaGateway.Received) {
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 4.dp),
                 )
-                message.outcome?.let { outcome ->
+                message.annotation?.let { annotation ->
                     Text(
-                        outcomeLabel(outcome),
+                        annotation.label,
                         style = MaterialTheme.typography.labelSmall,
-                        color = when (outcome) {
-                            is WaGateway.Outcome.Dropped -> MaterialTheme.colorScheme.error
-                            else -> MaterialTheme.colorScheme.primary
-                        },
+                        color = if (annotation.isError) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(top = 6.dp),
                     )
                 }
             }
         }
     }
-}
-
-private fun outcomeLabel(outcome: WaGateway.Outcome): String = when (outcome) {
-    is WaGateway.Outcome.Carded -> "Analyzed — card created"
-    is WaGateway.Outcome.Remembered -> "Analyzed — saved to memory"
-    is WaGateway.Outcome.Ignored -> "Analyzed — no action needed"
-    is WaGateway.Outcome.Dropped -> "Dropped: ${outcome.reason}"
 }
 
 private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")

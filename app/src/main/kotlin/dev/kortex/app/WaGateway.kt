@@ -10,105 +10,50 @@ import dev.kortex.core.ambient.HandleType
 import dev.kortex.core.ambient.Signal
 import dev.kortex.core.ambient.SignalKind
 import dev.kortex.core.ambient.SignalSource
+import dev.kortex.wa.session.WhatsAppManager
 import dev.kortex.wa.signal.MessageDecryptor
 import java.util.UUID
 
 /**
- * Bridges decrypted WhatsApp messages into the Kortex ambient pipeline. Each text message
- * becomes a [Signal] (source = WhatsApp, sender handle = the phone number from the JID) and is
- * fed to [AmbientCoordinator.onSignal]; the identity gate then drops anything that isn't a
- * saved contact, and WhatsApp + SMS from the same person merge into one cross-medium thread.
+ * Bridges decrypted WhatsApp messages (observed by [WhatsAppManager], the reusable `:wa` session)
+ * into this app's Kortex ambient pipeline. Each text message becomes a [Signal] (source =
+ * WhatsApp, sender handle = the phone number from the JID) and is fed to
+ * [AmbientCoordinator.onSignal]; the identity gate then drops anything that isn't a saved contact,
+ * and WhatsApp + SMS from the same person merge into one cross-medium thread.
  *
- * Every incoming message is also reported to [onReceived] with what the pipeline decided, so the
- * WhatsApp screen can show what actually arrived. The drops look nothing alike but are easy to
- * confuse: "no text" means the protocol worked and the payload was media; "not a saved contact"
- * means the protocol worked and the *identity gate* rejected the sender.
+ * What the pipeline decided is reported back via [annotate] so the WhatsApp tab can show it next
+ * to the message it belongs to — this is the one piece of Kortex-specific meaning that the `:wa`
+ * module itself knows nothing about.
  */
 class WaGateway(
     private val coordinator: AmbientCoordinator,
-    private val onReceived: (Received) -> Unit = {},
+    private val annotate: (id: String, annotation: WhatsAppManager.Annotation) -> Unit = { _, _ -> },
 ) {
-
-    /** One message seen on this connection and what became of it. */
-    data class Received(
-        val id: String,
-        /** The other party in the chat: who sent it, or who we sent it to. */
-        val phone: String?,
-        /** Message body, or null when the payload carries no text (media, reactions, …). */
-        val text: String?,
-        /** Which `proto.Message` field carried the payload, e.g. `conversation`, `imageMessage`. */
-        val kind: String,
-        val timestampMillis: Long,
-        /** True for messages we sent from another device, mirrored here. */
-        val fromMe: Boolean,
-        /** What the pipeline decided — null for our own messages, which never enter it. */
-        val outcome: Outcome?,
-    )
-
-    sealed interface Outcome {
-        /** Analyzed and turned into an action card. */
-        data object Carded : Outcome
-
-        /** Analyzed and folded into long-term memory, but not card-worthy. */
-        data object Remembered : Outcome
-
-        /** Analyzed and deliberately not acted on. */
-        data class Ignored(val rationale: String) : Outcome
-
-        /** Never reached analysis. */
-        data class Dropped(val reason: String) : Outcome
-    }
 
     suspend fun onMessages(results: List<MessageDecryptor.Result>) {
         results.forEach { result ->
-            val kind = MessageDecryptor.kindOf(result.message)
-            val text = extractText(result)
+            if (result.fromMe || MessageDecryptor.isProtocolTraffic(result)) return@forEach
 
+            val kind = MessageDecryptor.kindOf(result.message)
+            val text = MessageDecryptor.textOf(result.message)
             Log.i(
                 TAG,
                 "gw id=${result.id} sender=${result.sender} phone=${result.senderPhone} " +
-                    "chat=${result.chat} kind=$kind fromMe=${result.fromMe} textLen=${text?.length ?: 0}",
+                    "chat=${result.chat} kind=$kind textLen=${text?.length ?: 0}",
             )
 
-            if (isProtocolTraffic(result, kind)) {
-                Log.i(TAG, "gw id=${result.id} $kind (category=${result.category}) is protocol traffic, not surfaced")
-                return@forEach
-            }
-
-            // Our own outgoing message, mirrored to this companion: shown for visibility, but it
-            // never enters the pipeline — the ambient layer curates what other people send us.
-            val outcome = if (result.fromMe) {
-                Log.i(TAG, "gw id=${result.id} own message, not ingested")
-                null
-            } else {
-                ingest(result, kind, text).also { Log.i(TAG, "gw id=${result.id} pipeline: ${it.describe()}") }
-            }
-
-            onReceived(
-                Received(
-                    id = result.id,
-                    phone = if (result.fromMe) result.recipientPhone else result.senderPhone,
-                    text = text,
-                    kind = kind,
-                    timestampMillis = result.timestampMillis,
-                    fromMe = result.fromMe,
-                    outcome = outcome,
-                )
-            )
+            val outcome = ingest(result, kind, text)
+            Log.i(TAG, "gw id=${result.id} pipeline: ${outcome.describe()}")
+            annotate(result.id, WhatsAppManager.Annotation(outcome.label(), isError = outcome is Outcome.Dropped))
         }
     }
 
-    /**
-     * Device-to-device plumbing rather than anything a person sent: app-state sync between your
-     * own devices (`category=peer`), protocol payloads like revokes and disappearing-message
-     * settings, and group sender-key distribution. These still get decrypted — that is how sender
-     * keys get installed — but they are neither shown nor analyzed. Linking alone produces a burst
-     * of them, which would otherwise bury the real messages in the list.
-     */
-    private fun isProtocolTraffic(result: MessageDecryptor.Result, kind: String): Boolean =
-        result.category == "peer" ||
-            kind == "protocolMessage" ||
-            kind == "senderKeyDistributionMessage"
+    private sealed interface Outcome {
+        data object Carded : Outcome
+        data object Remembered : Outcome
+        data class Ignored(val rationale: String) : Outcome
+        data class Dropped(val reason: String) : Outcome
+    }
 
     private suspend fun ingest(result: MessageDecryptor.Result, kind: String, text: String?): Outcome {
         if (text == null) return Outcome.Dropped("$kind carries no text")
@@ -144,10 +89,11 @@ class WaGateway(
         is Outcome.Dropped -> "Dropped($reason)"
     }
 
-    private fun extractText(result: MessageDecryptor.Result): String? {
-        val message = result.message
-        return message.conversation?.takeIf { it.isNotBlank() }
-            ?: message.extendedTextMessage?.text?.takeIf { it.isNotBlank() }
+    private fun Outcome.label(): String = when (this) {
+        is Outcome.Carded -> "Analyzed — card created"
+        is Outcome.Remembered -> "Analyzed — saved to memory"
+        is Outcome.Ignored -> "Analyzed — no action needed"
+        is Outcome.Dropped -> "Dropped: $reason"
     }
 
     private companion object {

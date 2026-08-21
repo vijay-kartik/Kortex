@@ -119,6 +119,28 @@ class WaSignalStore(
             .forEach { kv.delete(KeyValueStore.NS_SESSION, it) }
     }
 
+    /**
+     * Move a session (and its identity) from [from] to [to], for when the same physical device
+     * turns out to be reachable under two JIDs and we settle on one canonical address. A no-op
+     * unless [from] has a session and [to] does not, so it can be called on every decrypt.
+     *
+     * Without this, switching the addressing scheme would orphan every session established under
+     * the old one — each peer's next message would have to bootstrap a new session, and would
+     * fail if the pre-key its cached bundle names has already been consumed.
+     */
+    fun migrateSession(from: SignalProtocolAddress, to: SignalProtocolAddress): Boolean {
+        if (from == to) return false
+        val existing = kv.get(KeyValueStore.NS_SESSION, from.toKey()) ?: return false
+        if (kv.get(KeyValueStore.NS_SESSION, to.toKey()) != null) return false
+        kv.put(KeyValueStore.NS_SESSION, to.toKey(), existing)
+        kv.delete(KeyValueStore.NS_SESSION, from.toKey())
+        kv.get(KeyValueStore.NS_IDENTITY, from.toKey())?.let {
+            kv.put(KeyValueStore.NS_IDENTITY, to.toKey(), it)
+            kv.delete(KeyValueStore.NS_IDENTITY, from.toKey())
+        }
+        return true
+    }
+
     // --- SenderKeyStore (groups) ---
 
     override fun storeSenderKey(senderKeyName: SenderKeyName, record: SenderKeyRecord) =

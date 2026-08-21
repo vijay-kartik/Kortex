@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.kortex.core.state.Message
+import dev.kortex.wa.session.WhatsAppManager
+import dev.kortex.wa.ui.WhatsAppScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,14 +85,14 @@ fun RootScreen() {
         wa.initializing -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
-        wa.onboardingDone -> MainTabs()
-        else -> WhatsAppScreen(onSkip = { manager.skipOnboarding() })
+        wa.onboardingDone -> MainTabs(manager)
+        else -> WhatsAppScreen(manager, onSkip = { manager.skipOnboarding() })
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainTabs() {
+fun MainTabs(whatsApp: WhatsAppManager) {
     var tab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Cards", "Chat", "Context", "WhatsApp")
 
@@ -111,7 +113,7 @@ fun MainTabs() {
                 0 -> CardsScreen()
                 1 -> ChatScreen()
                 2 -> ContextScreen()
-                else -> WhatsAppScreen()
+                else -> WhatsAppScreen(whatsApp)
             }
         }
     }

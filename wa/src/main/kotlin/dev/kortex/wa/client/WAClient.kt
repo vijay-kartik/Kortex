@@ -30,6 +30,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okio.ByteString.Companion.toByteString
 import org.whispersystems.libsignal.util.KeyHelper
+import org.whispersystems.libsignal.util.Medium
 import proto.ADVDeviceIdentity
 import proto.ADVEncryptionType
 import proto.ADVSignedDeviceIdentity
@@ -90,6 +91,13 @@ class WAClient(
         }
     )
 
+    /** How many retry receipts we've sent per message id — see [sendRetryReceipt]. Bounded likewise. */
+    private val retryCounts = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, Int>(16, 0.75f, false) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Int>) = size > MAX_PENDING_IQS
+        }
+    )
+
     suspend fun connect() {
         credentials = credentialStore.load() ?: DeviceCredentials.generate().also { credentialStore.save(it) }
 
@@ -147,6 +155,12 @@ class WAClient(
                 // messages read as arriving from a stranger.
                 ownLid = node.jidAttr("lid")?.user ?: node.attr("lid")?.substringBefore('@')?.substringBefore(':')
                 Log.i(TAG, "success — logged in (lid=$ownLid)")
+                // Our own LID/number pairing is never spelled out by a `*_pn` attribute — our own
+                // stanzas carry `sender_pn=null` — so seed it from what login already told us.
+                // Without it our primary device keeps two Signal sessions (one per addressing)
+                // and burns pre-keys it cannot then find.
+                val ownPn = credentials.deviceJid?.substringBefore('@')?.substringBefore(':')
+                if (ownLid != null && ownPn != null) lids.record(ownLid!!, ownPn, "login")
                 runCatching { uploadPreKeysIfNeeded() }
                 runCatching { sendActive() }
                 listener.onLoggedIn()
@@ -256,7 +270,14 @@ class WAClient(
             val batch = decryptor().decrypt(node)
             batch.failures.forEach { failure ->
                 failed = true
-                Log.w(TAG, "msg id=$msgId ${failure.encType} decrypt FAILED — left unseen for retry", failure.cause)
+                // A missing-pre-key failure on a pkmsg is either genuine batch exhaustion (expect
+                // remaining count near 0) or a duplicate delivery of an already-consumed session
+                // bootstrap (remaining count still high) — the count is the only way to tell them
+                // apart after the fact.
+                val remaining = if (failure.encType == "pkmsg") {
+                    ", pre-keys remaining=${keyValueStore.keys(KeyValueStore.NS_PREKEY).size}"
+                } else ""
+                Log.w(TAG, "msg id=$msgId ${failure.encType} decrypt FAILED$remaining — left unseen for retry", failure.cause)
             }
             if (batch.results.isNotEmpty()) {
                 Log.i(
@@ -276,10 +297,17 @@ class WAClient(
 
         if (delivered && !failed) keyValueStore.put(SEEN_NS, msgId, byteArrayOf(1))
 
-        // Receipt regardless: the sender should see delivery even if we couldn't read the body.
         val from = node.jidAttr("from") ?: return
         val participant = node.jidAttr("participant")
-        sendDeliveryReceipt(msgId, from, participant)
+        if (failed) {
+            // A normal delivery receipt would tell the sender "got it, all good" for a message we
+            // couldn't actually read — and without a retry receipt, a sender whose cached session
+            // for us has gone stale never learns to refresh, so every future message repeats the
+            // same failure forever.
+            sendRetryReceipt(msgId, from, participant, node.attr("t"))
+        } else {
+            sendDeliveryReceipt(msgId, from, participant)
+        }
     }
 
     private fun decryptor() = MessageDecryptor(
@@ -301,6 +329,86 @@ class WAClient(
             if (participant != null) put("participant", participant)
         }
         runCatching { sendNode(Node("receipt", attrs)) }
+    }
+
+    /**
+     * Ask the sender to resend a message we failed to decrypt (whatsmeow `sendRetryReceipt`).
+     * A confirmed real-world case this covers: the sender's cached session for this device
+     * references a one-time pre-key we've already consumed and deleted — every message it builds
+     * with that stale reference fails the same way, and without a retry receipt the sender has no
+     * signal that anything is wrong, so it never refreshes. The first attempt just asks for a
+     * resend, which is usually enough (the sender re-fetches our current — since our fix, always
+     * fresh — bundle from the server). From the second attempt on we also embed our current
+     * identity/signed-prekey/one fresh one-time pre-key directly in the receipt (`<keys>`), in
+     * case the sender's own bundle cache doesn't get invalidated by the request alone.
+     */
+    private suspend fun sendRetryReceipt(msgId: String, from: Jid, participant: Jid?, originalT: String?) {
+        val count = (retryCounts[msgId] ?: 0) + 1
+        retryCounts[msgId] = count
+
+        val children = mutableListOf(
+            Node(
+                "retry",
+                mapOf(
+                    "count" to count.toString(),
+                    "id" to msgId,
+                    "t" to (originalT ?: (System.currentTimeMillis() / 1000).toString()),
+                    "v" to "1",
+                ),
+            ),
+            Node("registration", content = be32(credentials.registrationId)),
+        )
+        if (count >= 2) {
+            runCatching { keysNode() }
+                .onSuccess { children += it }
+                .onFailure { Log.w(TAG, "retry: failed to attach a fresh keys bundle for msg id=$msgId", it) }
+        }
+
+        val attrs = buildMap<String, Any?> {
+            put("to", from)
+            put("id", msgId)
+            put("type", "retry")
+            if (participant != null) put("participant", participant)
+        }
+        runCatching { sendNode(Node("receipt", attrs, children)) }
+            .onSuccess { Log.i(TAG, "sent retry receipt (count=$count) for msg id=$msgId") }
+            .onFailure { Log.w(TAG, "retry receipt failed for msg id=$msgId", it) }
+    }
+
+    /**
+     * One fresh, never-before-issued one-time pre-key plus our identity/signed-prekey, shaped like
+     * the `<key>`/`<skey>` nodes in [uploadPreKeysIfNeeded] — bundled into a retry receipt so the
+     * sender can rebuild a session immediately rather than waiting on a separate bundle fetch.
+     */
+    private suspend fun keysNode(): Node {
+        val id = nextPreKeyId()
+        val record = KeyHelper.generatePreKeys(id, 1).first()
+        WaSignalStore(credentials, keyValueStore).storePreKey(record.id, record)
+        keyValueStore.put(META_NS, KEY_NEXT_PREKEY_ID, be32(wrapPreKeyId(id + 1)))
+
+        val pub = record.keyPair.publicKey.serialize().copyOfRange(1, 33)
+        return Node(
+            "keys",
+            content = listOf(
+                Node("type", content = byteArrayOf(0x05)),
+                Node("identity", content = credentials.identityKey.publicKey),
+                Node(
+                    "key",
+                    content = listOf(
+                        Node("id", content = be32(record.id).copyOfRange(1, 4)),
+                        Node("value", content = pub),
+                    ),
+                ),
+                Node(
+                    "skey",
+                    content = listOf(
+                        Node("id", content = be32(credentials.signedPreKey.keyId).copyOfRange(1, 4)),
+                        Node("value", content = credentials.signedPreKey.keyPair.publicKey),
+                        Node("signature", content = credentials.signedPreKey.signature),
+                    ),
+                ),
+            ),
+        )
     }
 
     private suspend fun handleIq(node: Node) {
@@ -521,12 +629,24 @@ class WAClient(
         )
     }
 
-    /** After login, publish one-time pre-keys so contacts can start Signal sessions with us. */
+    /**
+     * After login, publish one-time pre-keys so contacts can start Signal sessions with us.
+     * Called both on first login and again whenever the server asks for a top-up
+     * ([handleNotification]) — each call MUST mint ids that have never been issued before.
+     * One-time pre-keys are deleted the instant they're consumed (that's the whole point of
+     * "one-time"), so regenerating the same id range on a top-up would silently overwrite a
+     * still-outstanding, not-yet-used key: a sender holding a cached bundle for that id would
+     * then decrypt with the wrong keypair. [nextPreKeyId] persists across calls specifically to
+     * rule that out.
+     */
     private suspend fun uploadPreKeysIfNeeded() {
         if (keyValueStore.get(META_NS, KEY_PREKEYS_UPLOADED) != null) return
         val store = WaSignalStore(credentials, keyValueStore)
-        val preKeys = KeyHelper.generatePreKeys(1, PREKEY_BATCH)
+        val startId = nextPreKeyId()
+        val preKeys = KeyHelper.generatePreKeys(startId, PREKEY_BATCH)
         preKeys.forEach { store.storePreKey(it.id, it) }
+        keyValueStore.put(META_NS, KEY_NEXT_PREKEY_ID, be32(wrapPreKeyId(startId + PREKEY_BATCH)))
+        Log.i(TAG, "publishing pre-keys $startId..${startId + PREKEY_BATCH - 1}")
 
         val listNodes = preKeys.map { record ->
             // libsignal serializes public keys as 0x05||pub; the wire format wants the raw 32 bytes.
@@ -568,6 +688,17 @@ class WAClient(
         (value ushr 24).toByte(), (value ushr 16).toByte(), (value ushr 8).toByte(), value.toByte(),
     )
 
+    private fun fromBe32(bytes: ByteArray): Int =
+        ((bytes[0].toInt() and 0xFF) shl 24) or ((bytes[1].toInt() and 0xFF) shl 16) or
+            ((bytes[2].toInt() and 0xFF) shl 8) or (bytes[3].toInt() and 0xFF)
+
+    /** The next never-before-issued pre-key id. 1 on a device's very first upload. */
+    private fun nextPreKeyId(): Int = keyValueStore.get(META_NS, KEY_NEXT_PREKEY_ID)?.let(::fromBe32) ?: 1
+
+    /** Pre-key ids are libsignal `Medium` values (24-bit); wrap rather than overflow. Id 0 is
+     *  reserved by convention, so wrapping lands back on 1, not 0. */
+    private fun wrapPreKeyId(id: Int): Int = if (id >= Medium.MAX_VALUE) 1 else id
+
     private fun randomId(): String = buildString { repeat(16) { append(HEX[rng.nextInt(HEX.length)]) } }
 
     /** Parse "user[:device]@server" → (user, device). */
@@ -582,6 +713,7 @@ class WAClient(
         val SERVER_JID = Jid(user = "", server = Jid.DEFAULT_USER_SERVER)
         const val META_NS = "wa_meta"
         const val KEY_PREKEYS_UPLOADED = "prekeys_uploaded"
+        const val KEY_NEXT_PREKEY_ID = "next_prekey_id"
         const val PREKEY_BATCH = 30
         const val HEX = "0123456789abcdef"
         const val SEEN_NS = "wa_seen"

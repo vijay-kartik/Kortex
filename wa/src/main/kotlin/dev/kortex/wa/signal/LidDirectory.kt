@@ -26,12 +26,20 @@ class LidDirectory(private val kv: KeyValueStore) {
         PAIRS.forEach { (lidAttr, pnAttr) ->
             val lid = node.jidAttr(lidAttr)?.takeIf { it.isLid } ?: return@forEach
             val phone = node.jidAttr(pnAttr)?.user?.takeIf { it.isNotEmpty() } ?: return@forEach
-            if (lid.user.isEmpty()) return@forEach
-            val existing = phoneFor(lid)
-            if (existing == phone) return@forEach
-            kv.put(KeyValueStore.NS_LID_PN, lid.user, phone.toByteArray(Charsets.UTF_8))
-            Log.i(TAG, "lid ${lid.user} -> $phone (via $lidAttr/$pnAttr)")
+            record(lid.user, phone, "$lidAttr/$pnAttr")
         }
+    }
+
+    /**
+     * Record one pairing directly, for mappings the server never spells out in a `*_pn` attribute.
+     * Our own account is the important case: the `success` node gives us our LID, and our device
+     * JID gives us our number, but no single stanza ever pairs them.
+     */
+    fun record(lid: String, phone: String, source: String) {
+        if (lid.isEmpty() || phone.isEmpty()) return
+        if (kv.get(KeyValueStore.NS_LID_PN, lid)?.toString(Charsets.UTF_8) == phone) return
+        kv.put(KeyValueStore.NS_LID_PN, lid, phone.toByteArray(Charsets.UTF_8))
+        Log.i(TAG, "lid $lid -> $phone (via $source)")
     }
 
     /** The phone number for [jid], or null if we've never been told it. */

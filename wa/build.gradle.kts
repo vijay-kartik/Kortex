@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.wire)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.compose.compiler)
 }
 
 android {
@@ -17,6 +19,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+
+    buildFeatures {
+        compose = true
+    }
 
     testOptions {
         unitTests.all { it.useJUnitPlatform() }
@@ -35,6 +41,20 @@ dependencies {
     implementation(libs.curve25519)
     implementation(libs.signal.protocol)
     implementation(libs.wire.runtime)
+
+    // Session/persistence (WhatsAppManager, credential + Signal-store persistence)
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+
+    // Login/observing UI (WhatsAppScreen)
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.zxing.core)
 
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotest.assertions)

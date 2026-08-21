@@ -1,4 +1,4 @@
-package dev.kortex.app
+package dev.kortex.wa.session
 
 import android.app.Notification
 import android.app.NotificationManager
@@ -12,12 +12,17 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
+/**
+ * Keeps the WhatsApp socket alive in the background. Started by [WhatsAppManager.connect] and
+ * looks up the process's active manager via [WhatsAppManager.current] rather than a host app's DI
+ * container, since Android instantiates services from the manifest, not from caller code.
+ */
 class WaForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIF_ID, buildNotification("Connecting…"))
-        val manager = (application as KortexApp).container.whatsApp
+        val manager = WhatsAppManager.current() ?: return START_NOT_STICKY.also { stopSelf() }
         manager.attachService(this)
         scope.launch { manager.runClient() }
         return START_STICKY
@@ -38,7 +43,7 @@ class WaForegroundService : Service() {
 
     override fun onDestroy() {
         scope.cancel()
-        (application as KortexApp).container.whatsApp.detachService()
+        WhatsAppManager.current()?.detachService()
         super.onDestroy()
     }
 

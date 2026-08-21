@@ -1,10 +1,9 @@
-package dev.kortex.app
+package dev.kortex.wa.session
 
 import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.room.Room
-import dev.kortex.core.ambient.AmbientCoordinator
 import dev.kortex.wa.client.WAClient
 import dev.kortex.wa.signal.MessageDecryptor
 import kotlinx.coroutines.CoroutineScope
@@ -17,11 +16,40 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * App-level owner of the native WhatsApp connection: builds the Room-backed stores, runs the
- * [WAClient] on a background scope (via [WaForegroundService]), feeds decrypted messages into
- * the Kortex pipeline via [WaGateway], and exposes connection state (incl. QR codes) for the UI.
+ * Owner of the native WhatsApp connection: builds the Room-backed stores, runs the [WAClient] on
+ * a background scope (via [WaForegroundService]), tracks what has been observed, and exposes
+ * connection state (incl. QR codes) for the UI.
+ *
+ * This is the whole "login and message observing" surface — QR pairing, connect/reconnect,
+ * logout, and a running log of messages seen on the connection — with no dependency on any
+ * particular app's pipeline. A host app hands [onMessages] a callback to do something with
+ * decrypted messages (feed them into its own agent/pipeline, store them, whatever); it can later
+ * call [annotate] to attach a note to a message already shown (e.g. what its pipeline decided),
+ * without this module needing to know what that pipeline is.
  */
-class WhatsAppManager(private val context: Context, coordinator: AmbientCoordinator) {
+class WhatsAppManager(
+    private val context: Context,
+    private val onMessages: suspend (List<MessageDecryptor.Result>) -> Unit = {},
+) {
+
+    /** One message seen on this connection. */
+    data class Received(
+        val id: String,
+        /** The other party in the chat: who sent it, or who we sent it to. */
+        val phone: String?,
+        /** Message body, or null when the payload carries no text (media, reactions, …). */
+        val text: String?,
+        /** Which `proto.Message` field carried the payload, e.g. `conversation`, `imageMessage`. */
+        val kind: String,
+        val timestampMillis: Long,
+        /** True for messages we sent from another device, mirrored here. */
+        val fromMe: Boolean,
+        /** A host app's note about this message, attached later via [annotate]. */
+        val annotation: Annotation? = null,
+    )
+
+    /** A host app's opaque note on a [Received] message — this module attaches no meaning to it. */
+    data class Annotation(val label: String, val isError: Boolean = false)
 
     data class State(
         val status: String = "Not connected",
@@ -41,23 +69,22 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
          */
         val onboardingDone: Boolean = false,
         /**
-         * Incoming messages this session, newest first, capped at [MAX_RECENT]. In memory only —
-         * it exists to show what arrived and what the pipeline made of it, while the durable
-         * record of anything analyzed already lives in the signal/card stores.
+         * Messages seen this session, newest first, capped at [MAX_RECENT]. In memory only — a
+         * host app that wants durable storage persists what it needs from [onMessages] itself.
          */
-        val recent: List<WaGateway.Received> = emptyList(),
+        val recent: List<Received> = emptyList(),
     )
 
     private val db = Room.databaseBuilder(context.applicationContext, WaDatabase::class.java, "wa.db").build()
     private val keyValueStore = RoomKeyValueStore(db.kvDao())
     private val credentialStore = RoomCredentialStore(db.credentialsDao())
-    private val gateway = WaGateway(coordinator, onReceived = ::recordReceived)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
     init {
+        active = this
         // Resolve first-run vs. returning user: if a device JID was persisted at pairing, the
         // onboarding gate skips straight to the app and we bring the connection back up. A fresh
         // pairing (this session) is tracked via `paired`/`connected` so the onboarding screen can
@@ -86,13 +113,14 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         context.startForegroundService(Intent(context, WaForegroundService::class.java))
     }
 
-    private fun recordReceived(message: WaGateway.Received) {
-        _state.update { it.copy(recent = (listOf(message) + it.recent).take(MAX_RECENT)) }
-    }
-
     /** Mark the first-run gate satisfied without linking ("Skip for now"). */
     fun skipOnboarding() {
         _state.update { it.copy(onboardingDone = true) }
+    }
+
+    /** Attach [annotation] to the message [id], e.g. what a host app's pipeline decided about it. */
+    fun annotate(id: String, annotation: Annotation) {
+        _state.update { st -> st.copy(recent = st.recent.map { if (it.id == id) it.copy(annotation = annotation) else it }) }
     }
 
     /**
@@ -138,6 +166,22 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         }
     }
 
+    private fun recordReceived(result: MessageDecryptor.Result) {
+        if (MessageDecryptor.isProtocolTraffic(result)) {
+            Log.i(TAG, "id=${result.id} is protocol traffic (category=${result.category}), not surfaced")
+            return
+        }
+        val received = Received(
+            id = result.id,
+            phone = if (result.fromMe) result.recipientPhone else result.senderPhone,
+            text = MessageDecryptor.textOf(result.message),
+            kind = MessageDecryptor.kindOf(result.message),
+            timestampMillis = result.timestampMillis,
+            fromMe = result.fromMe,
+        )
+        _state.update { it.copy(recent = (listOf(received) + it.recent).take(MAX_RECENT)) }
+    }
+
     private val listener = object : WAClient.Listener {
         override fun onQr(codes: List<String>) {
             _state.update { it.copy(qrCodes = codes, status = "Scan the QR in WhatsApp → Linked devices") }
@@ -155,7 +199,10 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         }
 
         override fun onMessage(messages: List<MessageDecryptor.Result>) {
-            scope.launch { gateway.onMessages(messages) }
+            scope.launch {
+                messages.forEach(::recordReceived)
+                onMessages(messages)
+            }
         }
 
         override fun onDisconnected(cause: Throwable?) {
@@ -165,8 +212,17 @@ class WhatsAppManager(private val context: Context, coordinator: AmbientCoordina
         }
     }
 
-    private companion object {
-        const val TAG = "KortexWA"
-        const val MAX_RECENT = 50
+    companion object {
+        private const val TAG = "KortexWA"
+        private const val MAX_RECENT = 50
+
+        /**
+         * The process's active manager, so [WaForegroundService] — which Android instantiates via
+         * the manifest, not a caller — can reach it without depending on a host app's DI container.
+         * There is exactly one WhatsApp connection per process, so a single slot is sufficient.
+         */
+        @Volatile private var active: WhatsAppManager? = null
+
+        internal fun current(): WhatsAppManager? = active
     }
 }

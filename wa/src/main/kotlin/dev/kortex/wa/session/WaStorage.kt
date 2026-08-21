@@ -1,4 +1,4 @@
-package dev.kortex.app
+package dev.kortex.wa.session
 
 import androidx.room.Dao
 import androidx.room.Database
@@ -69,7 +69,7 @@ abstract class WaDatabase : RoomDatabase() {
     abstract fun credentialsDao(): WaCredentialsDao
 }
 
-// --- Store implementations (the SPIs that :wa depends on) ---
+// --- Store implementations (the SPIs that WAClient depends on) ---
 
 class RoomKeyValueStore(private val dao: WaKvDao) : KeyValueStore {
     override fun get(namespace: String, key: String): ByteArray? = dao.get(namespace, key)

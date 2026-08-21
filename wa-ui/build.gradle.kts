@@ -1,23 +1,16 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.wire)
-    alias(libs.plugins.ksp)
+    alias(libs.plugins.compose.compiler)
     `maven-publish`
 }
 
 android {
-    namespace = "dev.kortex.wa"
-    // Match the consuming app: an SDK compiled against an older platform than its consumers
-    // cannot see newer APIs and triggers manifest/lint mismatches on their side.
+    namespace = "dev.kortex.wa.ui"
     compileSdk = 36
 
     defaultConfig {
         minSdk = 26
-        // Shipped inside the AAR and applied to any consumer that minifies. libsignal, Wire and
-        // BouncyCastle all resolve things reflectively, so without these a release build fails at
-        // runtime rather than at compile time.
-        consumerProguardFiles("consumer-rules.pro")
     }
 
     compileOptions {
@@ -26,8 +19,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    testOptions {
-        unitTests.all { it.useJUnitPlatform() }
+    buildFeatures {
+        compose = true
     }
 
     publishing {
@@ -35,30 +28,20 @@ android {
     }
 }
 
-// Generate Kotlin from the vendored WAProto schema (src/main/proto/WAProto.proto).
-wire {
-    kotlin {}
-}
-
 dependencies {
-    // `api`, not `implementation`: these types appear in the module's own public API, so they
-    // must be on a consumer's compile classpath. WhatsAppManager exposes StateFlow<State> and
-    // takes a suspend callback; without this a consumer cannot even reference them.
-    api(libs.kotlinx.coroutines.core)
+    // `api`: WhatsAppManager appears in WhatsAppScreen's own signature, so consumers of the UI
+    // artifact need the core one on their compile classpath anyway.
+    api(project(":wa"))
 
-    implementation(libs.okhttp)
-    implementation(libs.bouncycastle)
-    implementation(libs.curve25519)
-    implementation(libs.signal.protocol)
-    implementation(libs.wire.runtime)
+    api(platform(libs.compose.bom))
+    api(libs.compose.ui)
+    api(libs.compose.material3)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
-    // Session/persistence (WhatsAppManager, credential + Signal-store persistence)
-    implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
-
-    testImplementation(libs.junit.jupiter)
-    testImplementation(libs.kotest.assertions)
+    // QR rendering for the pairing screen.
+    implementation(libs.zxing.core)
 }
 
 // Wrapped in afterEvaluate because the Android `release` software component only exists once
@@ -69,12 +52,12 @@ afterEvaluate {
             create<MavenPublication>("release") {
                 from(components["release"])
                 groupId = "space.pitchstone"
-                artifactId = "tether-core"
+                artifactId = "tether-ui"
                 version = providers.gradleProperty("tether.version").get()
 
                 pom {
-                    name.set("Tether Core")
-                    description.set("Headless WhatsApp multi-device companion client for Android: QR pairing, Noise transport, Signal decryption and message observing.")
+                    name.set("Tether UI")
+                    description.set("Optional Compose surface for Tether: QR pairing, connection status and an observed-message list.")
                     url.set("https://github.com/vijay-kartik/Kortex")
                     // TODO(license): the repo has no LICENSE file yet, so this declaration is
                     //  not yet backed by anything. Add one (or change this) before publishing -

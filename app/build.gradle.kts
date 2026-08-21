@@ -53,7 +53,8 @@ android {
 
 dependencies {
     implementation(project(":core-agent"))
-    implementation(project(":wa"))
+    // :wa-ui exposes :wa via `api`, so the core session comes along with it.
+    implementation(project(":wa-ui"))
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)

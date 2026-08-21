@@ -17,3 +17,4 @@ rootProject.name = "kortex"
 include(":core-agent")
 include(":app")
 include(":wa")
+include(":wa-ui")

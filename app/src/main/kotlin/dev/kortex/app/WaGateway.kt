@@ -70,6 +70,11 @@ class WaGateway(
                     "chat=${result.chat} kind=$kind fromMe=${result.fromMe} textLen=${text?.length ?: 0}",
             )
 
+            if (isProtocolTraffic(result, kind)) {
+                Log.i(TAG, "gw id=${result.id} $kind (category=${result.category}) is protocol traffic, not surfaced")
+                return@forEach
+            }
+
             // Our own outgoing message, mirrored to this companion: shown for visibility, but it
             // never enters the pipeline — the ambient layer curates what other people send us.
             val outcome = if (result.fromMe) {
@@ -92,6 +97,18 @@ class WaGateway(
             )
         }
     }
+
+    /**
+     * Device-to-device plumbing rather than anything a person sent: app-state sync between your
+     * own devices (`category=peer`), protocol payloads like revokes and disappearing-message
+     * settings, and group sender-key distribution. These still get decrypted — that is how sender
+     * keys get installed — but they are neither shown nor analyzed. Linking alone produces a burst
+     * of them, which would otherwise bury the real messages in the list.
+     */
+    private fun isProtocolTraffic(result: MessageDecryptor.Result, kind: String): Boolean =
+        result.category == "peer" ||
+            kind == "protocolMessage" ||
+            kind == "senderKeyDistributionMessage"
 
     private suspend fun ingest(result: MessageDecryptor.Result, kind: String, text: String?): Outcome {
         if (text == null) return Outcome.Dropped("$kind carries no text")

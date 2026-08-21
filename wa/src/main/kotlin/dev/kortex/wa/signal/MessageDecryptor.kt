@@ -55,6 +55,11 @@ class MessageDecryptor(
          * sender is then our own account, so [senderPhone] says nothing about who the chat is with.
          */
         val recipientPhone: String?,
+        /**
+         * The stanza's `category`. "peer" marks device-to-device plumbing (app-state sync, key
+         * distribution) rather than anything a person sent.
+         */
+        val category: String?,
     )
 
     /** One `<enc>` part that could not be decrypted, kept so the caller can decide about retries. */
@@ -76,6 +81,7 @@ class MessageDecryptor(
         // hours old, so preserve it rather than stamping arrival time.
         val timestamp = messageNode.attr("t")?.toLongOrNull()?.times(1000) ?: System.currentTimeMillis()
         val senderPhone = senderPhoneOf(messageNode, sender)
+        val category = messageNode.attr("category")
 
         // The SKDM rides in the DM-level enc (`pkmsg`/`msg`) and must be installed before the
         // `skmsg` in the same node is attempted, so decrypt the non-group parts first.
@@ -123,6 +129,7 @@ class MessageDecryptor(
                     timestampMillis = timestamp,
                     senderPhone = senderPhone,
                     recipientPhone = recipientPhoneOf(messageNode, raw),
+                    category = category,
                 )
             } catch (e: Exception) {
                 failures += Failure(type, e)

@@ -11,18 +11,6 @@ class KortexApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannels()
         container = KortexContainer(this)
-    }
-
-    private fun createNotificationChannels() {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel(
-                WaForegroundService.CHANNEL_ID,
-                "WhatsApp Connection",
-                NotificationManager.IMPORTANCE_LOW
-            )
-        )
     }
 }

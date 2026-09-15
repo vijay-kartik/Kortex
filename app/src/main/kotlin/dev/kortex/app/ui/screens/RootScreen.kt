@@ -31,6 +31,7 @@ import dev.kortex.app.R
 import dev.kortex.app.RunsScreen
 import dev.kortex.app.SettingsScreen
 import dev.kortex.app.ui.appbar.KortexAppBar
+import dev.kortex.app.ui.screens.links.LinksScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

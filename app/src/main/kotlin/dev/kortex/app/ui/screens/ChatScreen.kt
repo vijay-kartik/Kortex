@@ -1,8 +1,10 @@
-package dev.kortex.app.ui
+package dev.kortex.app.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -53,6 +56,20 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.kortex.app.ChatViewModel
 import dev.kortex.app.R
 import dev.kortex.app.VoiceState
+import dev.kortex.app.ui.Edge
+import dev.kortex.app.ui.EmptyState
+import dev.kortex.app.ui.ListeningBar
+import dev.kortex.app.ui.MessageBubble
+import dev.kortex.app.ui.Mono
+import dev.kortex.app.ui.Muted
+import dev.kortex.app.ui.Panel
+import dev.kortex.app.ui.PulsingDot
+import dev.kortex.app.ui.ReasoningPanel
+import dev.kortex.app.ui.Synapse
+import dev.kortex.app.ui.SynapseDim
+import dev.kortex.app.ui.Void
+import dev.kortex.app.ui.formatVoiceDuration
+import dev.kortex.core.state.Attachment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -75,18 +92,18 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
                 val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
                 val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes != null) {
-                    val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
                     var filename: String? = null
                     contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                         if (cursor.moveToFirst()) {
-                            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                             if (nameIndex >= 0) {
                                 filename = cursor.getString(nameIndex)
                             }
                         }
                     }
                     vm.stageAttachment(
-                        dev.kortex.core.state.Attachment(
+                        Attachment(
                             mimeType = mimeType,
                             dataBase64 = base64,
                             filename = filename
@@ -333,7 +350,7 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
                 text = "${ui.activeModel} • $providerName",
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                 color = Muted.copy(alpha = 0.7f),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
             )
         }

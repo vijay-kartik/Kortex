@@ -1,4 +1,4 @@
-package dev.kortex.app.ui
+package dev.kortex.app.ui.screens
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -14,6 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -32,30 +33,34 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.res.painterResource
 import dev.kortex.app.R
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.kortex.app.KortexApp
 import dev.kortex.graph_core.EdgeType
+import dev.kortex.graph_core.NodeCategory
 import dev.kortex.graph_core.NodeType
 import dev.kortex.graph_storage.EdgeEntity
+import dev.kortex.graph_storage.EmbeddingEntity
 import dev.kortex.graph_storage.GraphRegistryEntity
 import dev.kortex.graph_storage.business.AssertionEntity
 import dev.kortex.graph_storage.business.PersonEntity
 import dev.kortex.graph_storage.business.TopicEntity
-import io.objectbox.BoxStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,11 +68,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
@@ -94,7 +95,7 @@ data class NodeDetails(
 )
 
 class GraphViewModel(application: Application) : AndroidViewModel(application) {
-    private val boxStore = (application as dev.kortex.app.KortexApp).container.boxStore
+    private val boxStore = (application as KortexApp).container.boxStore
     
     private val _nodes = MutableStateFlow<List<GraphUiNode>>(emptyList())
     val nodes: StateFlow<List<GraphUiNode>> = _nodes.asStateFlow()
@@ -201,7 +202,7 @@ class GraphViewModel(application: Application) : AndroidViewModel(application) {
             boxStore.runInTx {
                 boxStore.boxFor(GraphRegistryEntity::class.java).removeAll()
                 boxStore.boxFor(EdgeEntity::class.java).removeAll()
-                boxStore.boxFor(dev.kortex.graph_storage.EmbeddingEntity::class.java).removeAll()
+                boxStore.boxFor(EmbeddingEntity::class.java).removeAll()
                 boxStore.boxFor(PersonEntity::class.java).removeAll()
                 boxStore.boxFor(TopicEntity::class.java).removeAll()
                 boxStore.boxFor(AssertionEntity::class.java).removeAll()
@@ -237,11 +238,11 @@ fun GraphScreen(vm: GraphViewModel) {
         }
 
         // HUD Overlay
-        androidx.compose.foundation.layout.Column(
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(24.dp)
-                .background(Color(0xFF16191E).copy(alpha = 0.8f), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .background(Color(0xFF16191E).copy(alpha = 0.8f), shape = RoundedCornerShape(8.dp))
                 .border(1.dp, Color(0xFF2A2F3A), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
                 .padding(16.dp)
         ) {
@@ -250,7 +251,7 @@ fun GraphScreen(vm: GraphViewModel) {
         }
 
         selectedNodeDetails?.let { details ->
-            androidx.compose.foundation.layout.Column(
+            Column(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(24.dp)
@@ -485,7 +486,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
                 val isActiveEdge = draggedNodeId != null && (source.id == draggedNodeId || target.id == draggedNodeId)
                 val edgeColor = if (isActiveEdge) Color(0xFF587291).copy(alpha = 0.8f) else Color(0xFF2A2F3A).copy(alpha = 0.6f)
                 
-                val path = androidx.compose.ui.graphics.Path().apply {
+                val path = Path().apply {
                     moveTo(source.x, source.y)
                     // Bezier curve for organic feel
                     val ctrlX = (source.x + target.x) / 2f + (target.y - source.y) * 0.2f
@@ -504,9 +505,9 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
         // Draw nodes
         for (node in nodes) {
             val nodeColor = when (node.type.category) {
-                dev.kortex.graph_core.NodeCategory.IDENTITY -> Color(0xFFE2C044) // Gold
-                dev.kortex.graph_core.NodeCategory.EVENT -> Color(0xFFD96C06) // Terracotta
-                dev.kortex.graph_core.NodeCategory.KNOWLEDGE -> Color(0xFF587291) // Slate Blue
+                NodeCategory.IDENTITY -> Color(0xFFE2C044) // Gold
+                NodeCategory.EVENT -> Color(0xFFD96C06) // Terracotta
+                NodeCategory.KNOWLEDGE -> Color(0xFF587291) // Slate Blue
                 else -> Color(0xFF8B949E) // Gray
             }
 
@@ -554,7 +555,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
             // Text Label
             val textLayoutResult = textMeasurer.measure(
                 text = node.label.uppercase(),
-                style = TextStyle(color = Color(0xFFC5C6C7), fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, letterSpacing = 0.5.sp)
+                style = TextStyle(color = Color(0xFFC5C6C7), fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp)
             )
             
             // Label background for readability
@@ -566,8 +567,8 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
             drawRoundRect(
                 color = Color(0xFF090A0C).copy(alpha = 0.85f),
                 topLeft = Offset(tx - 6f, ty - 2f),
-                size = androidx.compose.ui.geometry.Size(tw + 12f, th + 4f),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f)
+                size = Size(tw + 12f, th + 4f),
+                cornerRadius = CornerRadius(4f)
             )
 
             drawText(

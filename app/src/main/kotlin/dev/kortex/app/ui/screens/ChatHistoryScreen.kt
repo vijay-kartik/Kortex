@@ -1,4 +1,4 @@
-package dev.kortex.app
+package dev.kortex.app.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +34,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.kortex.app.ChatViewModel
+import dev.kortex.app.R
 import dev.kortex.app.store.ChatSessionEntity
 import dev.kortex.app.ui.Alarm
 import dev.kortex.app.ui.Muted

@@ -25,7 +25,7 @@ import dev.kortex.app.ui.conversationAsText
 @Composable
 fun KortexAppBar(tab: Int, chatUi: ChatUi, onMcpSettingsClick: () -> Unit, onTabSelected: (Int) -> Unit) {
     val context = LocalContext.current
-    val tabs = listOf("Chat", "Graph", "History", "Runs")
+    val tabs = listOf("Chat", "Graph", "History", "Runs", "Links")
     TopAppBar(
         title = { Wordmark() },
         actions = {

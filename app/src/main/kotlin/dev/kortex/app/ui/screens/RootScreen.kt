@@ -79,7 +79,8 @@ fun RootScreen(
                             tab = 0
                         }
                     )
-                    else -> RunsScreen()
+                    3 -> RunsScreen()
+                    else -> LinksScreen()
                 }
             }
         }

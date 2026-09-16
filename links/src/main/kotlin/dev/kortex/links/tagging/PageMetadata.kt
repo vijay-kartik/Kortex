@@ -15,6 +15,8 @@ data class PageMetadata(
     val title: String? = null,
     val description: String? = null,
     val siteName: String? = null,
+    /** Absolute address of the page's share image (og:image / twitter:image), if it names one. */
+    val imageUrl: String? = null,
     val keywords: List<String> = emptyList(),
     val bodySnippet: String? = null,
 ) {
@@ -38,8 +40,8 @@ class PageMetadataFetcher @Inject constructor() {
     suspend fun fetch(url: String): PageMetadata = withContext(Dispatchers.IO) {
         val document = try {
             Jsoup.connect(url)
-                .userAgent(USER_AGENT)
-                .timeout(TIMEOUT_MS)
+                .userAgent(FETCH_USER_AGENT)
+                .timeout(FETCH_TIMEOUT_MS)
                 .maxBodySize(MAX_BODY_BYTES)
                 .get()
         } catch (e: IOException) {
@@ -53,6 +55,7 @@ class PageMetadataFetcher @Inject constructor() {
             title = document.meta("og:title", "twitter:title") ?: document.title().trim().ifEmpty { null },
             description = document.meta("og:description", "description", "twitter:description"),
             siteName = document.meta("og:site_name"),
+            imageUrl = document.metaUrl("og:image", "og:image:secure_url", "og:image:url", "twitter:image", "twitter:image:src"),
             keywords = document.meta("keywords")
                 ?.split(',')
                 ?.map { it.trim() }
@@ -73,9 +76,14 @@ class PageMetadataFetcher @Inject constructor() {
             ?.ifEmpty { null }
     }
 
+    /** Like [meta], but resolves relative addresses against the page and keeps only http(s) ones. */
+    private fun Document.metaUrl(vararg keys: String): String? = keys.firstNotNullOfOrNull { key ->
+        selectFirst("meta[property=\"$key\"], meta[name=\"$key\"]")
+            ?.absUrl("content")
+            ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }
+
     private companion object {
-        const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
-        const val TIMEOUT_MS = 8_000
         // Tags live in <head>; a truncated body is fine for Jsoup and for the snippet.
         const val MAX_BODY_BYTES = 512_000
         const val MAX_KEYWORDS = 10
@@ -83,6 +91,11 @@ class PageMetadataFetcher @Inject constructor() {
         const val BODY_SNIPPET_CHARS = 600
     }
 }
+
+internal const val FETCH_USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
+
+/** Per-request budget, shared by the page fetch and the share-image download. */
+internal const val FETCH_TIMEOUT_MS = 8_000
 
 /** Human-meaningful words from the host and path, e.g. `github.com/foo/llama-cpp` → github, foo, llama, cpp. */
 internal fun urlWords(url: String): List<String> {

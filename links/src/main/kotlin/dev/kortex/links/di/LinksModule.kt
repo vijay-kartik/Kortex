@@ -31,7 +31,9 @@ abstract class LinksModule {
         @Provides
         @Singleton
         fun provideDatabase(@ApplicationContext context: Context): LinksDatabase =
-            Room.databaseBuilder(context, LinksDatabase::class.java, "links.db").build()
+            Room.databaseBuilder(context, LinksDatabase::class.java, "links.db")
+                .addMigrations(LinksDatabase.MIGRATION_1_2)
+                .build()
 
         @Provides
         fun provideLinkDao(database: LinksDatabase): LinkDao = database.linkDao()

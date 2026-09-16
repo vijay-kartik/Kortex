@@ -32,8 +32,8 @@ import kotlinx.coroutines.launch
  * "Copy on tap" motion for a link card (Figma: Copy anim / Spec), 1960ms:
  *
  * 1. 0–200ms, emphasized-accelerate: glyph fills and swaps link → check, ring is born
- *    at the glyph and grows 36 → 50dp, border flashes, sweep starts.
- * 2. 200–520ms, emphasized-decelerate: ring grows 50 → 64dp and fades, border settles,
+ *    at the thumbnail and grows 68 → 82dp, border flashes, sweep starts.
+ * 2. 200–520ms, emphasized-decelerate: ring grows 82 → 96dp and fades, border settles,
  *    sweep leaves the card, url line crossfades to "→ clipboard".
  * 3. 520–1720ms: hold.
  * 4. 1720–1960ms, standard: glyph and url line return.
@@ -56,7 +56,7 @@ internal class LinkCopyAnimation {
     /** Rises through phase 1, falls through phase 2. */
     private val flash get() = if (progress.value <= PHASE_1_SHARE) phase1 else 1f - phase2
 
-    /** 0 = link glyph on SynapseDim, 1 = check on Synapse. */
+    /** 0 = link glyph on SynapseDim (or the bare image), 1 = check on Synapse (or over a scrim). */
     val glyph get() = phase1 * (1f - release.value)
 
     /** 0 = the url, 1 = "→ clipboard". */
@@ -144,13 +144,14 @@ internal class LinkCopyAnimation {
         val SWEEP_WIDTH = 380.dp
         val SweepClear = Synapse.copy(alpha = 0f)
 
-        val RING_START = 36.dp
-        val RING_MID = 50.dp
+        // Born as an exact copy of the 68dp thumbnail, then grows by the same 14dp steps as before.
+        val RING_START = 68.dp
+        val RING_MID = 82.dp
         // Ceiling: any larger and the ring crosses the card's top edge and gets clipped flat.
-        val RING_END = 64.dp
+        val RING_END = 96.dp
         val RING_STROKE = 1.5.dp
         val RING_STROKE_END = 0.75.dp
-        const val RING_CORNER_RATIO = 10f / 36f
+        const val RING_CORNER_RATIO = 10f / 68f
     }
 }
 

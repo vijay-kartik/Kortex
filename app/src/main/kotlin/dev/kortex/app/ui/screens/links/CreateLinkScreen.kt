@@ -9,8 +9,10 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -105,6 +107,11 @@ fun CreateLinkScreen(
     // Keeps analysis in step with the field, including a pre-filled address and restored state.
     LaunchedEffect(url) { viewModel.onUrlChange(url) }
 
+    // Until analysis catches up with the field (typing, debounce), the preview treats the page as unread.
+    val analysisCurrent = uiState.analyzedUrl == url.trim()
+    // A hide choice belongs to one page's image; another address starts shown again.
+    var imageHidden by rememberSaveable(uiState.analyzedUrl) { mutableStateOf(false) }
+
     // Fill in the page's own title unless the user has already typed one. The address check keeps a
     // title left over from a previous form (e.g. before a link was shared in) out of this one.
     LaunchedEffect(uiState.suggestedTitle, uiState.analyzedUrl) {
@@ -120,7 +127,11 @@ fun CreateLinkScreen(
         tags = uiState.tags,
         suggestedTags = uiState.suggestedTags,
         candidateTags = uiState.candidateTags,
-        isAnalyzing = uiState.isAnalyzing,
+        phase = if (analysisCurrent) uiState.phase else PageReadPhase.Idle,
+        image = if (analysisCurrent) uiState.image else PreviewImage.Unknown,
+        imageHidden = imageHidden,
+        onImageHiddenChange = { imageHidden = it },
+        onRetryImage = viewModel::retryImage,
         selectedTags = selectedTags,
         onTagToggle = { tag -> selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag },
         isAddingTag = isAddingTag,
@@ -138,7 +149,7 @@ fun CreateLinkScreen(
             closeNewTag()
         },
         onBack = onBack,
-        onSave = { viewModel.save(url.trim(), title.trim(), selectedTags, onSaved = onBack) },
+        onSave = { viewModel.save(url.trim(), title.trim(), selectedTags, imageHidden, onSaved = onBack) },
         modifier = modifier,
     )
 }
@@ -153,7 +164,11 @@ private fun CreateLinkContent(
     tags: List<String>,
     suggestedTags: List<String>,
     candidateTags: List<String>,
-    isAnalyzing: Boolean,
+    phase: PageReadPhase,
+    image: PreviewImage,
+    imageHidden: Boolean,
+    onImageHiddenChange: (Boolean) -> Unit,
+    onRetryImage: () -> Unit,
     selectedTags: List<String>,
     onTagToggle: (String) -> Unit,
     isAddingTag: Boolean,
@@ -216,7 +231,7 @@ private fun CreateLinkContent(
                 tags = tags,
                 suggestedTags = suggestedTags,
                 candidateTags = candidateTags,
-                isAnalyzing = isAnalyzing,
+                phase = phase,
                 selectedTags = selectedTags,
                 onTagToggle = onTagToggle,
                 isAddingTag = isAddingTag,
@@ -225,6 +240,19 @@ private fun CreateLinkContent(
                 onStartNewTag = onStartNewTag,
                 onAddTag = onAddTag,
             )
+            AnimatedVisibility(visible = domain != null, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+                LinkPreviewSection(
+                    url = url.trim(),
+                    domain = domain.orEmpty(),
+                    title = title.trim(),
+                    phase = phase,
+                    image = image,
+                    selectedTags = selectedTags,
+                    imageHidden = imageHidden,
+                    onImageHiddenChange = onImageHiddenChange,
+                    onRetryImage = onRetryImage,
+                )
+            }
         }
     }
 }
@@ -336,7 +364,7 @@ private fun TagsSection(
     tags: List<String>,
     suggestedTags: List<String>,
     candidateTags: List<String>,
-    isAnalyzing: Boolean,
+    phase: PageReadPhase,
     selectedTags: List<String>,
     onTagToggle: (String) -> Unit,
     isAddingTag: Boolean,
@@ -350,7 +378,7 @@ private fun TagsSection(
         suggestedTags.filter { it in tags } + tags.filterNot { it in suggestedTags }
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        TagsLabelRow(isAddingTag = isAddingTag, isAnalyzing = isAnalyzing, hasSuggestions = suggestedTags.isNotEmpty())
+        TagsLabelRow(isAddingTag = isAddingTag, phase = phase, hasSuggestions = suggestedTags.isNotEmpty())
 
         // One surface changing shape: "+ new tag" grows into the name field while each chip
         // glides to its row under YOUR TAGS; everything without a counterpart cross-fades.
@@ -424,7 +452,7 @@ private fun TagsSection(
 }
 
 @Composable
-private fun TagsLabelRow(isAddingTag: Boolean, isAnalyzing: Boolean, hasSuggestions: Boolean) {
+private fun TagsLabelRow(isAddingTag: Boolean, phase: PageReadPhase, hasSuggestions: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         FieldLabel("TAGS")
         AnimatedVisibility(visible = isAddingTag) {
@@ -438,7 +466,8 @@ private fun TagsLabelRow(isAddingTag: Boolean, isAnalyzing: Boolean, hasSuggesti
         Box(Modifier.weight(1f))
         AnimatedVisibility(visible = !isAddingTag, enter = fadeIn(), exit = fadeOut()) {
             when {
-                isAnalyzing -> TagsHint("Reading page…", Muted)
+                phase == PageReadPhase.ReadingPage -> TagsHint("Reading page…", Muted)
+                phase == PageReadPhase.SuggestingTags -> TagsHint("Suggesting…", Muted)
                 hasSuggestions -> TagsHint("Suggested from page", Synapse)
             }
         }
@@ -548,7 +577,8 @@ private fun CreateLinkEmptyPreview() {
         CreateLinkContent(
             url = "", onUrlChange = {}, title = "", onTitleChange = {},
             tags = listOf("sample", "ticket", "to buy"), suggestedTags = emptyList(), candidateTags = emptyList(),
-            isAnalyzing = false, selectedTags = emptyList(), onTagToggle = {},
+            phase = PageReadPhase.Idle, image = PreviewImage.Unknown, imageHidden = false, onImageHiddenChange = {}, onRetryImage = {},
+            selectedTags = emptyList(), onTagToggle = {},
             isAddingTag = false, newTagName = "", onNewTagNameChange = {}, onStartNewTag = {}, onAddTag = {},
             onBack = {}, onSave = {},
         )
@@ -563,7 +593,8 @@ private fun CreateLinkFilledPreview() {
             url = "https://curaahome.com/products/curaa-automatic-pepper-grinder",
             onUrlChange = {}, title = "Auto pepper grinder", onTitleChange = {},
             tags = listOf("sample", "ticket", "to buy", "kitchen"), suggestedTags = listOf("kitchen", "to buy"),
-            candidateTags = emptyList(), isAnalyzing = false, selectedTags = listOf("to buy"), onTagToggle = {},
+            candidateTags = emptyList(), phase = PageReadPhase.Done, image = PreviewImage.None, imageHidden = false,
+            onImageHiddenChange = {}, onRetryImage = {}, selectedTags = listOf("to buy"), onTagToggle = {},
             isAddingTag = false, newTagName = "", onNewTagNameChange = {}, onStartNewTag = {}, onAddTag = {},
             onBack = {}, onSave = {},
         )
@@ -578,8 +609,8 @@ private fun CreateLinkNewTagPreview() {
             url = "https://curaahome.com/products/curaa-automatic-pepper-grinder",
             onUrlChange = {}, title = "Auto pepper grinder", onTitleChange = {},
             tags = listOf("sample", "ticket", "to buy", "kitchen"), suggestedTags = listOf("kitchen"),
-            candidateTags = listOf("homeware", "grinder", "curaahome"), isAnalyzing = false,
-            selectedTags = listOf("to buy"), onTagToggle = {},
+            candidateTags = listOf("homeware", "grinder", "curaahome"), phase = PageReadPhase.Done, image = PreviewImage.None,
+            imageHidden = false, onImageHiddenChange = {}, onRetryImage = {}, selectedTags = listOf("to buy"), onTagToggle = {},
             isAddingTag = true, newTagName = "", onNewTagNameChange = {}, onStartNewTag = {}, onAddTag = {},
             onBack = {}, onSave = {},
         )

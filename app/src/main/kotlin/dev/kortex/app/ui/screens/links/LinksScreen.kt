@@ -1,6 +1,8 @@
 package dev.kortex.app.ui.screens.links
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -40,7 +43,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -52,22 +54,17 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.app.R
-import dev.kortex.app.ui.Grotesk
 import dev.kortex.app.ui.Ink
 import dev.kortex.app.ui.KortexTheme
-import dev.kortex.app.ui.Mono
 import dev.kortex.app.ui.Muted
 import dev.kortex.app.ui.Panel
 import dev.kortex.app.ui.Synapse
@@ -259,7 +256,6 @@ private fun LinkCard(
     onCopy: () -> Unit,
     onCopyFinished: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(14.dp)
     val copyAnimation = rememberLinkCopyAnimation(copyTick, onCopyFinished)
     val view = LocalView.current
     val currentOnCopy by rememberUpdatedState(onCopy)
@@ -267,7 +263,7 @@ private fun LinkCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
+            .clip(LinkCardShape)
             // Raw tap detection instead of clickable: the haptic lands on touch-down, not release,
             // and there's no ripple because the card's fill must never change.
             .pointerInput(Unit) {
@@ -284,53 +280,29 @@ private fun LinkCard(
             }
             .background(Panel)
             .drawBehind {
-                val glyphCenter = (CARD_INSET + GLYPH_SIZE / 2).toPx()
-                with(copyAnimation) { drawEffects(Offset(glyphCenter, glyphCenter)) }
+                val thumbnailCenter = (LinkCardInset + LinkThumbnailSize / 2).toPx()
+                with(copyAnimation) { drawEffects(Offset(thumbnailCenter, thumbnailCenter)) }
             }
-            .border(1.dp, copyAnimation.borderColor, shape)
-            .padding(CARD_INSET),
+            .border(1.dp, copyAnimation.borderColor, LinkCardShape)
+            .padding(LinkCardInset),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Both icons are stacked and centred, so the link → check swap is pure opacity.
-        Box(
-            Modifier
-                .size(GLYPH_SIZE)
-                .drawBehind { drawRoundRect(copyAnimation.glyphFill, cornerRadius = CornerRadius(10.dp.toPx())) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painterResource(R.drawable.ic_link),
-                contentDescription = null,
-                tint = Synapse,
-                modifier = Modifier
-                    .size(20.dp)
-                    .graphicsLayer { alpha = 1f - copyAnimation.glyph },
-            )
-            Icon(
-                painterResource(R.drawable.ic_check),
-                contentDescription = null,
-                tint = Void,
-                modifier = Modifier
-                    .size(GLYPH_SIZE)
-                    .graphicsLayer { alpha = copyAnimation.glyph },
-            )
-        }
+        LinkCardThumbnail(link = link.link, copyAnimation = copyAnimation)
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
                 link.link.title.ifBlank { linkDomain(link.link.url) ?: link.link.url },
-                style = TextStyle(fontFamily = Grotesk, fontWeight = FontWeight.Medium, fontSize = 17.sp, lineHeight = 24.sp, letterSpacing = 0.15.sp),
+                style = LinkTitleStyle,
                 color = Ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val urlStyle = TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 16.sp)
             Box(Modifier.fillMaxWidth()) {
                 Text(
                     link.link.url,
-                    style = urlStyle,
+                    style = LinkUrlStyle,
                     color = Muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -338,7 +310,7 @@ private fun LinkCard(
                 )
                 Text(
                     "→ clipboard",
-                    style = urlStyle,
+                    style = LinkUrlStyle,
                     color = Synapse,
                     maxLines = 1,
                     modifier = Modifier
@@ -354,7 +326,7 @@ private fun LinkCard(
                     }
                     append(relativeAge(link.link.createdAtMillis, nowMillis))
                 },
-                style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 16.sp, letterSpacing = 1.2.sp),
+                style = LinkMetaStyle,
                 color = Muted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -363,10 +335,72 @@ private fun LinkCard(
     }
 }
 
-// 1dp border + 14dp padding: in Figma the border sits outside the padding, which puts the
-// glyph centre at 33dp — where the copy ring is anchored.
-private val CARD_INSET = 15.dp
-private val GLYPH_SIZE = 36.dp
+/**
+ * The page image when there is one and the user hasn't hidden it, else the link glyph. Copying
+ * swaps the glyph for a check on Synapse as before; an image keeps showing, dimmed under the check.
+ * An image that finishes downloading after the link was saved crossfades in over the glyph.
+ */
+@Composable
+private fun LinkCardThumbnail(link: LinkEntity, copyAnimation: LinkCopyAnimation) {
+    Crossfade(
+        targetState = link.imagePath?.takeUnless { link.imageHidden },
+        animationSpec = tween(IMAGE_ARRIVAL_MS),
+        modifier = Modifier
+            .size(LinkThumbnailSize)
+            .clip(LinkThumbnailShape),
+        label = "card thumbnail",
+    ) { imagePath ->
+        if (imagePath != null) {
+            Box(contentAlignment = Alignment.Center) {
+                ThumbnailImage(imagePath)
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = copyAnimation.glyph }
+                        .background(Void.copy(alpha = 0.55f)),
+                )
+                Box(
+                    Modifier
+                        .size(COPY_BADGE_SIZE)
+                        .graphicsLayer { alpha = copyAnimation.glyph }
+                        .background(Synapse, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = Void, modifier = Modifier.size(COPY_BADGE_SIZE))
+                }
+            }
+        } else {
+            // Both icons are stacked and centred, so the link → check swap is pure opacity.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .drawBehind { drawRect(copyAnimation.glyphFill) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_link),
+                    contentDescription = null,
+                    tint = Synapse,
+                    modifier = Modifier
+                        .size(26.dp)
+                        .graphicsLayer { alpha = 1f - copyAnimation.glyph },
+                )
+                Icon(
+                    painterResource(R.drawable.ic_check),
+                    contentDescription = null,
+                    tint = Void,
+                    // The tick is drawn on a 36dp grid.
+                    modifier = Modifier
+                        .size(36.dp)
+                        .graphicsLayer { alpha = copyAnimation.glyph },
+                )
+            }
+        }
+    }
+}
+
+private val COPY_BADGE_SIZE = 28.dp
+private const val IMAGE_ARRIVAL_MS = 200
 
 /** Compact, uppercase age: NOW, 5M AGO, 3H AGO, 3D AGO, 2W AGO, 4MO AGO, 1Y AGO. */
 private fun relativeAge(createdAtMillis: Long, nowMillis: Long): String {

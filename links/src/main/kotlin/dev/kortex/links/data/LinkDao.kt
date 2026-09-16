@@ -16,6 +16,9 @@ abstract class LinkDao {
     @Insert
     abstract suspend fun insert(link: LinkEntity): Long
 
+    @Query("UPDATE links SET imageUrl = :imageUrl, imagePath = :imagePath WHERE id = :id")
+    abstract suspend fun updateImage(id: Long, imageUrl: String?, imagePath: String?)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insertTagRefs(refs: List<LinkTagCrossRef>)
 

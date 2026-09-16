@@ -8,7 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.app.ui.KortexTheme
-import dev.kortex.app.ui.screens.RootScreen
+import dev.kortex.app.ui.screens.home.RootScreen
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 

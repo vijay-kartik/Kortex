@@ -35,15 +35,14 @@ import dev.kortex.app.ui.Void
 
 @Preview
 @Composable
-fun LinksScreen(modifier: Modifier = Modifier, viewModel: LinksViewModel = hiltViewModel()) {
+fun LinksScreen(modifier: Modifier = Modifier, onCreateLink: () -> Unit = {}, viewModel: LinksViewModel = hiltViewModel()) {
     val uiState by viewModel.linksScreenUiState.collectAsStateWithLifecycle()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             FloatingActionButton(
-                onClick = {
-                },
+                onClick = onCreateLink,
                 containerColor = Synapse,
                 contentColor = Void,
             ) {

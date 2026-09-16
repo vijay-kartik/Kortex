@@ -1,4 +1,4 @@
-package dev.kortex.app.ui.screens
+package dev.kortex.app.ui.screens.home
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +32,10 @@ import dev.kortex.app.R
 import dev.kortex.app.RunsScreen
 import dev.kortex.app.SettingsScreen
 import dev.kortex.app.ui.appbar.KortexAppBar
+import dev.kortex.app.ui.screens.ChatScreen
+import dev.kortex.app.ui.screens.GraphScreen
+import dev.kortex.app.ui.screens.HistoryScreen
+import dev.kortex.app.ui.screens.links.CreateLinkScreen
 import dev.kortex.app.ui.screens.links.LinksScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,6 +46,7 @@ fun RootScreen(
 ) {
     var tab by remember { mutableIntStateOf(0) }
     var showSettings by remember { mutableStateOf(false) }
+    var showCreateLinks by rememberSaveable { mutableStateOf(false) }
     val vm: ChatViewModel = viewModel()
     val chatUi by vm.ui.collectAsStateWithLifecycle()
 
@@ -53,35 +59,38 @@ fun RootScreen(
         }
     }
 
-    if (showSettings) {
-        SettingsScreen(onDismiss = { showSettings = false })
-    } else {
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            topBar = {
-                Column {
-                    KortexAppBar(
-                        tab,
-                        chatUi,
-                        { showSettings = true },
-                        { i -> tab = i }
-                    )
-                }
-            },
-        ) { innerPadding ->
-            Box(Modifier.padding(innerPadding)) {
-                when (tab) {
-                    0 -> ChatScreen(vm = vm)
-                    1 -> GraphScreen(vm = viewModel())
-                    2 -> HistoryScreen(
-                        vm = vm,
-                        onSelectSession = { sessionId ->
-                            vm.loadSession(sessionId)
-                            tab = 0
-                        }
-                    )
-                    3 -> RunsScreen()
-                    else -> LinksScreen()
+    when {
+        showSettings -> SettingsScreen(onDismiss = { showSettings = false })
+        showCreateLinks -> CreateLinkScreen({ showCreateLinks = false })
+        else -> {
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = {
+                    Column {
+                        KortexAppBar(
+                            tab,
+                            chatUi,
+                            { showSettings = true },
+                            { i -> tab = i }
+                        )
+                    }
+                },
+            ) { innerPadding ->
+                Box(Modifier.padding(innerPadding)) {
+                    when (tab) {
+                        0 -> ChatScreen(vm = vm)
+                        1 -> GraphScreen(vm = viewModel())
+                        2 -> HistoryScreen(
+                            vm = vm,
+                            onSelectSession = { sessionId ->
+                                vm.loadSession(sessionId)
+                                tab = 0
+                            }
+                        )
+
+                        3 -> RunsScreen()
+                        else -> LinksScreen(onCreateLink = { showCreateLinks = true })
+                    }
                 }
             }
         }

@@ -18,7 +18,7 @@ import dev.kortex.app.ChatUi
 import dev.kortex.app.R
 import dev.kortex.app.ui.Muted
 import dev.kortex.app.ui.Synapse
-import dev.kortex.app.ui.screens.Wordmark
+import dev.kortex.app.ui.screens.home.Wordmark
 import dev.kortex.app.ui.conversationAsText
 
 @OptIn(ExperimentalMaterial3Api::class)

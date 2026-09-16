@@ -43,10 +43,10 @@ import dev.kortex.app.ui.screens.links.LinksScreen
 fun RootScreen(
     requestedSessionId: String? = null,
     onSessionRequestConsumed: () -> Unit = {},
-    sharedLinkUrl: String? = null,
-    onSharedLinkConsumed: () -> Unit = {},
-    sharedChatText: String? = null,
-    onSharedChatTextConsumed: () -> Unit = {},
+    newLinkUrl: String? = null,
+    onNewLinkConsumed: () -> Unit = {},
+    newChatDraft: String? = null,
+    onNewChatConsumed: () -> Unit = {},
 ) {
     var selected by rememberSaveable { mutableStateOf(KortexTab.Links) }
     var expanded by rememberSaveable { mutableStateOf(TabCategory.MyInfo) }
@@ -77,25 +77,25 @@ fun RootScreen(
         }
     }
 
-    // Link shared from another app → new-link screen with the address filled in.
-    LaunchedEffect(sharedLinkUrl) {
-        if (sharedLinkUrl != null) {
+    // Shared link or "Save to links" shortcut → new-link screen, address filled in when there is one.
+    LaunchedEffect(newLinkUrl) {
+        if (newLinkUrl != null) {
             showSettings = false
             openTab(KortexTab.Links)
-            createLinkUrl = sharedLinkUrl
+            createLinkUrl = newLinkUrl
             showCreateLinks = true
-            onSharedLinkConsumed()
+            onNewLinkConsumed()
         }
     }
 
-    // Other shared text → a new chat with the text waiting in the composer, not sent.
-    LaunchedEffect(sharedChatText) {
-        if (sharedChatText != null) {
+    // Shared text or "Ask agent" shortcut → a new chat with the draft in the composer, not sent.
+    LaunchedEffect(newChatDraft) {
+        if (newChatDraft != null) {
             showSettings = false
             showCreateLinks = false
-            vm.startNewSession(draft = sharedChatText)
+            vm.startNewSession(draft = newChatDraft)
             openTab(KortexTab.Chat)
-            onSharedChatTextConsumed()
+            onNewChatConsumed()
         }
     }
 

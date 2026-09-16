@@ -39,6 +39,10 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Long-press launcher shortcuts: "Save to links" and "Ask agent". -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
             <!-- Shared text: a valid http(s) link opens the new-link screen pre-filled;
                  anything else is drafted into a new chat (MainActivity.acceptShare). -->
             <intent-filter>

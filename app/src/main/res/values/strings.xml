@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher shortcuts: short labels stay within ~10 chars, long labels show where there's room. -->
+    <string name="shortcut_save_link_short">Save link</string>
+    <string name="shortcut_save_link_long">Save to links</string>
+    <string name="shortcut_ask_agent_short">Ask agent</string>
+    <string name="shortcut_ask_agent_long">Ask agent</string>
+</resources>

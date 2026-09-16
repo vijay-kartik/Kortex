@@ -20,16 +20,16 @@ class MainActivity : ComponentActivity() {
     /** Session requested by a notification tap (share-intake result); consumed by RootScreen. */
     private val requestedSessionId = MutableStateFlow<String?>(null)
 
-    /** Link shared from another app, to open in the new-link screen; consumed by RootScreen. */
-    private val sharedLinkUrl = MutableStateFlow<String?>(null)
+    /** Address for the new-link screen (empty from the shortcut); consumed by RootScreen. */
+    private val newLinkUrl = MutableStateFlow<String?>(null)
 
-    /** Non-link text shared from another app, to draft into a new chat; consumed by RootScreen. */
-    private val sharedChatText = MutableStateFlow<String?>(null)
+    /** Composer text for a new chat (empty from the shortcut); consumed by RootScreen. */
+    private val newChatDraft = MutableStateFlow<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Recreation re-delivers the launch intent; only the first launch should act on a share.
-        if (savedInstanceState == null && intent.action == Intent.ACTION_SEND && !acceptShare(intent)) {
+        // Recreation re-delivers the launch intent; only the first launch should act on it.
+        if (savedInstanceState == null && !handleEntryIntent(intent)) {
             // Launched just for this share, so there's nothing to show behind the rejection.
             finish()
             return
@@ -45,20 +45,30 @@ class MainActivity : ComponentActivity() {
                 RootScreen(
                     requestedSessionId = requestedSessionId.collectAsStateWithLifecycle().value,
                     onSessionRequestConsumed = { requestedSessionId.value = null },
-                    sharedLinkUrl = sharedLinkUrl.collectAsStateWithLifecycle().value,
-                    onSharedLinkConsumed = { sharedLinkUrl.value = null },
-                    sharedChatText = sharedChatText.collectAsStateWithLifecycle().value,
-                    onSharedChatTextConsumed = { sharedChatText.value = null },
+                    newLinkUrl = newLinkUrl.collectAsStateWithLifecycle().value,
+                    onNewLinkConsumed = { newLinkUrl.value = null },
+                    newChatDraft = newChatDraft.collectAsStateWithLifecycle().value,
+                    onNewChatConsumed = { newChatDraft.value = null },
                 )
             }
         }
     }
 
-    // launchMode="singleTop": a notification tap or share while the app is open lands here.
+    // launchMode="singleTop": a notification tap, share or shortcut while the app is open lands here.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra(EXTRA_OPEN_SESSION_ID)?.let { requestedSessionId.value = it }
-        if (intent.action == Intent.ACTION_SEND) acceptShare(intent)
+        handleEntryIntent(intent)
+    }
+
+    /** Routes launcher shortcuts and shares to their screen. Returns false only for a share that was rejected. */
+    private fun handleEntryIntent(intent: Intent): Boolean {
+        when (intent.action) {
+            ACTION_SAVE_LINK -> newLinkUrl.value = ""
+            ACTION_ASK_AGENT -> newChatDraft.value = ""
+            Intent.ACTION_SEND -> return acceptShare(intent)
+        }
+        return true
     }
 
     /**
@@ -72,13 +82,17 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, "Nothing to open — the shared text was empty.", Toast.LENGTH_SHORT).show()
                 return false
             }
-            text.none(Char::isWhitespace) && linkDomain(text) != null -> sharedLinkUrl.value = text
-            else -> sharedChatText.value = text
+            text.none(Char::isWhitespace) && linkDomain(text) != null -> newLinkUrl.value = text
+            else -> newChatDraft.value = text
         }
         return true
     }
 
     companion object {
         const val EXTRA_OPEN_SESSION_ID = "dev.kortex.app.OPEN_SESSION_ID"
+
+        // Launcher shortcut actions; must match res/xml/shortcuts.xml.
+        const val ACTION_SAVE_LINK = "dev.kortex.app.action.SAVE_LINK"
+        const val ACTION_ASK_AGENT = "dev.kortex.app.action.ASK_AGENT"
     }
 }

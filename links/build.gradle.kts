@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.kortex.myinfo"
+    namespace = "dev.kortex.links"
     compileSdk = 36
 
     defaultConfig {

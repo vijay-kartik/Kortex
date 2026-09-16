@@ -67,11 +67,12 @@ fun CreateLinkScreen(
     modifier: Modifier = Modifier,
     tags: List<String> = emptyList(),
     onNewTag: () -> Unit = {},
-    onSave: (url: String, title: String) -> Unit = { _, _ -> },
+    onSave: (url: String, title: String, tags: List<String>) -> Unit = { _, _, _ -> },
 ) {
     BackHandler(onBack = onBack)
     var url by rememberSaveable { mutableStateOf("") }
     var title by rememberSaveable { mutableStateOf("") }
+    var selectedTags by rememberSaveable { mutableStateOf(listOf<String>()) }
 
     CreateLinkContent(
         url = url,
@@ -79,9 +80,11 @@ fun CreateLinkScreen(
         title = title,
         onTitleChange = { title = it },
         tags = tags,
+        selectedTags = selectedTags,
+        onTagToggle = { tag -> selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag },
         onBack = onBack,
         onNewTag = onNewTag,
-        onSave = { onSave(url.trim(), title.trim()) },
+        onSave = { onSave(url.trim(), title.trim(), selectedTags) },
         modifier = modifier,
     )
 }
@@ -94,6 +97,8 @@ private fun CreateLinkContent(
     title: String,
     onTitleChange: (String) -> Unit,
     tags: List<String>,
+    selectedTags: List<String>,
+    onTagToggle: (String) -> Unit,
     onBack: () -> Unit,
     onNewTag: () -> Unit,
     onSave: () -> Unit,
@@ -146,7 +151,7 @@ private fun CreateLinkContent(
         ) {
             AddressField(url = url, onUrlChange = onUrlChange, domain = domain)
             TitleField(title = title, onTitleChange = onTitleChange)
-            TagsSection(tags = tags, onNewTag = onNewTag)
+            TagsSection(tags = tags, selectedTags = selectedTags, onTagToggle = onTagToggle, onNewTag = onNewTag)
         }
     }
 }
@@ -254,20 +259,29 @@ private fun FieldBox(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TagsSection(tags: List<String>, onNewTag: () -> Unit) {
+private fun TagsSection(
+    tags: List<String>,
+    selectedTags: List<String>,
+    onTagToggle: (String) -> Unit,
+    onNewTag: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         FieldLabel("TAGS")
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            tags.forEach { TagChip(it) }
+            tags.forEach { tag ->
+                TagChip(
+                    text = tag,
+                    selected = tag in selectedTags,
+                    onSelectedChange = { onTagToggle(tag) },
+                )
+            }
             NewTagChip(onClick = onNewTag)
         }
     }
 }
-
-
 
 // ── Save ──────────────────────────────────────────────────────────
 
@@ -309,6 +323,7 @@ private fun CreateLinkEmptyPreview() {
         CreateLinkContent(
             url = "", onUrlChange = {}, title = "", onTitleChange = {},
             tags = listOf("sample", "ticket", "to buy"),
+            selectedTags = emptyList(), onTagToggle = {},
             onBack = {}, onNewTag = {}, onSave = {},
         )
     }
@@ -320,8 +335,9 @@ private fun CreateLinkFilledPreview() {
     KortexTheme {
         CreateLinkContent(
             url = "https://curaahome.com/products/curaa-automatic-pepper-grinder",
-            onUrlChange = {}, title = "", onTitleChange = {},
+            onUrlChange = {}, title = "Auto pepper grinder", onTitleChange = {},
             tags = listOf("sample", "ticket", "to buy"),
+            selectedTags = listOf("to buy"), onTagToggle = {},
             onBack = {}, onNewTag = {}, onSave = {},
         )
     }

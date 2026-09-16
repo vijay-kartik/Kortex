@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -16,23 +17,38 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import dev.kortex.app.ui.Edge
 import dev.kortex.app.ui.Ink
 import dev.kortex.app.ui.Panel
 import dev.kortex.app.ui.Synapse
+import dev.kortex.app.ui.SynapseDim
 
+/** Tag pill. Selected tags take the synapse accent; pass [onSelectedChange] to make it toggleable. */
 @Composable
-fun TagChip(text: String) {
+fun TagChip(
+    text: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    onSelectedChange: ((Boolean) -> Unit)? = null,
+) {
     val shape = RoundedCornerShape(8.dp)
     Text(
         text,
         style = MaterialTheme.typography.labelLarge,
-        color = Ink,
-        modifier = Modifier
+        color = if (selected) Synapse else Ink,
+        modifier = modifier
             .clip(shape)
-            .background(Panel)
-            .border(1.dp, Edge, shape)
+            .then(
+                if (onSelectedChange != null) {
+                    Modifier.toggleable(value = selected, role = Role.Checkbox, onValueChange = onSelectedChange)
+                } else {
+                    Modifier
+                }
+            )
+            .background(if (selected) SynapseDim else Panel)
+            .border(1.dp, if (selected) Synapse else Edge, shape)
             .padding(horizontal = 12.dp, vertical = 7.dp),
     )
 }

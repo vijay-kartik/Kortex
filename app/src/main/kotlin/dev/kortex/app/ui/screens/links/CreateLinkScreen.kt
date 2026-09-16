@@ -83,11 +83,12 @@ import dev.kortex.app.ui.components.TagChip
 fun CreateLinkScreen(
     onBack: () -> Unit = {},
     modifier: Modifier = Modifier,
+    initialUrl: String = "",
     viewModel: CreateLinkViewModel = hiltViewModel(),
 ) {
     BackHandler(onBack = onBack)
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var url by rememberSaveable { mutableStateOf("") }
+    var url by rememberSaveable { mutableStateOf(initialUrl) }
     var title by rememberSaveable { mutableStateOf("") }
     var selectedTags by rememberSaveable { mutableStateOf(listOf<String>()) }
     var isAddingTag by rememberSaveable { mutableStateOf(false) }
@@ -101,18 +102,19 @@ fun CreateLinkScreen(
     // Registered after the screen-level handler, so while adding a tag back only closes the picker.
     BackHandler(enabled = isAddingTag, onBack = ::closeNewTag)
 
-    // Fill in the page's own title unless the user has already typed one.
-    LaunchedEffect(uiState.suggestedTitle) {
+    // Keeps analysis in step with the field, including a pre-filled address and restored state.
+    LaunchedEffect(url) { viewModel.onUrlChange(url) }
+
+    // Fill in the page's own title unless the user has already typed one. The address check keeps a
+    // title left over from a previous form (e.g. before a link was shared in) out of this one.
+    LaunchedEffect(uiState.suggestedTitle, uiState.analyzedUrl) {
         val suggestedTitle = uiState.suggestedTitle
-        if (suggestedTitle != null && title.isBlank()) title = suggestedTitle
+        if (suggestedTitle != null && title.isBlank() && uiState.analyzedUrl == url.trim()) title = suggestedTitle
     }
 
     CreateLinkContent(
         url = url,
-        onUrlChange = {
-            url = it
-            viewModel.onUrlChange(it)
-        },
+        onUrlChange = { url = it },
         title = title,
         onTitleChange = { title = it },
         tags = uiState.tags,

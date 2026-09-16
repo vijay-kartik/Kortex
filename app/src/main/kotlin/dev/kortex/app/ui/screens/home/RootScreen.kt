@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -42,6 +43,8 @@ import dev.kortex.app.ui.screens.links.LinksScreen
 fun RootScreen(
     requestedSessionId: String? = null,
     onSessionRequestConsumed: () -> Unit = {},
+    sharedLinkUrl: String? = null,
+    onSharedLinkConsumed: () -> Unit = {},
 ) {
     var selected by rememberSaveable { mutableStateOf(KortexTab.Links) }
     var expanded by rememberSaveable { mutableStateOf(TabCategory.MyInfo) }
@@ -49,6 +52,8 @@ fun RootScreen(
     var lastAgentTab by rememberSaveable { mutableStateOf(KortexTab.Chat) }
     var showSettings by remember { mutableStateOf(false) }
     var showCreateLinks by rememberSaveable { mutableStateOf(false) }
+    // Address to pre-fill in the new-link screen; empty when opened from the Links tab.
+    var createLinkUrl by rememberSaveable { mutableStateOf("") }
     val vm: ChatViewModel = viewModel()
     val chatUi by vm.ui.collectAsStateWithLifecycle()
     val homeVm: HomeViewModel = viewModel()
@@ -70,9 +75,23 @@ fun RootScreen(
         }
     }
 
+    // Link shared from another app → new-link screen with the address filled in.
+    LaunchedEffect(sharedLinkUrl) {
+        if (sharedLinkUrl != null) {
+            showSettings = false
+            openTab(KortexTab.Links)
+            createLinkUrl = sharedLinkUrl
+            showCreateLinks = true
+            onSharedLinkConsumed()
+        }
+    }
+
     when {
         showSettings -> SettingsScreen(onDismiss = { showSettings = false })
-        showCreateLinks -> CreateLinkScreen({ showCreateLinks = false })
+        // Keyed on the address so a new share replaces a half-filled form instead of merging into it.
+        showCreateLinks -> key(createLinkUrl) {
+            CreateLinkScreen(onBack = { showCreateLinks = false }, initialUrl = createLinkUrl)
+        }
         else -> {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
@@ -117,7 +136,12 @@ fun RootScreen(
                             )
 
                             KortexTab.Runs -> RunsScreen()
-                            KortexTab.Links -> LinksScreen(onCreateLink = { showCreateLinks = true })
+                            KortexTab.Links -> LinksScreen(
+                                onCreateLink = {
+                                    createLinkUrl = ""
+                                    showCreateLinks = true
+                                }
+                            )
                         }
                     }
                 }

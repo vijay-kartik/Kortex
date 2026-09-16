@@ -24,6 +24,8 @@ import javax.inject.Inject
 
 data class CreateLinkUiState(
     val tags: List<String> = emptyList(),
+    /** Address the suggestions below were read from; the view model outlives a single form. */
+    val analyzedUrl: String = "",
     /** Title the page gives itself; the screen fills it in only while the title field is empty. */
     val suggestedTitle: String? = null,
     val suggestedTags: List<String> = emptyList(),
@@ -33,6 +35,7 @@ data class CreateLinkUiState(
 )
 
 private data class LinkAnalysis(
+    val url: String = "",
     val suggestedTitle: String? = null,
     val suggestedTags: List<String> = emptyList(),
     val candidateTags: List<String> = emptyList(),
@@ -53,6 +56,7 @@ class CreateLinkViewModel @Inject constructor(
         combine(repository.observeTagNames(), analysis) { tags, current ->
             CreateLinkUiState(
                 tags = tags,
+                analyzedUrl = current.url,
                 suggestedTitle = current.suggestedTitle,
                 suggestedTags = current.suggestedTags,
                 // Filtered here rather than in analyze() so a candidate disappears as soon as it's created.
@@ -104,14 +108,14 @@ class CreateLinkViewModel @Inject constructor(
 
     private suspend fun analyze(url: String) {
         if (linkDomain(url) == null) {
-            analysis.value = LinkAnalysis()
+            analysis.value = LinkAnalysis(url = url)
             return
         }
-        analysis.value = LinkAnalysis(isAnalyzing = true)
+        analysis.value = LinkAnalysis(url = url, isAnalyzing = true)
 
         val page = metadataFetcher.fetch(url)
         val candidateTags = tagCandidates(page)
-        analysis.value = LinkAnalysis(suggestedTitle = page.title, candidateTags = candidateTags, isAnalyzing = true)
+        analysis.value = LinkAnalysis(url = url, suggestedTitle = page.title, candidateTags = candidateTags, isAnalyzing = true)
 
         val suggestedTags = try {
             tagSuggester.suggest(page).map { it.tagName }
@@ -122,7 +126,7 @@ class CreateLinkViewModel @Inject constructor(
             Log.w(TAG, "Tag suggestion failed for $url", e)
             emptyList()
         }
-        analysis.value = LinkAnalysis(suggestedTitle = page.title, suggestedTags = suggestedTags, candidateTags = candidateTags)
+        analysis.value = LinkAnalysis(url = url, suggestedTitle = page.title, suggestedTags = suggestedTags, candidateTags = candidateTags)
     }
 
     private companion object {

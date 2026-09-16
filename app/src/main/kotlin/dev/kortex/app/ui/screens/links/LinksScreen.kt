@@ -1,10 +1,9 @@
 package dev.kortex.app.ui.screens.links
 
-import android.os.Build
-import android.widget.Toast
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,15 +33,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -81,7 +89,6 @@ fun LinksScreen(modifier: Modifier = Modifier, onCreateLink: () -> Unit = {}, vi
     // The field reads local state so typing never waits on the filtered list round-trip.
     var query by rememberSaveable { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
-    val context = LocalContext.current
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -110,13 +117,8 @@ fun LinksScreen(modifier: Modifier = Modifier, onCreateLink: () -> Unit = {}, vi
                         viewModel.onQueryChange(it)
                     },
                     onTagToggle = viewModel::toggleTag,
-                    onLinkClick = { link ->
-                        clipboard.setText(AnnotatedString(link.url))
-                        // Android 13+ shows its own clipboard confirmation.
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                            Toast.makeText(context, "Link copied", Toast.LENGTH_SHORT).show()
-                        }
-                    },
+                    // The card's copy animation is the confirmation; Android 13+ adds its own on top.
+                    onLinkClick = { link -> clipboard.setText(AnnotatedString(link.url)) },
                 )
             }
         }
@@ -165,6 +167,8 @@ fun LinksWithSearchScreen(
 ) {
     // Ages only need minute precision; refresh them whenever the list itself changes.
     val nowMillis = remember(state.links) { System.currentTimeMillis() }
+    // One card animates at a time: a tap anywhere restarts the animation on the tapped card.
+    var copyTap by remember { mutableStateOf<CopyTap?>(null) }
 
     Column(modifier.fillMaxSize()) {
         Column(
@@ -189,7 +193,18 @@ fun LinksWithSearchScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(state.links, key = { it.link.id }) { link ->
-                    LinkCard(link = link, nowMillis = nowMillis, onClick = { onLinkClick(link.link) })
+                    val copyTick = copyTap?.takeIf { it.linkId == link.link.id }?.tick
+                    LinkCard(
+                        link = link,
+                        nowMillis = nowMillis,
+                        copyTick = copyTick,
+                        onCopy = {
+                            copyTap = CopyTap(link.link.id, tick = (copyTap?.tick ?: 0) + 1)
+                            onLinkClick(link.link)
+                        },
+                        // Clear once finished so a card scrolled back into view doesn't replay it.
+                        onCopyFinished = { if (copyTap?.tick == copyTick) copyTap = null },
+                    )
                 }
                 if (state.links.isEmpty()) {
                     item {
@@ -283,30 +298,70 @@ private fun TagFilters(tags: List<TagLinkCount>, selectedTags: Set<String>, onTa
     }
 }
 
+private data class CopyTap(val linkId: Long, val tick: Int)
+
 @Composable
-private fun LinkCard(link: LinkWithTags, nowMillis: Long, onClick: () -> Unit) {
+private fun LinkCard(
+    link: LinkWithTags,
+    nowMillis: Long,
+    copyTick: Int?,
+    onCopy: () -> Unit,
+    onCopyFinished: () -> Unit,
+) {
     val shape = RoundedCornerShape(14.dp)
+    val copyAnimation = rememberLinkCopyAnimation(copyTick, onCopyFinished)
+    val view = LocalView.current
+    val currentOnCopy by rememberUpdatedState(onCopy)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .clickable(onClick = onClick)
+            // Raw tap detection instead of clickable: the haptic lands on touch-down, not release,
+            // and there's no ripple because the card's fill must never change.
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = { view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK) },
+                    onTap = { currentOnCopy() },
+                )
+            }
+            .semantics {
+                onClick(label = "Copy link") {
+                    currentOnCopy()
+                    true
+                }
+            }
             .background(Panel)
-            .border(1.dp, Edge, shape)
-            .padding(14.dp),
+            .drawBehind {
+                val glyphCenter = (CARD_INSET + GLYPH_SIZE / 2).toPx()
+                with(copyAnimation) { drawEffects(Offset(glyphCenter, glyphCenter)) }
+            }
+            .border(1.dp, copyAnimation.borderColor, shape)
+            .padding(CARD_INSET),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // Both icons are stacked and centred, so the link → check swap is pure opacity.
         Box(
             Modifier
-                .size(36.dp)
-                .background(SynapseDim, RoundedCornerShape(10.dp)),
+                .size(GLYPH_SIZE)
+                .drawBehind { drawRoundRect(copyAnimation.glyphFill, cornerRadius = CornerRadius(10.dp.toPx())) },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 painterResource(R.drawable.ic_link),
                 contentDescription = null,
                 tint = Synapse,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer { alpha = 1f - copyAnimation.glyph },
+            )
+            Icon(
+                painterResource(R.drawable.ic_check),
+                contentDescription = null,
+                tint = Void,
+                modifier = Modifier
+                    .size(GLYPH_SIZE)
+                    .graphicsLayer { alpha = copyAnimation.glyph },
             )
         }
         Column(
@@ -320,13 +375,26 @@ private fun LinkCard(link: LinkWithTags, nowMillis: Long, onClick: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                link.link.url,
-                style = TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 16.sp),
-                color = Muted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val urlStyle = TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 16.sp)
+            Box(Modifier.fillMaxWidth()) {
+                Text(
+                    link.link.url,
+                    style = urlStyle,
+                    color = Muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.graphicsLayer { alpha = 1f - copyAnimation.urlLine },
+                )
+                Text(
+                    "→ clipboard",
+                    style = urlStyle,
+                    color = Synapse,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .graphicsLayer { alpha = copyAnimation.urlLine }
+                        .clearAndSetSemantics {},
+                )
+            }
             Text(
                 buildAnnotatedString {
                     if (link.tagNames.isNotEmpty()) {
@@ -343,6 +411,11 @@ private fun LinkCard(link: LinkWithTags, nowMillis: Long, onClick: () -> Unit) {
         }
     }
 }
+
+// 1dp border + 14dp padding: in Figma the border sits outside the padding, which puts the
+// glyph centre at 33dp — where the copy ring is anchored.
+private val CARD_INSET = 15.dp
+private val GLYPH_SIZE = 36.dp
 
 private fun countLabel(count: Int, noun: String) = "$count ${if (count == 1) noun else noun + "S"}"
 

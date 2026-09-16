@@ -1,0 +1,14 @@
+<!-- Copy-confirmation tick (Kortex Figma, "Copy anim"). Drawn on the 36dp link-card glyph grid,
+     so render it at 36dp over the glyph box. Stroke-drawn; tint via Icon(tint = …). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="36dp"
+    android:viewportWidth="36"
+    android:viewportHeight="36">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M11,18.5L15.5,23L25,13"/>
+</vector>

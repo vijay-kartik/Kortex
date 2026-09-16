@@ -45,6 +45,8 @@ fun RootScreen(
     onSessionRequestConsumed: () -> Unit = {},
     sharedLinkUrl: String? = null,
     onSharedLinkConsumed: () -> Unit = {},
+    sharedChatText: String? = null,
+    onSharedChatTextConsumed: () -> Unit = {},
 ) {
     var selected by rememberSaveable { mutableStateOf(KortexTab.Links) }
     var expanded by rememberSaveable { mutableStateOf(TabCategory.MyInfo) }
@@ -83,6 +85,17 @@ fun RootScreen(
             createLinkUrl = sharedLinkUrl
             showCreateLinks = true
             onSharedLinkConsumed()
+        }
+    }
+
+    // Other shared text → a new chat with the text waiting in the composer, not sent.
+    LaunchedEffect(sharedChatText) {
+        if (sharedChatText != null) {
+            showSettings = false
+            showCreateLinks = false
+            vm.startNewSession(draft = sharedChatText)
+            openTab(KortexTab.Chat)
+            onSharedChatTextConsumed()
         }
     }
 

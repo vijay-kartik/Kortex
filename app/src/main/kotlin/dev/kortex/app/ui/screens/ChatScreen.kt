@@ -116,6 +116,14 @@ fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
 
     val voice by vm.voice.collectAsStateWithLifecycle()
     val voiceError by vm.voiceError.collectAsStateWithLifecycle()
+    val draft by vm.draft.collectAsStateWithLifecycle()
+
+    LaunchedEffect(draft) {
+        draft?.let {
+            input = it
+            vm.consumeDraft()
+        }
+    }
 
     LaunchedEffect(voiceError) {
         voiceError?.let {

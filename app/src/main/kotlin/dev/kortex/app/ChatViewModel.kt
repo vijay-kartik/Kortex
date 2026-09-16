@@ -107,6 +107,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _voiceError = MutableStateFlow<String?>(null)
     val voiceError: StateFlow<String?> = _voiceError.asStateFlow()
 
+    /** One-shot text for the composer (e.g. shared from another app); cleared via [consumeDraft]. */
+    private val _draft = MutableStateFlow<String?>(null)
+    val draft: StateFlow<String?> = _draft.asStateFlow()
+
     private var recognizer: SpeechRecognizer? = null
     private var voiceTicker: Job? = null
     private var voiceStartMs = 0L
@@ -335,10 +339,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun startNewSession() {
+    /** Opens a fresh conversation; a [draft] is placed in the composer for the user to send. */
+    fun startNewSession(draft: String? = null) {
         currentSessionId = UUID.randomUUID().toString()
         _ui.update { it.copy(turns = emptyList(), busy = false, status = null) }
+        if (draft != null) _draft.value = draft
     }
+
+    fun consumeDraft() { _draft.value = null }
 
     fun send(query: String) {
         val attachmentsToSend = _stagedAttachments.value

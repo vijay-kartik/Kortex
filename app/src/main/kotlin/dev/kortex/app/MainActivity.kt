@@ -23,18 +23,16 @@ class MainActivity : ComponentActivity() {
     /** Link shared from another app, to open in the new-link screen; consumed by RootScreen. */
     private val sharedLinkUrl = MutableStateFlow<String?>(null)
 
+    /** Non-link text shared from another app, to draft into a new chat; consumed by RootScreen. */
+    private val sharedChatText = MutableStateFlow<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Recreation re-delivers the launch intent; only the first launch should act on a share.
-        if (savedInstanceState == null && intent.action == Intent.ACTION_SEND) {
-            val url = sharedLink(intent)
-            if (url == null) {
-                // Launched just for this share, so there's nothing to show behind the rejection.
-                rejectShare()
-                finish()
-                return
-            }
-            sharedLinkUrl.value = url
+        if (savedInstanceState == null && intent.action == Intent.ACTION_SEND && !acceptShare(intent)) {
+            // Launched just for this share, so there's nothing to show behind the rejection.
+            finish()
+            return
         }
         // The theme is committed dark, so pin light system-bar icons regardless of device theme.
         enableEdgeToEdge(
@@ -49,6 +47,8 @@ class MainActivity : ComponentActivity() {
                     onSessionRequestConsumed = { requestedSessionId.value = null },
                     sharedLinkUrl = sharedLinkUrl.collectAsStateWithLifecycle().value,
                     onSharedLinkConsumed = { sharedLinkUrl.value = null },
+                    sharedChatText = sharedChatText.collectAsStateWithLifecycle().value,
+                    onSharedChatTextConsumed = { sharedChatText.value = null },
                 )
             }
         }
@@ -58,20 +58,24 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra(EXTRA_OPEN_SESSION_ID)?.let { requestedSessionId.value = it }
-        if (intent.action == Intent.ACTION_SEND) {
-            sharedLink(intent)?.let { sharedLinkUrl.value = it } ?: rejectShare()
-        }
+        if (intent.action == Intent.ACTION_SEND) acceptShare(intent)
     }
 
-    private fun rejectShare() {
-        Toast.makeText(this, "Kortex can only save links — that wasn't a valid URL.", Toast.LENGTH_SHORT).show()
-    }
-
-    /** The shared text as a URL, or null unless the whole text is a single well-formed http(s) link. */
-    private fun sharedLink(intent: Intent): String? {
+    /**
+     * Routes shared text: a single well-formed http(s) link goes to the new-link screen, anything
+     * else is drafted into a new chat (not sent). Returns false, with a toast, when there's no text.
+     */
+    private fun acceptShare(intent: Intent): Boolean {
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
-        if (text.isEmpty() || text.any(Char::isWhitespace)) return null
-        return text.takeIf { linkDomain(it) != null }
+        when {
+            text.isEmpty() -> {
+                Toast.makeText(this, "Nothing to open — the shared text was empty.", Toast.LENGTH_SHORT).show()
+                return false
+            }
+            text.none(Char::isWhitespace) && linkDomain(text) != null -> sharedLinkUrl.value = text
+            else -> sharedChatText.value = text
+        }
+        return true
     }
 
     companion object {

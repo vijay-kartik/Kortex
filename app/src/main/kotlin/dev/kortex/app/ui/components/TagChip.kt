@@ -4,9 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -18,10 +21,12 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.kortex.app.ui.Edge
@@ -33,8 +38,9 @@ import dev.kortex.app.ui.Synapse
 import dev.kortex.app.ui.SynapseDim
 
 /**
- * Tag pill. Selected tags take the synapse accent; [suggested] (unselected) ones get accent text
- * and a faint accent outline. [count] adds a trailing mono tally (e.g. links per tag).
+ * Tag pill. Selected tags take the synapse accent; [suggested] (unselected) ones keep ink text and
+ * are marked with a leading accent dot, so a proposed tag never looks like an applied one.
+ * [count] adds a trailing mono tally (e.g. links per tag).
  * Pass [onSelectedChange] to make it toggleable.
  */
 @Composable
@@ -62,7 +68,7 @@ fun TagChip(
                 1.dp,
                 when {
                     selected -> Synapse
-                    suggested -> Synapse.copy(alpha = 0.45f)
+                    suggested -> Synapse.copy(alpha = 0.5f)
                     else -> Edge
                 },
                 shape,
@@ -71,10 +77,13 @@ fun TagChip(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (suggested && !selected) {
+            Box(Modifier.size(5.dp).background(Synapse, CircleShape))
+        }
         Text(
             text,
             style = MaterialTheme.typography.labelLarge,
-            color = if (selected || suggested) Synapse else Ink,
+            color = if (selected) Synapse else Ink,
         )
         if (count != null) {
             Text(
@@ -87,27 +96,44 @@ fun TagChip(
 }
 
 @Composable
-fun NewTagChip(onClick: () -> Unit) {
+fun NewTagChip(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Text(
         "+ new tag",
         style = MaterialTheme.typography.labelLarge,
         color = Synapse,
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .drawBehind {
-                val stroke = 1.dp.toPx()
-                drawRoundRect(
-                    color = Edge,
-                    topLeft = Offset(stroke / 2, stroke / 2),
-                    size = Size(size.width - stroke, size.height - stroke),
-                    cornerRadius = CornerRadius(8.dp.toPx()),
-                    style = Stroke(
-                        width = stroke,
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())),
-                    ),
-                )
-            }
+            .dashedBorder(Edge)
             .padding(start = 10.dp, end = 12.dp, top = 7.dp, bottom = 7.dp),
+    )
+}
+
+/** A tag that doesn't exist yet but was read off the page; tapping it creates the tag. */
+@Composable
+fun CandidateTagChip(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = Synapse,
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClickLabel = "Add tag", onClick = onClick)
+            .dashedBorder(Synapse)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    )
+}
+
+private fun Modifier.dashedBorder(color: Color, cornerRadius: Dp = 8.dp) = drawBehind {
+    val stroke = 1.dp.toPx()
+    drawRoundRect(
+        color = color,
+        topLeft = Offset(stroke / 2, stroke / 2),
+        size = Size(size.width - stroke, size.height - stroke),
+        cornerRadius = CornerRadius(cornerRadius.toPx()),
+        style = Stroke(
+            width = stroke,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())),
+        ),
     )
 }

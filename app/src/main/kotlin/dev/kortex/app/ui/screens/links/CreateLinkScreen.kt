@@ -2,6 +2,16 @@ package dev.kortex.app.ui.screens.links
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,15 +32,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -43,6 +52,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -64,6 +75,7 @@ import dev.kortex.app.ui.Muted
 import dev.kortex.app.ui.Panel
 import dev.kortex.app.ui.Synapse
 import dev.kortex.app.ui.Void
+import dev.kortex.app.ui.components.CandidateTagChip
 import dev.kortex.app.ui.components.NewTagChip
 import dev.kortex.app.ui.components.TagChip
 
@@ -78,7 +90,16 @@ fun CreateLinkScreen(
     var url by rememberSaveable { mutableStateOf("") }
     var title by rememberSaveable { mutableStateOf("") }
     var selectedTags by rememberSaveable { mutableStateOf(listOf<String>()) }
-    var showNewTagDialog by rememberSaveable { mutableStateOf(false) }
+    var isAddingTag by rememberSaveable { mutableStateOf(false) }
+    var newTagName by rememberSaveable { mutableStateOf("") }
+
+    fun closeNewTag() {
+        newTagName = ""
+        isAddingTag = false
+    }
+
+    // Registered after the screen-level handler, so while adding a tag back only closes the picker.
+    BackHandler(enabled = isAddingTag, onBack = ::closeNewTag)
 
     // Fill in the page's own title unless the user has already typed one.
     LaunchedEffect(uiState.suggestedTitle) {
@@ -96,25 +117,28 @@ fun CreateLinkScreen(
         onTitleChange = { title = it },
         tags = uiState.tags,
         suggestedTags = uiState.suggestedTags,
+        candidateTags = uiState.candidateTags,
         isAnalyzing = uiState.isAnalyzing,
         selectedTags = selectedTags,
         onTagToggle = { tag -> selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag },
+        isAddingTag = isAddingTag,
+        newTagName = newTagName,
+        onNewTagNameChange = { newTagName = it },
+        onStartNewTag = { isAddingTag = true },
+        onAddTag = { name ->
+            val trimmed = name.trim()
+            if (trimmed.isNotEmpty()) {
+                // Reuse the stored spelling so typing an existing tag in another case still selects its chip.
+                val tag = uiState.tags.firstOrNull { it.equals(trimmed, ignoreCase = true) }
+                    ?: trimmed.also(viewModel::createTag)
+                if (tag !in selectedTags) selectedTags = selectedTags + tag
+            }
+            closeNewTag()
+        },
         onBack = onBack,
-        onNewTag = { showNewTagDialog = true },
         onSave = { viewModel.save(url.trim(), title.trim(), selectedTags, onSaved = onBack) },
         modifier = modifier,
     )
-
-    if (showNewTagDialog) {
-        NewTagDialog(
-            onDismiss = { showNewTagDialog = false },
-            onCreate = { name ->
-                viewModel.createTag(name)
-                if (name !in selectedTags) selectedTags = selectedTags + name
-                showNewTagDialog = false
-            },
-        )
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -126,11 +150,16 @@ private fun CreateLinkContent(
     onTitleChange: (String) -> Unit,
     tags: List<String>,
     suggestedTags: List<String>,
+    candidateTags: List<String>,
     isAnalyzing: Boolean,
     selectedTags: List<String>,
     onTagToggle: (String) -> Unit,
+    isAddingTag: Boolean,
+    newTagName: String,
+    onNewTagNameChange: (String) -> Unit,
+    onStartNewTag: () -> Unit,
+    onAddTag: (String) -> Unit,
     onBack: () -> Unit,
-    onNewTag: () -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -184,10 +213,15 @@ private fun CreateLinkContent(
             TagsSection(
                 tags = tags,
                 suggestedTags = suggestedTags,
+                candidateTags = candidateTags,
                 isAnalyzing = isAnalyzing,
                 selectedTags = selectedTags,
                 onTagToggle = onTagToggle,
-                onNewTag = onNewTag,
+                isAddingTag = isAddingTag,
+                newTagName = newTagName,
+                onNewTagNameChange = onNewTagNameChange,
+                onStartNewTag = onStartNewTag,
+                onAddTag = onAddTag,
             )
         }
     }
@@ -294,42 +328,117 @@ private fun FieldBox(
 
 // ── Tags ──────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 private fun TagsSection(
     tags: List<String>,
     suggestedTags: List<String>,
+    candidateTags: List<String>,
     isAnalyzing: Boolean,
     selectedTags: List<String>,
     onTagToggle: (String) -> Unit,
-    onNewTag: () -> Unit,
+    isAddingTag: Boolean,
+    newTagName: String,
+    onNewTagNameChange: (String) -> Unit,
+    onStartNewTag: () -> Unit,
+    onAddTag: (String) -> Unit,
 ) {
     // Suggestions lead, best match first; the rest keep their stored order.
     val orderedTags = remember(tags, suggestedTags) {
         suggestedTags.filter { it in tags } + tags.filterNot { it in suggestedTags }
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            FieldLabel("TAGS")
-            Box(Modifier.weight(1f))
-            when {
-                isAnalyzing -> TagsHint("Reading page…", Muted)
-                suggestedTags.isNotEmpty() -> TagsHint("Suggested from page", Synapse)
+        TagsLabelRow(isAddingTag = isAddingTag, isAnalyzing = isAnalyzing, hasSuggestions = suggestedTags.isNotEmpty())
+
+        // One surface changing shape: "+ new tag" grows into the name field while each chip
+        // glides to its row under YOUR TAGS; everything without a counterpart cross-fades.
+        SharedTransitionLayout {
+            AnimatedContent(
+                targetState = isAddingTag,
+                transitionSpec = {
+                    fadeIn(tween(durationMillis = 220, delayMillis = 90)) togetherWith
+                        fadeOut(tween(durationMillis = 90)) using SizeTransform(clip = false)
+                },
+                label = "tags mode",
+            ) { adding ->
+                val newTagBounds = Modifier.sharedBounds(
+                    sharedContentState = rememberSharedContentState(NEW_TAG_KEY),
+                    animatedVisibilityScope = this,
+                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                )
+                val tagChip: @Composable (String) -> Unit = { tag ->
+                    TagChip(
+                        text = tag,
+                        selected = tag in selectedTags,
+                        suggested = tag in suggestedTags,
+                        onSelectedChange = { onTagToggle(tag) },
+                        modifier = Modifier.sharedElement(
+                            state = rememberSharedContentState("tag:$tag"),
+                            animatedVisibilityScope = this,
+                        ),
+                    )
+                }
+
+                if (adding) {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        NewTagField(
+                            value = newTagName,
+                            onValueChange = onNewTagNameChange,
+                            onDone = { onAddTag(newTagName) },
+                            modifier = newTagBounds,
+                        )
+                        if (candidateTags.isNotEmpty()) {
+                            TagGroupLabel("FROM THIS PAGE")
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                candidateTags.forEach { CandidateTagChip(it, onClick = { onAddTag(it) }) }
+                            }
+                        }
+                        if (orderedTags.isNotEmpty()) {
+                            TagGroupLabel("YOUR TAGS")
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                orderedTags.forEach { tagChip(it) }
+                            }
+                        }
+                    }
+                } else {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        orderedTags.forEach { tagChip(it) }
+                        NewTagChip(onClick = onStartNewTag, modifier = newTagBounds)
+                    }
+                }
             }
         }
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            orderedTags.forEach { tag ->
-                TagChip(
-                    text = tag,
-                    selected = tag in selectedTags,
-                    suggested = tag in suggestedTags,
-                    onSelectedChange = { onTagToggle(tag) },
-                )
+    }
+}
+
+@Composable
+private fun TagsLabelRow(isAddingTag: Boolean, isAnalyzing: Boolean, hasSuggestions: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        FieldLabel("TAGS")
+        AnimatedVisibility(visible = isAddingTag) {
+            Text(
+                "New tag",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 16.sp, letterSpacing = 0.4.sp),
+                color = Synapse,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+        Box(Modifier.weight(1f))
+        AnimatedVisibility(visible = !isAddingTag, enter = fadeIn(), exit = fadeOut()) {
+            when {
+                isAnalyzing -> TagsHint("Reading page…", Muted)
+                hasSuggestions -> TagsHint("Suggested from page", Synapse)
             }
-            NewTagChip(onClick = onNewTag)
         }
     }
 }
@@ -343,33 +452,59 @@ private fun TagsHint(text: String, color: Color) {
     )
 }
 
-/** Placeholder name prompt until the new-tag flow gets its own design. */
 @Composable
-private fun NewTagDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
-    var name by rememberSaveable { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Panel,
-        title = { Text("New tag", color = Ink) },
-        text = {
-            FieldBox(
-                value = name,
-                onValueChange = { name = it },
-                placeholder = "e.g. reading list",
-                textStyle = TextStyle(fontFamily = Grotesk, fontSize = 17.sp, lineHeight = 23.sp),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onCreate(name.trim()) }, enabled = name.isNotBlank()) {
-                Text("Create", color = if (name.isNotBlank()) Synapse else Muted)
+private fun TagGroupLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, letterSpacing = 1.2.sp),
+        color = Muted,
+    )
+}
+
+/** Name input the "+ new tag" chip opens into. Takes focus on arrival so the keyboard rises with the morph. */
+@Composable
+private fun NewTagField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    val shape = RoundedCornerShape(10.dp)
+    val textStyle = TextStyle(fontFamily = Grotesk, fontSize = 15.sp, letterSpacing = 0.1.sp)
+
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        textStyle = textStyle.copy(color = Ink),
+        cursorBrush = SolidColor(Synapse),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        // Done with an empty name just closes the picker.
+        keyboardActions = KeyboardActions(onDone = { onDone() }),
+        modifier = modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester),
+        decorationBox = { innerTextField ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .background(Panel)
+                    .border(1.dp, Synapse, shape)
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                if (value.isEmpty()) {
+                    Text("tag name", style = textStyle, color = Muted)
+                }
+                innerTextField()
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = Muted) }
         },
     )
 }
+
+private const val NEW_TAG_KEY = "new-tag"
 
 // ── Save ──────────────────────────────────────────────────────────
 
@@ -410,9 +545,10 @@ private fun CreateLinkEmptyPreview() {
     KortexTheme {
         CreateLinkContent(
             url = "", onUrlChange = {}, title = "", onTitleChange = {},
-            tags = listOf("sample", "ticket", "to buy"), suggestedTags = emptyList(), isAnalyzing = false,
-            selectedTags = emptyList(), onTagToggle = {},
-            onBack = {}, onNewTag = {}, onSave = {},
+            tags = listOf("sample", "ticket", "to buy"), suggestedTags = emptyList(), candidateTags = emptyList(),
+            isAnalyzing = false, selectedTags = emptyList(), onTagToggle = {},
+            isAddingTag = false, newTagName = "", onNewTagNameChange = {}, onStartNewTag = {}, onAddTag = {},
+            onBack = {}, onSave = {},
         )
     }
 }
@@ -424,9 +560,26 @@ private fun CreateLinkFilledPreview() {
         CreateLinkContent(
             url = "https://curaahome.com/products/curaa-automatic-pepper-grinder",
             onUrlChange = {}, title = "Auto pepper grinder", onTitleChange = {},
-            tags = listOf("sample", "ticket", "to buy", "kitchen"), suggestedTags = listOf("kitchen", "to buy"), isAnalyzing = false,
+            tags = listOf("sample", "ticket", "to buy", "kitchen"), suggestedTags = listOf("kitchen", "to buy"),
+            candidateTags = emptyList(), isAnalyzing = false, selectedTags = listOf("to buy"), onTagToggle = {},
+            isAddingTag = false, newTagName = "", onNewTagNameChange = {}, onStartNewTag = {}, onAddTag = {},
+            onBack = {}, onSave = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun CreateLinkNewTagPreview() {
+    KortexTheme {
+        CreateLinkContent(
+            url = "https://curaahome.com/products/curaa-automatic-pepper-grinder",
+            onUrlChange = {}, title = "Auto pepper grinder", onTitleChange = {},
+            tags = listOf("sample", "ticket", "to buy", "kitchen"), suggestedTags = listOf("kitchen"),
+            candidateTags = listOf("homeware", "grinder", "curaahome"), isAnalyzing = false,
             selectedTags = listOf("to buy"), onTagToggle = {},
-            onBack = {}, onNewTag = {}, onSave = {},
+            isAddingTag = true, newTagName = "", onNewTagNameChange = {}, onStartNewTag = {}, onAddTag = {},
+            onBack = {}, onSave = {},
         )
     }
 }

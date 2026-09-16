@@ -7,6 +7,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.links.data.LinksRepository
 import dev.kortex.links.tagging.PageMetadataFetcher
 import dev.kortex.links.tagging.TagSuggester
+import dev.kortex.links.tagging.tagCandidates
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,12 +27,15 @@ data class CreateLinkUiState(
     /** Title the page gives itself; the screen fills it in only while the title field is empty. */
     val suggestedTitle: String? = null,
     val suggestedTags: List<String> = emptyList(),
+    /** New tag names read off the page, minus tags the user already has. */
+    val candidateTags: List<String> = emptyList(),
     val isAnalyzing: Boolean = false,
 )
 
 private data class LinkAnalysis(
     val suggestedTitle: String? = null,
     val suggestedTags: List<String> = emptyList(),
+    val candidateTags: List<String> = emptyList(),
     val isAnalyzing: Boolean = false,
 )
 
@@ -47,7 +51,16 @@ class CreateLinkViewModel @Inject constructor(
 
     val uiState: StateFlow<CreateLinkUiState> =
         combine(repository.observeTagNames(), analysis) { tags, current ->
-            CreateLinkUiState(tags, current.suggestedTitle, current.suggestedTags, current.isAnalyzing)
+            CreateLinkUiState(
+                tags = tags,
+                suggestedTitle = current.suggestedTitle,
+                suggestedTags = current.suggestedTags,
+                // Filtered here rather than in analyze() so a candidate disappears as soon as it's created.
+                candidateTags = current.candidateTags
+                    .filterNot { candidate -> tags.any { it.equals(candidate, ignoreCase = true) } }
+                    .take(MAX_CANDIDATE_TAGS),
+                isAnalyzing = current.isAnalyzing,
+            )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CreateLinkUiState())
 
     init {
@@ -97,7 +110,8 @@ class CreateLinkViewModel @Inject constructor(
         analysis.value = LinkAnalysis(isAnalyzing = true)
 
         val page = metadataFetcher.fetch(url)
-        analysis.value = LinkAnalysis(suggestedTitle = page.title, isAnalyzing = true)
+        val candidateTags = tagCandidates(page)
+        analysis.value = LinkAnalysis(suggestedTitle = page.title, candidateTags = candidateTags, isAnalyzing = true)
 
         val suggestedTags = try {
             tagSuggester.suggest(page).map { it.tagName }
@@ -108,11 +122,12 @@ class CreateLinkViewModel @Inject constructor(
             Log.w(TAG, "Tag suggestion failed for $url", e)
             emptyList()
         }
-        analysis.value = LinkAnalysis(suggestedTitle = page.title, suggestedTags = suggestedTags)
+        analysis.value = LinkAnalysis(suggestedTitle = page.title, suggestedTags = suggestedTags, candidateTags = candidateTags)
     }
 
     private companion object {
         const val TAG = "CreateLinkViewModel"
         const val URL_DEBOUNCE_MS = 600L
+        const val MAX_CANDIDATE_TAGS = 3
     }
 }

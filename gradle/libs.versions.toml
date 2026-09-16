@@ -23,6 +23,8 @@ appcompat = "1.6.1"
 material = "1.10.0"
 litert = "1.4.2"
 litertgpu = "1.4.2"
+mediapipe = "1.0.0"
+jsoup = "1.23.2"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -70,6 +72,8 @@ androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert"}
 litert-gpu = { group = "com.google.ai.edge.litert", name = "litert-gpu", version.ref = "litert"}
+mediapipe-tasks-text = { module = "com.google.mediapipe:tasks-text", version.ref = "mediapipe" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

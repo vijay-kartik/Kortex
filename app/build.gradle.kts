@@ -44,6 +44,11 @@ android {
         buildConfig = true
     }
 
+    // MediaPipe memory-maps .tflite models straight from the APK, which requires them uncompressed.
+    androidResources {
+        noCompress += "tflite"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

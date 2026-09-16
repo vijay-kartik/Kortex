@@ -24,14 +24,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +53,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.app.ui.Edge
 import dev.kortex.app.ui.Grotesk
 import dev.kortex.app.ui.Ink
@@ -65,28 +71,50 @@ import dev.kortex.app.ui.components.TagChip
 fun CreateLinkScreen(
     onBack: () -> Unit = {},
     modifier: Modifier = Modifier,
-    tags: List<String> = emptyList(),
-    onNewTag: () -> Unit = {},
-    onSave: (url: String, title: String, tags: List<String>) -> Unit = { _, _, _ -> },
+    viewModel: CreateLinkViewModel = hiltViewModel(),
 ) {
     BackHandler(onBack = onBack)
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var url by rememberSaveable { mutableStateOf("") }
     var title by rememberSaveable { mutableStateOf("") }
     var selectedTags by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var showNewTagDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Fill in the page's own title unless the user has already typed one.
+    LaunchedEffect(uiState.suggestedTitle) {
+        val suggestedTitle = uiState.suggestedTitle
+        if (suggestedTitle != null && title.isBlank()) title = suggestedTitle
+    }
 
     CreateLinkContent(
         url = url,
-        onUrlChange = { url = it },
+        onUrlChange = {
+            url = it
+            viewModel.onUrlChange(it)
+        },
         title = title,
         onTitleChange = { title = it },
-        tags = tags,
+        tags = uiState.tags,
+        suggestedTags = uiState.suggestedTags,
+        isAnalyzing = uiState.isAnalyzing,
         selectedTags = selectedTags,
         onTagToggle = { tag -> selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag },
         onBack = onBack,
-        onNewTag = onNewTag,
-        onSave = { onSave(url.trim(), title.trim(), selectedTags) },
+        onNewTag = { showNewTagDialog = true },
+        onSave = { viewModel.save(url.trim(), title.trim(), selectedTags, onSaved = onBack) },
         modifier = modifier,
     )
+
+    if (showNewTagDialog) {
+        NewTagDialog(
+            onDismiss = { showNewTagDialog = false },
+            onCreate = { name ->
+                viewModel.createTag(name)
+                if (name !in selectedTags) selectedTags = selectedTags + name
+                showNewTagDialog = false
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -97,6 +125,8 @@ private fun CreateLinkContent(
     title: String,
     onTitleChange: (String) -> Unit,
     tags: List<String>,
+    suggestedTags: List<String>,
+    isAnalyzing: Boolean,
     selectedTags: List<String>,
     onTagToggle: (String) -> Unit,
     onBack: () -> Unit,
@@ -151,7 +181,14 @@ private fun CreateLinkContent(
         ) {
             AddressField(url = url, onUrlChange = onUrlChange, domain = domain)
             TitleField(title = title, onTitleChange = onTitleChange)
-            TagsSection(tags = tags, selectedTags = selectedTags, onTagToggle = onTagToggle, onNewTag = onNewTag)
+            TagsSection(
+                tags = tags,
+                suggestedTags = suggestedTags,
+                isAnalyzing = isAnalyzing,
+                selectedTags = selectedTags,
+                onTagToggle = onTagToggle,
+                onNewTag = onNewTag,
+            )
         }
     }
 }
@@ -261,26 +298,77 @@ private fun FieldBox(
 @Composable
 private fun TagsSection(
     tags: List<String>,
+    suggestedTags: List<String>,
+    isAnalyzing: Boolean,
     selectedTags: List<String>,
     onTagToggle: (String) -> Unit,
     onNewTag: () -> Unit,
 ) {
+    // Suggestions lead, best match first; the rest keep their stored order.
+    val orderedTags = remember(tags, suggestedTags) {
+        suggestedTags.filter { it in tags } + tags.filterNot { it in suggestedTags }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        FieldLabel("TAGS")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FieldLabel("TAGS")
+            Box(Modifier.weight(1f))
+            when {
+                isAnalyzing -> TagsHint("Reading page…", Muted)
+                suggestedTags.isNotEmpty() -> TagsHint("Suggested from page", Synapse)
+            }
+        }
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            tags.forEach { tag ->
+            orderedTags.forEach { tag ->
                 TagChip(
                     text = tag,
                     selected = tag in selectedTags,
+                    suggested = tag in suggestedTags,
                     onSelectedChange = { onTagToggle(tag) },
                 )
             }
             NewTagChip(onClick = onNewTag)
         }
     }
+}
+
+@Composable
+private fun TagsHint(text: String, color: Color) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 16.sp),
+        color = color,
+    )
+}
+
+/** Placeholder name prompt until the new-tag flow gets its own design. */
+@Composable
+private fun NewTagDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+    var name by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Panel,
+        title = { Text("New tag", color = Ink) },
+        text = {
+            FieldBox(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = "e.g. reading list",
+                textStyle = TextStyle(fontFamily = Grotesk, fontSize = 17.sp, lineHeight = 23.sp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onCreate(name.trim()) }, enabled = name.isNotBlank()) {
+                Text("Create", color = if (name.isNotBlank()) Synapse else Muted)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Muted) }
+        },
+    )
 }
 
 // ── Save ──────────────────────────────────────────────────────────
@@ -307,7 +395,7 @@ private fun SaveLinkButton(enabled: Boolean, onClick: () -> Unit) {
 }
 
 /** Host of a well-formed http(s) URL without "www.", or null while the address isn't usable yet. */
-private fun linkDomain(url: String): String? {
+internal fun linkDomain(url: String): String? {
     val uri = Uri.parse(url.trim())
     if (uri.scheme !in setOf("http", "https")) return null
     val host = uri.host?.takeIf { '.' in it && !it.startsWith('.') && !it.endsWith('.') } ?: return null
@@ -322,7 +410,7 @@ private fun CreateLinkEmptyPreview() {
     KortexTheme {
         CreateLinkContent(
             url = "", onUrlChange = {}, title = "", onTitleChange = {},
-            tags = listOf("sample", "ticket", "to buy"),
+            tags = listOf("sample", "ticket", "to buy"), suggestedTags = emptyList(), isAnalyzing = false,
             selectedTags = emptyList(), onTagToggle = {},
             onBack = {}, onNewTag = {}, onSave = {},
         )
@@ -336,7 +424,7 @@ private fun CreateLinkFilledPreview() {
         CreateLinkContent(
             url = "https://curaahome.com/products/curaa-automatic-pepper-grinder",
             onUrlChange = {}, title = "Auto pepper grinder", onTitleChange = {},
-            tags = listOf("sample", "ticket", "to buy"),
+            tags = listOf("sample", "ticket", "to buy", "kitchen"), suggestedTags = listOf("kitchen", "to buy"), isAnalyzing = false,
             selectedTags = listOf("to buy"), onTagToggle = {},
             onBack = {}, onNewTag = {}, onSave = {},
         )

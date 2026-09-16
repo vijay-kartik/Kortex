@@ -51,6 +51,12 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
+    implementation(libs.kotlinx.coroutines.android)
+
+    // Link tagging: page metadata scraping + on-device text embeddings
+    implementation(libs.jsoup)
+    implementation(libs.mediapipe.tasks.text)
+
     // Room
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

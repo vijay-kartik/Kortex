@@ -14,7 +14,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,17 +43,29 @@ fun RootScreen(
     requestedSessionId: String? = null,
     onSessionRequestConsumed: () -> Unit = {},
 ) {
-    var tab by remember { mutableIntStateOf(0) }
+    var selected by rememberSaveable { mutableStateOf(KortexTab.Links) }
+    var expanded by rememberSaveable { mutableStateOf(TabCategory.MyInfo) }
+    // Coming back to Agent restores the leaf the user left, rather than resetting to Chat.
+    var lastAgentTab by rememberSaveable { mutableStateOf(KortexTab.Chat) }
     var showSettings by remember { mutableStateOf(false) }
     var showCreateLinks by rememberSaveable { mutableStateOf(false) }
     val vm: ChatViewModel = viewModel()
     val chatUi by vm.ui.collectAsStateWithLifecycle()
+    val homeVm: HomeViewModel = viewModel()
+    val onboardingSeen by homeVm.onboardingSeen.collectAsStateWithLifecycle()
+    val onboarding = !onboardingSeen && expanded == TabCategory.MyInfo
+
+    fun openTab(tab: KortexTab) {
+        selected = tab
+        expanded = tab.category
+        if (tab.category == TabCategory.Agent) lastAgentTab = tab
+    }
 
     // Notification tap → load that session on the Chat tab.
     LaunchedEffect(requestedSessionId) {
         if (requestedSessionId != null) {
             vm.loadSession(requestedSessionId)
-            tab = 0
+            openTab(KortexTab.Chat)
             onSessionRequestConsumed()
         }
     }
@@ -68,28 +79,46 @@ fun RootScreen(
                 topBar = {
                     Column {
                         KortexAppBar(
-                            tab,
-                            chatUi,
-                            { showSettings = true },
-                            { i -> tab = i }
+                            selected = selected,
+                            expanded = expanded,
+                            onboarding = onboarding,
+                            chatUi = chatUi,
+                            onMcpSettingsClick = { showSettings = true },
+                            onCategorySelected = { category ->
+                                expanded = category
+                                selected = when (category) {
+                                    TabCategory.Agent -> lastAgentTab
+                                    TabCategory.MyInfo -> KortexTab.Links
+                                }
+                            },
+                            onTabSelected = ::openTab,
                         )
                     }
                 },
             ) { innerPadding ->
                 Box(Modifier.padding(innerPadding)) {
-                    when (tab) {
-                        0 -> ChatScreen(vm = vm)
-                        1 -> GraphScreen(vm = viewModel())
-                        2 -> HistoryScreen(
-                            vm = vm,
-                            onSelectSession = { sessionId ->
-                                vm.loadSession(sessionId)
-                                tab = 0
+                    when {
+                        onboarding -> MyInfoOnboarding(
+                            onOpenLinks = {
+                                homeVm.markOnboardingSeen()
+                                openTab(KortexTab.Links)
                             }
                         )
 
-                        3 -> RunsScreen()
-                        else -> LinksScreen(onCreateLink = { showCreateLinks = true })
+                        else -> when (selected) {
+                            KortexTab.Chat -> ChatScreen(vm = vm)
+                            KortexTab.Graph -> GraphScreen(vm = viewModel())
+                            KortexTab.History -> HistoryScreen(
+                                vm = vm,
+                                onSelectSession = { sessionId ->
+                                    vm.loadSession(sessionId)
+                                    openTab(KortexTab.Chat)
+                                }
+                            )
+
+                            KortexTab.Runs -> RunsScreen()
+                            KortexTab.Links -> LinksScreen(onCreateLink = { showCreateLinks = true })
+                        }
                     }
                 }
             }

@@ -124,7 +124,7 @@ fun CandidateTagChip(text: String, onClick: () -> Unit, modifier: Modifier = Mod
     )
 }
 
-private fun Modifier.dashedBorder(color: Color, cornerRadius: Dp = 8.dp) = drawBehind {
+internal fun Modifier.dashedBorder(color: Color, cornerRadius: Dp = 8.dp) = drawBehind {
     val stroke = 1.dp.toPx()
     drawRoundRect(
         color = color,

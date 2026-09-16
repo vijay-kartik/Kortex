@@ -134,7 +134,10 @@ class LinkImageStore @Inject constructor(
     }
 
     private suspend fun fetch(imageUrl: String, target: File, onProgress: (Float?) -> Unit) {
-        val connection = URL(imageUrl).openConnection() as HttpURLConnection
+        // Pages often still declare http:// image addresses, which Android refuses to load
+        // (cleartext is off). The same CDN almost always serves https, so ask for that instead.
+        val secureUrl = if (imageUrl.startsWith("http://")) "https://" + imageUrl.removePrefix("http://") else imageUrl
+        val connection = URL(secureUrl).openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = FETCH_TIMEOUT_MS
             connection.readTimeout = FETCH_TIMEOUT_MS

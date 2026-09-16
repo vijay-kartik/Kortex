@@ -9,19 +9,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.FloatingActionButton
@@ -42,7 +42,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -56,7 +55,6 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -66,7 +64,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.app.R
-import dev.kortex.app.ui.Edge
 import dev.kortex.app.ui.Grotesk
 import dev.kortex.app.ui.Ink
 import dev.kortex.app.ui.KortexTheme
@@ -92,6 +89,9 @@ fun LinksScreen(modifier: Modifier = Modifier, onCreateLink: () -> Unit = {}, vi
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        // RootScreen's Scaffold already pads for the system bars; the default insets here would
+        // add the status bar height again above the header (and the nav bar below the list).
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onCreateLink,
@@ -103,7 +103,12 @@ fun LinksScreen(modifier: Modifier = Modifier, onCreateLink: () -> Unit = {}, vi
         }
     ) { innerPadding ->
         Box(
-            modifier = modifier.padding(innerPadding).fillMaxSize().imePadding(),
+            modifier = modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                // The nav bar is already padded by the parent, so the keyboard only adds what's above it.
+                .consumeWindowInsets(WindowInsets.navigationBars)
+                .imePadding(),
             contentAlignment = Alignment.Center
         ) {
             when (val state = uiState) {
@@ -169,6 +174,7 @@ fun LinksWithSearchScreen(
     val nowMillis = remember(state.links) { System.currentTimeMillis() }
     // One card animates at a time: a tap anywhere restarts the animation on the tapped card.
     var copyTap by remember { mutableStateOf<CopyTap?>(null) }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
 
     Column(modifier.fillMaxSize()) {
         Column(
@@ -177,11 +183,13 @@ fun LinksWithSearchScreen(
                 .padding(start = 16.dp, end = 16.dp, top = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            LinksHeader(
+            LinksSearchHeader(
                 linkCount = state.links.size,
                 tagCount = state.tags.size,
                 query = query,
                 onQueryChange = onQueryChange,
+                expanded = searchExpanded,
+                onExpandedChange = { searchExpanded = it },
             )
             if (state.tags.isNotEmpty()) {
                 TagFilters(tags = state.tags, selectedTags = state.selectedTags, onTagToggle = onTagToggle)
@@ -219,63 +227,6 @@ fun LinksWithSearchScreen(
             }
         }
     }
-}
-
-@Composable
-private fun LinksHeader(linkCount: Int, tagCount: Int, query: String, onQueryChange: (String) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text(
-            "${countLabel(linkCount, "LINK")} · ${countLabel(tagCount, "TAG")}",
-            style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 1.sp),
-            color = Muted,
-        )
-        Box(Modifier.weight(1f))
-        SearchField(query = query, onQueryChange = onQueryChange)
-    }
-}
-
-/** Hugs "Search" at rest and grows with the query, up to a cap. */
-@Composable
-private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
-    val textStyle = MaterialTheme.typography.labelLarge
-    BasicTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        singleLine = true,
-        textStyle = textStyle.copy(color = Ink),
-        cursorBrush = SolidColor(Synapse),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        modifier = Modifier.widthIn(max = 220.dp),
-        decorationBox = { innerTextField ->
-            Row(
-                modifier = Modifier
-                    .clip(shape)
-                    .background(Panel)
-                    .border(1.dp, Edge, shape)
-                    .padding(start = 12.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    painterResource(R.drawable.ic_search),
-                    contentDescription = null,
-                    tint = Muted,
-                    modifier = Modifier.size(16.dp),
-                )
-                Box {
-                    if (query.isEmpty()) Text("Search", style = textStyle, color = Muted)
-                    innerTextField()
-                }
-            }
-        },
-    )
 }
 
 @Composable
@@ -416,8 +367,6 @@ private fun LinkCard(
 // glyph centre at 33dp — where the copy ring is anchored.
 private val CARD_INSET = 15.dp
 private val GLYPH_SIZE = 36.dp
-
-private fun countLabel(count: Int, noun: String) = "$count ${if (count == 1) noun else noun + "S"}"
 
 /** Compact, uppercase age: NOW, 5M AGO, 3H AGO, 3D AGO, 2W AGO, 4MO AGO, 1Y AGO. */
 private fun relativeAge(createdAtMillis: Long, nowMillis: Long): String {

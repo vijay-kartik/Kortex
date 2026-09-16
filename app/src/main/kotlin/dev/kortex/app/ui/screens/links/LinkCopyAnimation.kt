@@ -1,7 +1,6 @@
 package dev.kortex.app.ui.screens.links
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
@@ -20,6 +19,9 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import dev.kortex.app.ui.Edge
+import dev.kortex.app.ui.EmphasizedAccelerate
+import dev.kortex.app.ui.EmphasizedDecelerate
+import dev.kortex.app.ui.StandardEasing
 import dev.kortex.app.ui.Synapse
 import dev.kortex.app.ui.SynapseDim
 import kotlinx.coroutines.coroutineScope
@@ -80,7 +82,7 @@ internal class LinkCopyAnimation {
             },
         )
         delay(HOLD_MS)
-        release.animateTo(1f, tween(RELEASE_MS, easing = Standard))
+        release.animateTo(1f, tween(RELEASE_MS, easing = StandardEasing))
         // Sweep and ring are already invisible, so snapping back is unseen.
         reset()
     }
@@ -136,10 +138,6 @@ internal class LinkCopyAnimation {
         const val RELEASE_MS = 240
         const val URL_CROSSFADE_MS = 200
         const val PHASE_1_SHARE = 150f / 390f
-
-        val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
-        val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
-        val Standard = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
         val SWEEP_START_X = (-90).dp
         val SWEEP_END_X = 300.dp

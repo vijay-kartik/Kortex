@@ -107,6 +107,10 @@ class GraphViewModel @Inject constructor(
     private val _edges = MutableStateFlow<List<GraphUiEdge>>(emptyList())
     val edges: StateFlow<List<GraphUiEdge>> = _edges.asStateFlow()
 
+    /** False until the first [loadGraph] finishes, so the screen can tell "still loading" from "empty graph". */
+    private val _loaded = MutableStateFlow(false)
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
     private val _selectedNodeDetails = MutableStateFlow<NodeDetails?>(null)
     val selectedNodeDetails: StateFlow<NodeDetails?> = _selectedNodeDetails.asStateFlow()
 
@@ -198,6 +202,7 @@ class GraphViewModel @Inject constructor(
 
             _nodes.value = uiNodes
             _edges.value = uiEdges
+            _loaded.value = true
         }
     }
 
@@ -220,6 +225,7 @@ class GraphViewModel @Inject constructor(
 fun GraphScreen(vm: GraphViewModel = hiltViewModel()) {
     val nodes by vm.nodes.collectAsState()
     val edges by vm.edges.collectAsState()
+    val loaded by vm.loaded.collectAsState()
     val selectedNodeDetails by vm.selectedNodeDetails.collectAsState()
     var showResetDialog by remember { mutableStateOf(false) }
 
@@ -229,11 +235,14 @@ fun GraphScreen(vm: GraphViewModel = hiltViewModel()) {
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF090A0C))) {
         if (nodes.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Graph is empty.", color = Color(0xFF587291))
+            // Blank until the first load finishes, rather than flashing "Graph is empty."
+            if (loaded) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Graph is empty.", color = Color(0xFF587291))
+                }
             }
         } else {
             ForceDirectedGraphCanvas(nodes, edges) { nodeId ->

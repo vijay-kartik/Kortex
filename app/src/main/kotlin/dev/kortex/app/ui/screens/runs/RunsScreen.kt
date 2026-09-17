@@ -69,8 +69,9 @@ class RunsViewModel @Inject constructor(
     private val store: AgentRunStore,
 ) : ViewModel() {
 
-    val summaries: StateFlow<List<AgentRunSummary>> =
-        store.observeSummaries().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Newest first. Null until the store's first read, so the list can tell "still loading" from "no runs". */
+    val summaries: StateFlow<List<AgentRunSummary>?> =
+        store.observeSummaries().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _selected = MutableStateFlow<AgentRun?>(null)
     val selected: StateFlow<AgentRun?> = _selected.asStateFlow()
@@ -87,9 +88,10 @@ fun RunsScreen(vm: RunsViewModel = hiltViewModel()) {
 
     val current = selected
     if (current == null) {
-        RunList(summaries, onOpen = vm::open, onClear = vm::clearAll)
+        // Nothing until the first read lands, rather than flashing the empty state.
+        summaries?.let { RunList(it, onOpen = vm::open, onClear = vm::clearAll) }
     } else {
-        val ids = summaries.map { it.id }
+        val ids = summaries.orEmpty().map { it.id }
         val idx = ids.indexOf(current.id)
         RunDetail(
             run = current,

@@ -12,8 +12,10 @@ import dev.kortex.links.tagging.PageMetadataFetcher
 import dev.kortex.links.tagging.TagSuggester
 import dev.kortex.links.tagging.tagCandidates
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +23,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -64,7 +68,12 @@ data class CreateLinkUiState(
     val candidateTags: List<String> = emptyList(),
     val phase: PageReadPhase = PageReadPhase.Idle,
     val image: PreviewImage = PreviewImage.Unknown,
+    /** Set when the address in the field is already saved; saving it again is blocked. */
+    val alreadySaved: AlreadySavedLink? = null,
 )
+
+/** The saved link that [url] (the field's trimmed text when checked) is an address of. */
+data class AlreadySavedLink(val url: String, val title: String)
 
 private data class LinkAnalysis(
     val url: String = "",
@@ -76,7 +85,7 @@ private data class LinkAnalysis(
     val image: PreviewImage = PreviewImage.Unknown,
 )
 
-@OptIn(FlowPreview::class)
+@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CreateLinkViewModel @Inject constructor(
     private val repository: LinksRepository,
@@ -87,8 +96,20 @@ class CreateLinkViewModel @Inject constructor(
     private val url = MutableStateFlow("")
     private val analysis = MutableStateFlow(LinkAnalysis())
 
+    // Not debounced like analysis: Save is disabled from this, so it should keep up with typing.
+    private val alreadySaved: Flow<AlreadySavedLink?> = url
+        .map { it.trim() }
+        .distinctUntilChanged()
+        .flatMapLatest { typed ->
+            if (linkDomain(typed) == null) {
+                flowOf(null)
+            } else {
+                repository.observeSavedLink(typed).map { saved -> saved?.let { AlreadySavedLink(typed, it.title) } }
+            }
+        }
+
     val uiState: StateFlow<CreateLinkUiState> =
-        combine(repository.observeTagNames(), analysis) { tags, current ->
+        combine(repository.observeTagNames(), analysis, alreadySaved) { tags, current, saved ->
             CreateLinkUiState(
                 tags = tags,
                 analyzedUrl = current.url,
@@ -100,6 +121,7 @@ class CreateLinkViewModel @Inject constructor(
                     .take(MAX_CANDIDATE_TAGS),
                 phase = current.phase,
                 image = current.image,
+                alreadySaved = saved,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CreateLinkUiState())
 
@@ -132,6 +154,7 @@ class CreateLinkViewModel @Inject constructor(
     /**
      * Ignores repeat taps while a save is in flight. Saving doesn't wait for the page or its image:
      * whatever is still loading finishes in the background and lands on the saved link.
+     * [onSaved] isn't called when the address turns out to be saved already; [CreateLinkUiState.alreadySaved] shows why.
      */
     fun save(url: String, title: String, tags: List<String>, imageHidden: Boolean, onSaved: () -> Unit) {
         if (isSaving) return
@@ -144,8 +167,7 @@ class CreateLinkViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                repository.saveLink(url, title, tags, image, imageHidden)
-                onSaved()
+                if (repository.saveLink(url, title, tags, image, imageHidden)) onSaved()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

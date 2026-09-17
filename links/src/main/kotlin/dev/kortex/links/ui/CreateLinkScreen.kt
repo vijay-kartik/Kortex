@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.kortex.design.Alarm
 import dev.kortex.design.Edge
 import dev.kortex.design.Grotesk
 import dev.kortex.design.Ink
@@ -95,6 +96,8 @@ fun CreateLinkScreen(
     var selectedTags by rememberSaveable { mutableStateOf(listOf<String>()) }
     var isAddingTag by rememberSaveable { mutableStateOf(false) }
     var newTagName by rememberSaveable { mutableStateOf("") }
+    // Set as the form closes after saving, so the link it just saved doesn't flash up as a duplicate.
+    var saved by remember { mutableStateOf(false) }
 
     fun closeNewTag() {
         newTagName = ""
@@ -119,9 +122,13 @@ fun CreateLinkScreen(
         if (suggestedTitle != null && title.isBlank() && uiState.analyzedUrl == url.trim()) title = suggestedTitle
     }
 
+    // Only a result checked against what's in the field right now counts.
+    val alreadySaved = uiState.alreadySaved?.takeIf { !saved && it.url == url.trim() }
+
     CreateLinkContent(
         url = url,
         onUrlChange = { url = it },
+        alreadySaved = alreadySaved,
         title = title,
         onTitleChange = { title = it },
         tags = uiState.tags,
@@ -149,7 +156,12 @@ fun CreateLinkScreen(
             closeNewTag()
         },
         onBack = onBack,
-        onSave = { viewModel.save(url.trim(), title.trim(), selectedTags, imageHidden, onSaved = onBack) },
+        onSave = {
+            viewModel.save(url.trim(), title.trim(), selectedTags, imageHidden) {
+                saved = true
+                onBack()
+            }
+        },
         modifier = modifier,
     )
 }
@@ -162,6 +174,8 @@ private fun CreateLinkContent(
     title: String,
     onTitleChange: (String) -> Unit,
     tags: List<String>,
+    /** The saved link this address duplicates; blocks saving. */
+    alreadySaved: AlreadySavedLink? = null,
     suggestedTags: List<String>,
     candidateTags: List<String>,
     phase: PageReadPhase,
@@ -213,7 +227,7 @@ private fun CreateLinkContent(
                     .imePadding()
                     .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp)
             ) {
-                SaveLinkButton(enabled = domain != null, onClick = onSave)
+                SaveLinkButton(enabled = domain != null && alreadySaved == null, onClick = onSave)
             }
         },
     ) { innerPadding ->
@@ -225,7 +239,7 @@ private fun CreateLinkContent(
                 .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            AddressField(url = url, onUrlChange = onUrlChange, domain = domain)
+            AddressField(url = url, onUrlChange = onUrlChange, domain = domain, alreadySaved = alreadySaved)
             TitleField(title = title, onTitleChange = onTitleChange)
             TagsSection(
                 tags = tags,
@@ -260,7 +274,7 @@ private fun CreateLinkContent(
 // ── Fields ────────────────────────────────────────────────────────
 
 @Composable
-private fun AddressField(url: String, onUrlChange: (String) -> Unit, domain: String?) {
+private fun AddressField(url: String, onUrlChange: (String) -> Unit, domain: String?, alreadySaved: AlreadySavedLink?) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FieldLabel("ADDRESS")
         FieldBox(
@@ -271,10 +285,15 @@ private fun AddressField(url: String, onUrlChange: (String) -> Unit, domain: Str
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
             inlinePlaceholder = true,
         )
+        val (hint, hintColor) = when {
+            alreadySaved != null -> "Already saved as “${alreadySaved.title.ifBlank { "Untitled link" }}”" to Alarm
+            domain != null -> "✓ $domain" to Synapse
+            else -> "Paste a URL — the title fills in when available." to Muted
+        }
         Text(
-            text = if (domain != null) "✓ $domain" else "Paste a URL — the title fills in when available.",
+            text = hint,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 16.sp),
-            color = if (domain != null) Synapse else Muted,
+            color = hintColor,
         )
     }
 }

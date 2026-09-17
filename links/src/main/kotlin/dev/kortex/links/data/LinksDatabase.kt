@@ -13,9 +13,10 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Entity(tableName = "links")
+@Entity(tableName = "links", indices = [Index(value = ["urlKey"], unique = true)])
 data class LinkEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** The address as saved, tracking parameters and all; opening the link uses this. */
     val url: String,
     val title: String,
     val createdAtMillis: Long,
@@ -25,6 +26,8 @@ data class LinkEntity(
     val imagePath: String? = null,
     /** The user chose the link icon over the image. The thumbnail stays on disk so it can come back. */
     @ColumnInfo(defaultValue = "0") val imageHidden: Boolean = false,
+    /** [linkUrlKey] of [url]. Unique, so the same page can't be saved twice. */
+    val urlKey: String = linkUrlKey(url),
 )
 
 @Entity(tableName = "tags", indices = [Index(value = ["name"], unique = true)])
@@ -67,7 +70,7 @@ data class TagLinkCount(
     val linkCount: Int,
 )
 
-@Database(entities = [LinkEntity::class, TagEntity::class, LinkTagCrossRef::class], version = 2, exportSchema = false)
+@Database(entities = [LinkEntity::class, TagEntity::class, LinkTagCrossRef::class], version = 3, exportSchema = false)
 abstract class LinksDatabase : RoomDatabase() {
     abstract fun linkDao(): LinkDao
     abstract fun tagDao(): TagDao
@@ -79,6 +82,26 @@ abstract class LinksDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE links ADD COLUMN imageUrl TEXT")
                 db.execSQL("ALTER TABLE links ADD COLUMN imagePath TEXT")
                 db.execSQL("ALTER TABLE links ADD COLUMN imageHidden INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /**
+         * Makes addresses unique by [linkUrlKey]. Keys are computed in Kotlin, so existing rows are
+         * backfilled one by one before the unique index goes on. Assumes no duplicates exist yet:
+         * if two rows share a key, creating the index fails.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE links ADD COLUMN urlKey TEXT NOT NULL DEFAULT ''")
+                val rows = buildList {
+                    db.query("SELECT id, url FROM links").use { cursor ->
+                        while (cursor.moveToNext()) add(cursor.getLong(0) to cursor.getString(1))
+                    }
+                }
+                rows.forEach { (id, url) ->
+                    db.execSQL("UPDATE links SET urlKey = ? WHERE id = ?", arrayOf<Any>(linkUrlKey(url), id))
+                }
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_links_urlKey` ON `links` (`urlKey`)")
             }
         }
     }

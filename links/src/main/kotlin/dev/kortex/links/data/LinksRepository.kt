@@ -1,5 +1,6 @@
 package dev.kortex.links.data
 
+import android.database.sqlite.SQLiteConstraintException
 import dev.kortex.links.images.LinkImageSource
 import dev.kortex.links.images.LinkImageStore
 import kotlinx.coroutines.flow.Flow
@@ -26,9 +27,14 @@ class LinksRepository @Inject constructor(
         tagDao.insert(TagEntity(name = name.trim()))
     }
 
+    /** The saved link that [url] is an address of (see [linkUrlKey]), or null; follows saves as they happen. */
+    fun observeSavedLink(url: String): Flow<LinkEntity?> = linkDao.observeByUrlKey(linkUrlKey(url))
+
     /**
      * Saves right away; the thumbnail follows when its download finishes, even if that's after the
      * form has closed. [imageHidden] is kept either way so the user's choice survives a late image.
+     *
+     * @return false, saving nothing, when this address is already saved.
      */
     suspend fun saveLink(
         url: String,
@@ -36,18 +42,24 @@ class LinksRepository @Inject constructor(
         tagNames: List<String>,
         image: LinkImageSource = LinkImageSource.Unknown,
         imageHidden: Boolean = false,
-    ) {
+    ): Boolean {
         val tagIds = if (tagNames.isEmpty()) emptyList() else tagDao.getByNames(tagNames).map { it.id }
-        val linkId = linkDao.insertWithTags(
-            LinkEntity(
-                url = url,
-                title = title,
-                createdAtMillis = System.currentTimeMillis(),
-                imageUrl = (image as? LinkImageSource.Known)?.imageUrl,
-                imageHidden = imageHidden,
-            ),
-            tagIds,
-        )
+        val linkId = try {
+            linkDao.insertWithTags(
+                LinkEntity(
+                    url = url,
+                    title = title,
+                    createdAtMillis = System.currentTimeMillis(),
+                    imageUrl = (image as? LinkImageSource.Known)?.imageUrl,
+                    imageHidden = imageHidden,
+                ),
+                tagIds,
+            )
+        } catch (e: SQLiteConstraintException) {
+            // The unique urlKey index: the form's live check can lag a keystroke behind the field.
+            return false
+        }
         imageStore.attachWhenReady(linkId, url, image)
+        return true
     }
 }

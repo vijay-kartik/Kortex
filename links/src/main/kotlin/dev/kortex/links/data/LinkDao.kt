@@ -13,6 +13,11 @@ abstract class LinkDao {
     @Query("SELECT * FROM links ORDER BY createdAtMillis DESC")
     abstract fun observeLinksWithTags(): Flow<List<LinkWithTags>>
 
+    /** The saved link with this [linkUrlKey], if any; re-emits as links are saved or removed. */
+    @Query("SELECT * FROM links WHERE urlKey = :urlKey LIMIT 1")
+    abstract fun observeByUrlKey(urlKey: String): Flow<LinkEntity?>
+
+    /** Throws [android.database.sqlite.SQLiteConstraintException] if the address is already saved. */
     @Insert
     abstract suspend fun insert(link: LinkEntity): Long
 

@@ -1,0 +1,14 @@
+<!-- Confirm tick at icon size (Figma icon/check, 20dp grid), e.g. the new-tag field. The copy
+     animation's tick is ic_check. Stroke-drawn; tint via Icon(tint = …). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.833"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M4.167,10L8.333,14.167L16.667,5.833"/>
+</vector>

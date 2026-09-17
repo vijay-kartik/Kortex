@@ -90,11 +90,11 @@ fun TagChip(
 }
 
 @Composable
-fun NewTagChip(onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun NewTagChip(onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = Synapse) {
     Text(
         "+ new tag",
         style = MaterialTheme.typography.labelLarge,
-        color = Synapse,
+        color = color,
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)

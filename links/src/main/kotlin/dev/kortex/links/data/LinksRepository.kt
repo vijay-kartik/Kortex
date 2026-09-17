@@ -38,6 +38,14 @@ class LinksRepository @Inject constructor(
         imageStore.deleteImages(id)
     }
 
+    /**
+     * Replaces the link's tags with [tagNames], creating any that don't exist yet. Tags the link
+     * drops that no other link carries are deleted, as [deleteLink] does.
+     */
+    suspend fun setLinkTags(linkId: Long, tagNames: List<String>) {
+        linkDao.replaceTags(linkId, tagNames.map { it.trim() }.filter { it.isNotEmpty() })
+    }
+
     /** The saved link that [url] is an address of (see [linkUrlKey]), or null; follows saves as they happen. */
     fun observeSavedLink(url: String): Flow<LinkEntity?> = linkDao.observeByUrlKey(linkUrlKey(url))
 

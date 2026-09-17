@@ -53,6 +53,43 @@ abstract class LinkDao {
     @Query("SELECT id FROM links")
     abstract suspend fun getAllIds(): List<Long>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM links WHERE id = :id)")
+    abstract suspend fun exists(id: Long): Boolean
+
+    /** Tags that already exist (names are case-insensitive) are left as they are. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun insertTags(tags: List<TagEntity>)
+
+    /** Matches names case-insensitively, through the column's collation. */
+    @Query("SELECT id FROM tags WHERE name IN (:names)")
+    abstract suspend fun getTagIdsByNames(names: List<String>): List<Long>
+
+    @Query("DELETE FROM link_tags WHERE linkId = :linkId AND tagId IN (:tagIds)")
+    abstract suspend fun deleteTagRefs(linkId: Long, tagIds: List<Long>)
+
+    /**
+     * Makes [tagNames] the link's whole tag set, atomically: missing tags are created, and tags
+     * this change leaves with no links are deleted, as with [deleteWithOrphanedTags]. A tag that
+     * was already unused stays. No-op if the link is gone.
+     */
+    @Transaction
+    open suspend fun replaceTags(linkId: Long, tagNames: List<String>) {
+        if (!exists(linkId)) return
+        val previousIds = getTagIds(linkId)
+        val tagIds = if (tagNames.isEmpty()) {
+            emptyList()
+        } else {
+            insertTags(tagNames.map { TagEntity(name = it) })
+            getTagIdsByNames(tagNames)
+        }
+        val removedIds = previousIds - tagIds.toSet()
+        if (removedIds.isNotEmpty()) {
+            deleteTagRefs(linkId, removedIds)
+            deleteUnusedTags(removedIds)
+        }
+        insertTagRefs(tagIds.map { LinkTagCrossRef(linkId = linkId, tagId = it) })
+    }
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insertTagRefs(refs: List<LinkTagCrossRef>)
 

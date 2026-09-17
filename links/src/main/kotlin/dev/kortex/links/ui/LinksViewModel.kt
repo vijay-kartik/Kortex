@@ -58,6 +58,10 @@ class LinksViewModel @Inject constructor(
         selectedTags.value = selectedTags.value.let { if (name in it) it - name else it + name }
     }
 
+    fun setLinkTags(id: Long, tagNames: List<String>) {
+        viewModelScope.launch { repository.setLinkTags(id, tagNames) }
+    }
+
     /**
      * Hides the link behind an undo row and deletes it once [UNDO_WINDOW_MS] passes. Only one link
      * is restorable at a time: deleting another ends the previous window early.

@@ -1,0 +1,17 @@
+<!-- Outlined tag glyph for the link options tray. Not in Figma yet; drawn to match icon/open and
+     icon/share (20dp grid, 1.5 stroke). Stroke-drawn; tint via Icon(tint = …). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M3.333,4.167C3.333,3.706 3.706,3.333 4.167,3.333H9.31C9.531,3.333 9.743,3.421 9.899,3.577L16.256,9.934C16.581,10.26 16.581,10.787 16.256,11.113L11.113,16.256C10.787,16.581 10.26,16.581 9.934,16.256L3.577,9.899C3.421,9.743 3.333,9.531 3.333,9.31V4.167Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M6.667,6.667m-1.083,0a1.083,1.083 0,1 1,2.167 0a1.083,1.083 0,1 1,-2.167 0"/>
+</vector>

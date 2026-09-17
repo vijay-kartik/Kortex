@@ -11,6 +11,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -82,6 +83,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -173,6 +175,7 @@ fun LinksScreen(modifier: Modifier = Modifier, onCreateLink: () -> Unit = {}, vi
                     onShareLink = { link -> context.shareLink(link) },
                     onDeleteLink = { link -> viewModel.deleteLink(link.id) },
                     onUndoDelete = viewModel::undoDelete,
+                    onSaveTags = { link, tagNames -> viewModel.setLinkTags(link.id, tagNames) },
                 )
             }
         }
@@ -214,6 +217,9 @@ fun EmptyLinksScreen() {
  * Long-pressing a card opens its options tray (Figma: Links / Options): the card takes the
  * Synapse border, everything else dims, and the tray expands under it. Any tap outside the card,
  * or back, closes it. Delete swaps the card for an undo row until the undo window runs out.
+ *
+ * Tags swaps the tray for the tag editor (Figma: Links / Edit tags). Edits stay local until the
+ * editor closes, by Done, back or a tap outside, and are saved then.
  */
 @Composable
 fun LinksWithSearchScreen(
@@ -226,6 +232,7 @@ fun LinksWithSearchScreen(
     onShareLink: (LinkEntity) -> Unit,
     onDeleteLink: (LinkEntity) -> Unit,
     onUndoDelete: () -> Unit,
+    onSaveTags: (LinkEntity, List<String>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Ages only need minute precision; refresh them whenever the list itself changes.
@@ -239,10 +246,50 @@ fun LinksWithSearchScreen(
     val openLinkId = optionsLinkId?.takeIf { id ->
         id != state.pendingDeletion?.linkId && state.links.any { it.link.id == id }
     }
-    LaunchedEffect(openLinkId) { if (openLinkId == null) optionsLinkId = null }
     val optionsOpen = openLinkId != null
     val currentOptionsOpen by rememberUpdatedState(optionsOpen)
     val tapOutside = remember { OptionsCardBounds() }
+
+    // The open card's tag editor. The draft holds stored spellings, plus names not saved as tags yet.
+    // Opening the editor resets it; closing leaves it, so the editor collapses as it was.
+    var editingTags by rememberSaveable { mutableStateOf(false) }
+    var draftTags by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var addingTag by rememberSaveable { mutableStateOf(false) }
+    var newTagName by rememberSaveable { mutableStateOf("") }
+    val knownTags = remember(state.tags) { state.tags.map { it.name } }
+    val editorTags = remember(knownTags, draftTags) {
+        knownTags + draftTags.filterNot { draft -> knownTags.any { it.equals(draft, ignoreCase = true) } }
+    }
+    val focusManager = LocalFocusManager.current
+
+    /** The draft with a name still in the field; an existing tag's stored spelling wins over what was typed. */
+    fun draftWithNewTag(): List<String> {
+        val typed = newTagName.trim().takeIf { it.isNotEmpty() } ?: return draftTags
+        val name = editorTags.firstOrNull { it.equals(typed, ignoreCase = true) } ?: typed
+        return if (name in draftTags) draftTags else draftTags + name
+    }
+
+    /** Closes the tray or the tag editor, saving the editor's changes. */
+    fun closeCard() {
+        val link = state.links.firstOrNull { it.link.id == openLinkId }
+        if (editingTags && link != null) {
+            val tags = draftWithNewTag()
+            if (tags.toSet() != link.tagNames.toSet()) onSaveTags(link.link, tags)
+            // Drops the keyboard with the tray instead of after the field leaves.
+            focusManager.clearFocus()
+        }
+        optionsLinkId = null
+        editingTags = false
+    }
+    val currentCloseCard by rememberUpdatedState(::closeCard)
+
+    // The link was filtered out or deleted: there's nothing left to save to.
+    LaunchedEffect(openLinkId) {
+        if (openLinkId == null) {
+            optionsLinkId = null
+            editingTags = false
+        }
+    }
 
     // The pressed card dims its neighbours first; the header and tags follow as the tray expands.
     val chromeAlpha by animateFloatAsState(
@@ -262,7 +309,7 @@ fun LinksWithSearchScreen(
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     if (!currentOptionsOpen || tapOutside.contains(down.position)) return@awaitEachGesture
                     down.consume()
-                    optionsLinkId = null
+                    currentCloseCard()
                     do {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         event.changes.forEach { it.consume() }
@@ -286,7 +333,7 @@ fun LinksWithSearchScreen(
                 modifier = Modifier.graphicsLayer { alpha = chromeAlpha },
             )
             // Registered after the header's, so back closes the tray before it collapses search.
-            BackHandler(enabled = optionsOpen) { optionsLinkId = null }
+            BackHandler(enabled = optionsOpen, onBack = ::closeCard)
             if (state.tags.isNotEmpty()) {
                 TagFilters(
                     tags = state.tags,
@@ -327,13 +374,15 @@ fun LinksWithSearchScreen(
                                 nowMillis = nowMillis,
                                 copyTick = copyTick,
                                 optionsOpen = isOpen,
+                                editingTags = isOpen && editingTags,
                                 onCopy = {
                                     copyTap = CopyTap(linkId, tick = (copyTap?.tick ?: 0) + 1)
                                     onLinkClick(link.link)
                                 },
                                 // Clear once finished so a card scrolled back into view doesn't replay it.
                                 onCopyFinished = { if (copyTap?.tick == copyTick) copyTap = null },
-                                onLongPress = { optionsLinkId = linkId },
+                                // Pressing the open card again mustn't drop the tag editor's draft.
+                                onLongPress = { if (!isOpen) optionsLinkId = linkId },
                                 onOpen = {
                                     optionsLinkId = null
                                     onOpenLink(link.link)
@@ -346,7 +395,31 @@ fun LinksWithSearchScreen(
                                     optionsLinkId = null
                                     onDeleteLink(link.link)
                                 },
-                                modifier = if (isOpen) Modifier.onGloballyPositioned { tapOutside.card = it } else Modifier,
+                                onEditTags = {
+                                    draftTags = link.tagNames
+                                    addingTag = false
+                                    newTagName = ""
+                                    editingTags = true
+                                },
+                                tagEditor = {
+                                    LinkTagEditor(
+                                        tags = editorTags,
+                                        selectedTags = draftTags,
+                                        edited = draftTags.toSet() != link.tagNames.toSet(),
+                                        addingTag = addingTag,
+                                        newTagName = newTagName,
+                                        onTagToggle = { tag -> draftTags = if (tag in draftTags) draftTags - tag else draftTags + tag },
+                                        onStartNewTag = { addingTag = true },
+                                        onNewTagNameChange = { newTagName = it },
+                                        onAddTag = {
+                                            draftTags = draftWithNewTag()
+                                            addingTag = false
+                                            newTagName = ""
+                                        },
+                                        onDone = ::closeCard,
+                                    )
+                                },
+                                modifier =if (isOpen) Modifier.onGloballyPositioned { tapOutside.card = it } else Modifier,
                             )
                         }
                     }
@@ -364,17 +437,17 @@ fun LinksWithSearchScreen(
             }
         }
         Crossfade(
-            targetState = optionsOpen,
+            targetState = when {
+                !optionsOpen -> "tap to copy · long-press for options"
+                editingTags -> "tap outside or back to save"
+                else -> "tap outside or back to close"
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 20.dp, top = 8.dp, bottom = 30.dp),
             label = "hint",
-        ) { open ->
-            Text(
-                if (open) "tap outside or back to close" else "tap to copy · long-press for options",
-                style = HintStyle,
-                color = Muted,
-            )
+        ) { hint ->
+            Text(hint, style = HintStyle, color = Muted)
         }
     }
 }
@@ -426,22 +499,28 @@ private fun LinkCard(
     nowMillis: Long,
     copyTick: Int?,
     optionsOpen: Boolean,
+    /** Shows [tagEditor] in place of the options tray. */
+    editingTags: Boolean,
     onCopy: () -> Unit,
     onCopyFinished: () -> Unit,
     onLongPress: () -> Unit,
     onOpen: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
+    onEditTags: () -> Unit,
+    tagEditor: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val copyAnimation = rememberLinkCopyAnimation(copyTick, onCopyFinished)
     val view = LocalView.current
     val currentOnCopy by rememberUpdatedState(onCopy)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
+    // While the tray collapses, it keeps showing whichever panel was open.
+    val trayShowsEditor = remember { mutableStateOf(editingTags) }.apply { if (optionsOpen) value = editingTags }.value
 
     // Taps outside close the tray without scrolling, so make sure all of it is on screen.
     val bringIntoView = remember { BringIntoViewRequester() }
-    LaunchedEffect(optionsOpen) {
+    LaunchedEffect(optionsOpen, editingTags) {
         if (optionsOpen) {
             delay((PRESS_MS + TRAY_MS).toLong())
             bringIntoView.bringIntoView()
@@ -544,13 +623,26 @@ private fun LinkCard(
                 fadeIn(tween(TRAY_MS, delayMillis = PRESS_MS)),
             exit = shrinkVertically(tween(CLOSE_MS, easing = StandardEasing)) + fadeOut(tween(CLOSE_MS)),
         ) {
-            LinkOptionsTray(onOpen = onOpen, onShare = onShare, onDelete = onDelete)
+            AnimatedContent(
+                targetState = trayShowsEditor,
+                transitionSpec = {
+                    fadeIn(tween(TRAY_MS, delayMillis = SWAP_MS / 2)) togetherWith fadeOut(tween(SWAP_MS / 2)) using
+                        SizeTransform { _, _ -> tween(TRAY_MS, easing = EmphasizedDecelerate) }
+                },
+                label = "tray panel",
+            ) { showsEditor ->
+                if (showsEditor) {
+                    tagEditor()
+                } else {
+                    LinkOptionsTray(onOpen = onOpen, onShare = onShare, onEditTags = onEditTags, onDelete = onDelete)
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun LinkOptionsTray(onOpen: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
+private fun LinkOptionsTray(onOpen: () -> Unit, onShare: () -> Unit, onEditTags: () -> Unit, onDelete: () -> Unit) {
     Column {
         HorizontalDivider(thickness = 1.dp, color = Edge)
         Row(
@@ -561,6 +653,8 @@ private fun LinkOptionsTray(onOpen: () -> Unit, onShare: () -> Unit, onDelete: (
             TrayAction(R.drawable.ic_open, "Open", iconTint = Synapse, labelColor = Ink, onClick = onOpen)
             VerticalDivider(thickness = 1.dp, color = Edge)
             TrayAction(R.drawable.ic_share_nodes, "Share", iconTint = Synapse, labelColor = Ink, onClick = onShare)
+            VerticalDivider(thickness = 1.dp, color = Edge)
+            TrayAction(R.drawable.ic_tag, "Tags", iconTint = Synapse, labelColor = Ink, onClick = onEditTags)
             VerticalDivider(thickness = 1.dp, color = Edge)
             TrayAction(R.drawable.ic_trash, "Delete", iconTint = Alarm, labelColor = Alarm, onClick = onDelete)
         }
@@ -796,6 +890,7 @@ private fun LinksWithSearchPreview() {
                 onShareLink = {},
                 onDeleteLink = {},
                 onUndoDelete = {},
+                onSaveTags = { _, _ -> },
             )
         }
     }

@@ -16,7 +16,7 @@ import dev.kortex.app.ui.Muted
 import dev.kortex.app.ui.screens.home.KortexTab
 import dev.kortex.app.ui.screens.home.TabCategory
 import dev.kortex.app.ui.screens.home.Wordmark
-import dev.kortex.app.ui.conversationAsText
+import dev.kortex.app.util.conversationAsText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

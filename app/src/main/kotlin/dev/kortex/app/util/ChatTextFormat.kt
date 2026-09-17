@@ -1,4 +1,4 @@
-package dev.kortex.app.ui
+package dev.kortex.app.util
 
 import dev.kortex.app.ChatTurn
 import dev.kortex.app.ReasoningLine

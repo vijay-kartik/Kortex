@@ -1,4 +1,4 @@
-package dev.kortex.app.ui
+package dev.kortex.app.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
@@ -27,6 +27,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.kortex.app.VoiceState
+import dev.kortex.app.ui.Edge
+import dev.kortex.app.ui.Muted
+import dev.kortex.app.ui.Panel
+import dev.kortex.app.ui.Synapse
+import dev.kortex.app.ui.Void
+import dev.kortex.app.util.formatVoiceDuration
 
 /**
  * The composer's listening face — same silhouette as the text field so dictation reads as

@@ -1,4 +1,4 @@
-package dev.kortex.app.ui.screens
+package dev.kortex.app.ui.screens.chat
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -57,18 +57,17 @@ import dev.kortex.app.ChatViewModel
 import dev.kortex.app.R
 import dev.kortex.app.VoiceState
 import dev.kortex.app.ui.Edge
-import dev.kortex.app.ui.EmptyState
-import dev.kortex.app.ui.ListeningBar
-import dev.kortex.app.ui.MessageBubble
+import dev.kortex.app.ui.components.ListeningBar
+import dev.kortex.app.ui.components.MessageBubble
 import dev.kortex.app.ui.Mono
 import dev.kortex.app.ui.Muted
 import dev.kortex.app.ui.Panel
-import dev.kortex.app.ui.PulsingDot
-import dev.kortex.app.ui.ReasoningPanel
+import dev.kortex.app.ui.components.PulsingDot
+import dev.kortex.app.ui.components.ReasoningPanel
 import dev.kortex.app.ui.Synapse
 import dev.kortex.app.ui.SynapseDim
 import dev.kortex.app.ui.Void
-import dev.kortex.app.ui.formatVoiceDuration
+import dev.kortex.app.util.formatVoiceDuration
 import dev.kortex.core.state.Attachment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

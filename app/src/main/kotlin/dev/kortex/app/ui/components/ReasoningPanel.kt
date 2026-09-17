@@ -1,4 +1,4 @@
-package dev.kortex.app.ui
+package dev.kortex.app.ui.components
 
 import android.content.Intent
 import android.widget.Toast
@@ -42,6 +42,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.kortex.app.ReasoningLine
 import dev.kortex.app.ReasoningStats
+import dev.kortex.app.ui.Alarm
+import dev.kortex.app.ui.Amber
+import dev.kortex.app.ui.Muted
+import dev.kortex.app.ui.Synapse
+import dev.kortex.app.ui.SynapseDim
+import dev.kortex.app.util.traceAsVisibleText
+import dev.kortex.app.util.traceTag
 import dev.kortex.core.log.Logger
 
 /**

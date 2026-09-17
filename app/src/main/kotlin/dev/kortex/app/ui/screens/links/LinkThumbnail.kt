@@ -46,7 +46,7 @@ import dev.kortex.app.R
 import dev.kortex.app.ui.Alarm
 import dev.kortex.app.ui.Grotesk
 import dev.kortex.app.ui.Mono
-import dev.kortex.app.ui.StandardEasing
+import dev.kortex.app.ui.anim.StandardEasing
 import dev.kortex.app.ui.Synapse
 import dev.kortex.app.ui.SynapseDim
 import kotlinx.coroutines.Dispatchers

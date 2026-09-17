@@ -1,4 +1,4 @@
-package dev.kortex.app.ui
+package dev.kortex.app.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
+import dev.kortex.app.ui.Synapse
 
 @Composable
 internal fun PulsingDot(size: Dp, modifier: Modifier = Modifier) {

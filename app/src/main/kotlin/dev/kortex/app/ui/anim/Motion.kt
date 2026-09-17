@@ -1,4 +1,4 @@
-package dev.kortex.app.ui
+package dev.kortex.app.ui.anim
 
 import androidx.compose.animation.core.CubicBezierEasing
 

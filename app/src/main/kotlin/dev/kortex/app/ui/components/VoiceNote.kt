@@ -1,6 +1,7 @@
-package dev.kortex.app.ui
+package dev.kortex.app.ui.components
 
 import android.media.MediaPlayer
+import android.util.Base64
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.kortex.app.R
+import dev.kortex.app.ui.Void
+import dev.kortex.app.util.formatVoiceDuration
+import dev.kortex.core.state.Attachment
 import java.io.File
 
 /**
@@ -38,7 +42,7 @@ import java.io.File
  */
 @Composable
 internal fun VoiceNoteContent(
-    att: dev.kortex.core.state.Attachment,
+    att: Attachment,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier) {
@@ -75,7 +79,7 @@ internal fun VoiceNoteContent(
 
 /** Plays a byte-carrying audio attachment via MediaPlayer (base64 -> cache file). */
 @Composable
-private fun AudioPlayButton(att: dev.kortex.core.state.Attachment) {
+private fun AudioPlayButton(att: Attachment) {
     val context = LocalContext.current
     var playing by remember { mutableStateOf(false) }
     val player = remember { MediaPlayer() }
@@ -94,7 +98,7 @@ private fun AudioPlayButton(att: dev.kortex.core.state.Attachment) {
                     playing = false
                 } else {
                     runCatching {
-                        val bytes = android.util.Base64.decode(att.dataBase64, android.util.Base64.DEFAULT)
+                        val bytes = Base64.decode(att.dataBase64, Base64.DEFAULT)
                         val ext = att.mimeType.substringAfter("/").ifBlank { "bin" }
                         val file = File(context.cacheDir, "audio_${att.dataBase64.hashCode()}.$ext")
                         if (!file.exists()) file.writeBytes(bytes)

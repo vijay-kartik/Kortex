@@ -1,6 +1,7 @@
-package dev.kortex.app.ui
+package dev.kortex.app.ui.components
 
 import android.graphics.BitmapFactory
+import android.util.Base64
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -50,6 +51,13 @@ import dev.kortex.app.ChatTurn
 import dev.kortex.app.PdfViewer
 import dev.kortex.app.convertTableToTsv
 import dev.kortex.app.parseMarkdownTables
+import dev.kortex.app.ui.Alarm
+import dev.kortex.app.ui.Edge
+import dev.kortex.app.ui.Muted
+import dev.kortex.app.ui.Panel
+import dev.kortex.app.ui.Synapse
+import dev.kortex.app.ui.Void
+import dev.kortex.core.state.Attachment
 import dev.kortex.core.state.Message
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -63,7 +71,7 @@ internal fun MessageBubble(turn: ChatTurn) {
 
     val parsed = remember(msg.content) { parseMarkdownTables(msg.content) }
     var selectedTable by remember { mutableStateOf<String?>(null) }
-    var selectedAttachment by remember { mutableStateOf<dev.kortex.core.state.Attachment?>(null) }
+    var selectedAttachment by remember { mutableStateOf<Attachment?>(null) }
 
     Column(Modifier.fillMaxWidth()) {
         Row(
@@ -234,7 +242,7 @@ internal fun MessageBubble(turn: ChatTurn) {
                     }
                     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
                         if (att.mimeType.startsWith("image/")) {
-                            val bytes = android.util.Base64.decode(att.dataBase64, android.util.Base64.DEFAULT)
+                            val bytes = Base64.decode(att.dataBase64, Base64.DEFAULT)
                             val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                             if (bitmap != null) {
                                 Image(

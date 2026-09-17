@@ -32,7 +32,7 @@ import dev.kortex.app.R
 import dev.kortex.app.RunsScreen
 import dev.kortex.app.SettingsScreen
 import dev.kortex.app.ui.appbar.KortexAppBar
-import dev.kortex.app.ui.screens.ChatScreen
+import dev.kortex.app.ui.screens.chat.ChatScreen
 import dev.kortex.app.ui.screens.GraphScreen
 import dev.kortex.app.ui.screens.HistoryScreen
 import dev.kortex.app.ui.screens.links.CreateLinkScreen

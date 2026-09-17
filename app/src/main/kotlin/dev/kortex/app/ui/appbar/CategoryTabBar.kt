@@ -34,13 +34,13 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.kortex.app.ui.Edge
-import dev.kortex.app.ui.EmphasizedAccelerate
-import dev.kortex.app.ui.EmphasizedDecelerate
+import dev.kortex.app.ui.anim.EmphasizedAccelerate
+import dev.kortex.app.ui.anim.EmphasizedDecelerate
 import dev.kortex.app.ui.Ink
 import dev.kortex.app.ui.Mono
 import dev.kortex.app.ui.Muted
 import dev.kortex.app.ui.Panel
-import dev.kortex.app.ui.StandardEasing
+import dev.kortex.app.ui.anim.StandardEasing
 import dev.kortex.app.ui.Synapse
 import dev.kortex.app.ui.SynapseDim
 import dev.kortex.app.ui.screens.home.KortexTab

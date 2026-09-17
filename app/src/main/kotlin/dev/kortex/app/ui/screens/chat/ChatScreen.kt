@@ -70,8 +70,24 @@ import dev.kortex.core.state.Attachment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+/**
+ * @param request session change from another screen; applied once, then [onRequestHandled] clears it.
+ */
 @Composable
-fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = hiltViewModel()) {
+fun ChatScreen(
+    modifier: Modifier = Modifier,
+    request: ChatRequest? = null,
+    onRequestHandled: () -> Unit = {},
+    vm: ChatViewModel = hiltViewModel(),
+) {
+    LaunchedEffect(request) {
+        when (val pending = request ?: return@LaunchedEffect) {
+            is ChatRequest.LoadSession -> vm.loadSession(pending.sessionId)
+            is ChatRequest.NewSession -> vm.startNewSession(draft = pending.draft)
+        }
+        onRequestHandled()
+    }
+
     val ui by vm.ui.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()

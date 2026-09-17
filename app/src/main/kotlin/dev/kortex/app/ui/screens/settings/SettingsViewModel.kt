@@ -85,7 +85,7 @@ private val BUILTIN_NAMES = setOf(
 /**
  * Drives the MCP-settings sheet. Reads the injected [ToolRegistry] and [SettingsStore]
  * and exposes a reactive [SettingsUi]. Mutations (add/remove server,
- * toggle tool) are written to DataStore, and the [ChatViewModel]'s collector keeps the
+ * toggle tool) are written to DataStore, and AgentBootstrap's collector keeps the
  * registry in sync.
  */
 @HiltViewModel
@@ -196,10 +196,10 @@ class SettingsViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUi())
 
     init {
-        // Populate the tool entries for servers that ChatViewModel already connected.
+        // Populate the tool entries for servers that AgentBootstrap already connected.
         // We walk the registry and partition tools by their server-name prefix.
         viewModelScope.launch {
-            // Give the ChatViewModel a moment to finish connecting (it races in parallel).
+            // Give AgentBootstrap a moment to finish connecting (it races in parallel).
             // A more robust approach would be an event bus, but this is sufficient: the
             // combine re-fires whenever _serverTools changes, so late arrivals show up.
             kotlinx.coroutines.delay(1_500)
@@ -438,7 +438,7 @@ class SettingsViewModel @Inject constructor(
      * Matches against the *actual* set of known server names (defaults + persisted custom
      * servers + Composio, if configured) rather than servers already tracked in
      * [_serverStatus] — that map only gets entries from [connectServer] calls made by this
-     * ViewModel, so a server connected by [ChatViewModel]'s separate startup pass (the
+     * ViewModel, so a server connected by AgentBootstrap's separate startup pass (the
      * normal case for anything saved from a prior session) would otherwise never be
      * discoverable here and would sit on "Connecting…" forever despite being live.
      */

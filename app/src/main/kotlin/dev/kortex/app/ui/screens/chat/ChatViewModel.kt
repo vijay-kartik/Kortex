@@ -17,9 +17,6 @@ import dev.kortex.core.graph.LlmUsageListener
 import dev.kortex.core.graph.ProgressListener
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.log.Logger
-import dev.kortex.core.log.w
-import dev.kortex.core.mcp.McpServer
-import dev.kortex.core.mcp.McpToolConnector
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
@@ -27,20 +24,17 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import dev.kortex.app.data.local.ChatSessionEntity
-import dev.kortex.app.data.auth.McpOAuthManager
 import dev.kortex.app.data.local.ChatSessionDao
-import dev.kortex.app.di.McpAuthFailures
 import dev.kortex.core.observability.AgentRunStore
-import dev.kortex.core.mcp.mcpServers
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.app.domain.chat.ChatTurn
 import dev.kortex.app.domain.chat.ReasoningLine
@@ -76,7 +70,7 @@ sealed interface VoiceState {
  * Wires the pure-Kotlin [Agent] to Compose. The [Approver] bridges the agent's
  * Human-in-the-Loop pause to a UI dialog: the agent suspends until [resolveApproval].
  * The singleton [ToolRegistry] is injected so that the MCP settings
- * screen and this ViewModel operate on the same tool set.
+ * screen and this ViewModel operate on the same tool set; AgentBootstrap sets it up at app start.
  */
 @HiltViewModel
 class ChatViewModel @Inject constructor(
@@ -85,8 +79,6 @@ class ChatViewModel @Inject constructor(
     private val tools: ToolRegistry,
     private val settingsStore: SettingsStore,
     private val sessionDao: ChatSessionDao,
-    private val mcpOAuthManager: McpOAuthManager,
-    @McpAuthFailures private val mcpAuthFailures: MutableStateFlow<Set<String>>,
     private val runTraceStore: AgentRunStore,
 ) : AndroidViewModel(application) {
 
@@ -117,7 +109,12 @@ class ChatViewModel @Inject constructor(
 
     private var approvalGate: CompletableDeferred<Boolean>? = null
 
-    val sessions = sessionDao.getAll()
+    /**
+     * Saved conversations, newest first. Null until Room's first read, so History can tell
+     * "still loading" from "no conversations". Kept warm briefly so switching tabs reuses it.
+     */
+    val sessions: StateFlow<List<ChatSessionEntity>?> = sessionDao.getAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private var currentSessionId: String = UUID.randomUUID().toString()
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -126,60 +123,6 @@ class ChatViewModel @Inject constructor(
         CompletableDeferred<Boolean>().also { approvalGate = it }.await()
     }
     private val progress = ProgressListener { s -> _ui.update { it.copy(status = s) } }
-
-    init {
-        // Apply persisted disabled-tool set, then connect MCP servers (default + custom).
-        viewModelScope.launch {
-            val disabled = settingsStore.disabledTools.first()
-            tools.setDisabled(disabled)
-        }
-        viewModelScope.launch {
-            connectMcpServers()
-        }
-        // Keep the registry in sync whenever the user toggles tools from the settings sheet.
-        viewModelScope.launch {
-            settingsStore.disabledTools.collect { disabled -> tools.setDisabled(disabled) }
-        }
-        // Update the active reasoning/routing models globally whenever they change. Ollama
-        // hosts (local or cloud) don't serve OpenAI's mini model, so the router and other
-        // FAST-tier nodes must run on the same user-selected model there.
-        viewModelScope.launch {
-            combine(settingsStore.activeProvider, settingsStore.activeModel) { provider, model -> provider to model }
-                .collect { (provider, model) ->
-                    dev.kortex.core.llm.Models.REASONING = model
-                    dev.kortex.core.llm.Models.FAST =
-                        if (provider == "ollama" || provider == "ollama-cloud") model else "gpt-4o-mini"
-                }
-        }
-    }
-
-    /**
-     * Connects the hardcoded default MCP servers plus any user-added custom servers.
-     * Called once at init; new custom servers added mid-session are connected by [SettingsViewModel] directly.
-     */
-    private suspend fun connectMcpServers() {
-        val customServers = settingsStore.customServers.first().map {
-            McpServer(
-                name = it.name,
-                url = it.url,
-                bearerToken = it.bearerToken,
-                tokenProvider = mcpOAuthManager.tokenProviderFor(it.url)
-            )
-        }
-        val allServers = mcpServers + customServers
-        
-        val connector = McpToolConnector(tools, AndroidLogger)
-        for (server in allServers) {
-            try {
-                connector.connect(server)
-            } catch (e: dev.kortex.core.mcp.McpUnauthorizedException) {
-                // Known server, needs sign-in (no crash; card shows state next time settings opens).
-                mcpAuthFailures.update { it + server.name }
-            } catch (e: Exception) {
-                AndroidLogger.w("ChatViewModel", "Failed to connect to MCP server: ${server.name}", e)
-            }
-        }
-    }
 
     fun resolveApproval(approved: Boolean) {
         _ui.update { it.copy(pendingApproval = null) }

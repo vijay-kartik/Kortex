@@ -1,7 +1,5 @@
 package dev.kortex.app.ui.screens.home
 
-import android.content.Context
-import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -18,19 +16,17 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.kortex.app.domain.chat.ChatTurn
 import dev.kortex.app.ui.appbar.KortexAppBar
+import dev.kortex.app.ui.screens.chat.ChatRequest
 import dev.kortex.app.ui.screens.chat.ChatScreen
-import dev.kortex.app.ui.screens.chat.ChatViewModel
+import dev.kortex.app.ui.screens.chat.ChatShareAction
 import dev.kortex.app.ui.screens.chat.HistoryScreen
 import dev.kortex.app.ui.screens.graph.GraphScreen
 import dev.kortex.app.ui.screens.runs.RunsScreen
 import dev.kortex.app.ui.screens.settings.SettingsScreen
-import dev.kortex.app.ui.util.conversationAsText
 import dev.kortex.design.KortexTheme
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
@@ -38,8 +34,8 @@ import dev.kortex.links.ui.CreateLinkScreen
 import dev.kortex.links.ui.LinksScreen
 
 /**
- * Stateful entry to the home UI: the only place that touches ViewModels. Everything it
- * draws goes through [RootContent], with the real screens passed in as slots.
+ * Stateful entry to the home UI. Owns [RootState] and onboarding; every screen it shows gets
+ * its own ViewModel, and everything it draws goes through [RootContent] as slots.
  */
 @Composable
 fun RootScreen(
@@ -47,13 +43,10 @@ fun RootScreen(
     onEntryRequestHandled: () -> Unit = {},
 ) {
     val state = rememberRootState()
-    val chatVm: ChatViewModel = hiltViewModel()
     val homeVm: HomeViewModel = hiltViewModel()
-    val chatUi by chatVm.ui.collectAsStateWithLifecycle()
     val onboardingSeen by homeVm.onboardingSeen.collectAsStateWithLifecycle()
-    val context = LocalContext.current
 
-    EntryRequestEffect(entryRequest, state, chatVm, onEntryRequestHandled)
+    EntryRequestEffect(entryRequest, state, onEntryRequestHandled)
 
     // CreateLinkScreen registers its own BackHandler; Settings has none, so close it here.
     BackHandler(enabled = state.overlay == Overlay.Settings, onBack = state::closeOverlay)
@@ -65,9 +58,9 @@ fun RootScreen(
             homeVm.markOnboardingSeen()
             state.openTab(KortexTab.Links)
         },
-        onShareConversation = chatUi.turns
-            .takeIf { state.selected == KortexTab.Chat && it.isNotEmpty() }
-            ?.let { turns -> { shareConversation(context, turns) } },
+        tabActions = { tab ->
+            if (tab == KortexTab.Chat) ChatShareAction()
+        },
         overlayContent = { overlay ->
             when (overlay) {
                 Overlay.None -> Unit
@@ -80,13 +73,14 @@ fun RootScreen(
         },
         tabContent = { tab ->
             when (tab) {
-                KortexTab.Chat -> ChatScreen()
+                KortexTab.Chat -> ChatScreen(
+                    request = state.pendingChatRequest,
+                    onRequestHandled = state::onChatRequestHandled,
+                )
                 KortexTab.Graph -> GraphScreen()
                 KortexTab.History -> HistoryScreen(
-                    onSelectSession = { sessionId ->
-                        chatVm.loadSession(sessionId)
-                        state.openTab(KortexTab.Chat)
-                    }
+                    onSelectSession = { sessionId -> state.openChat(ChatRequest.LoadSession(sessionId)) },
+                    onNewChat = { state.openChat(ChatRequest.NewSession()) },
                 )
                 KortexTab.Runs -> RunsScreen()
                 KortexTab.Links -> LinksScreen(onCreateLink = { state.openCreateLink() })
@@ -97,16 +91,15 @@ fun RootScreen(
 
 /**
  * Stateless home shell: app bar, category tabs, onboarding and the switch between the tabbed
- * UI and a full-screen [Overlay]. Screen bodies come from [overlayContent] and [tabContent].
- *
- * @param onShareConversation shows the share action when non-null.
+ * UI and a full-screen [Overlay]. Screen bodies come from [overlayContent] and [tabContent];
+ * [tabActions] adds app-bar actions for the selected tab.
  */
 @Composable
 fun RootContent(
     state: RootState,
     onboarding: Boolean,
     onOnboardingDone: () -> Unit,
-    onShareConversation: (() -> Unit)?,
+    tabActions: @Composable (KortexTab) -> Unit,
     overlayContent: @Composable (Overlay) -> Unit,
     tabContent: @Composable (KortexTab) -> Unit,
 ) {
@@ -120,7 +113,7 @@ fun RootContent(
                         selected = state.selected,
                         expanded = state.expanded,
                         onboarding = onboarding,
-                        onShareConversation = onShareConversation,
+                        actions = { tabActions(state.selected) },
                         onMcpSettingsClick = state::openSettings,
                         onCategorySelected = state::openCategory,
                         onTabSelected = state::openTab,
@@ -145,16 +138,12 @@ fun RootContent(
 private fun EntryRequestEffect(
     request: EntryRequest?,
     state: RootState,
-    chatVm: ChatViewModel,
     onHandled: () -> Unit,
 ) {
     LaunchedEffect(request) {
         when (val pending = request ?: return@LaunchedEffect) {
             // Load that session on the Chat tab.
-            is EntryRequest.OpenSession -> {
-                chatVm.loadSession(pending.sessionId)
-                state.openTab(KortexTab.Chat)
-            }
+            is EntryRequest.OpenSession -> state.openChat(ChatRequest.LoadSession(pending.sessionId))
             // New-link screen, address filled in when there is one.
             is EntryRequest.NewLink -> {
                 state.openTab(KortexTab.Links)
@@ -163,20 +152,11 @@ private fun EntryRequestEffect(
             // A new chat with the draft in the composer, not sent.
             is EntryRequest.NewChat -> {
                 state.closeOverlay()
-                chatVm.startNewSession(draft = pending.draft)
-                state.openTab(KortexTab.Chat)
+                state.openChat(ChatRequest.NewSession(draft = pending.draft))
             }
         }
         onHandled()
     }
-}
-
-private fun shareConversation(context: Context, turns: List<ChatTurn>) {
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, conversationAsText(turns))
-    }
-    context.startActivity(Intent.createChooser(send, "Share conversation"))
 }
 
 // ── Previews ──────────────────────────────────────────────────────
@@ -196,7 +176,7 @@ private fun RootContentChatPreview() {
             state = remember { RootState(selected = KortexTab.Chat) },
             onboarding = false,
             onOnboardingDone = {},
-            onShareConversation = {},
+            tabActions = {},
             overlayContent = { PreviewSlot(it.toString()) },
             tabContent = { PreviewSlot(it.label) },
         )
@@ -211,7 +191,7 @@ private fun RootContentOnboardingPreview() {
             state = remember { RootState(selected = KortexTab.Links) },
             onboarding = true,
             onOnboardingDone = {},
-            onShareConversation = null,
+            tabActions = {},
             overlayContent = { PreviewSlot(it.toString()) },
             tabContent = { PreviewSlot(it.label) },
         )

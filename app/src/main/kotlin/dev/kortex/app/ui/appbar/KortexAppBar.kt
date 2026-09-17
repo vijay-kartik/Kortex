@@ -29,8 +29,8 @@ fun KortexAppBar(
     selected: KortexTab,
     expanded: TabCategory,
     onboarding: Boolean,
-    /** Shows the share-conversation action when non-null. */
-    onShareConversation: (() -> Unit)?,
+    /** Screen-specific actions, shown before the settings action. */
+    actions: @Composable () -> Unit,
     onMcpSettingsClick: () -> Unit,
     onCategorySelected: (TabCategory) -> Unit,
     onTabSelected: (KortexTab) -> Unit,
@@ -38,15 +38,7 @@ fun KortexAppBar(
     TopAppBar(
         title = { Wordmark() },
         actions = {
-            if (onShareConversation != null) {
-                IconButton(onClick = onShareConversation) {
-                    Icon(
-                        painterResource(R.drawable.ic_share),
-                        contentDescription = "Share conversation",
-                        tint = Muted,
-                    )
-                }
-            }
+            actions()
             IconButton(onClick = onMcpSettingsClick) {
                 Icon(
                     painterResource(R.drawable.ic_tune),

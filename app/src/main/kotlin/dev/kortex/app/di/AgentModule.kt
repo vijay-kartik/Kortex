@@ -8,9 +8,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.BuildConfig
 import dev.kortex.app.data.auth.GmailAuthManager
+import dev.kortex.app.data.auth.McpOAuthManager
 import dev.kortex.app.data.local.ChatSessionDao
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.app.data.settings.asLlmProviderSettings
+import dev.kortex.app.domain.agent.AgentBootstrap
 import dev.kortex.app.domain.share.ShareAgentRunner
 import dev.kortex.core.gmail.gmailTool
 import dev.kortex.core.llm.DeepseekProvider
@@ -34,6 +36,7 @@ import dev.kortex.graph_tools.MemoryTool
 import dev.kortex.graph_tools.SaveItineraryTool
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 
 /** The agent's LLM, embeddings, shared tool registry and background share runner. */
@@ -92,6 +95,23 @@ object AgentModule {
                     }
                 },
             ),
+    )
+
+    /** App-wide tool/MCP/model setup; started from KortexApp so it doesn't depend on any screen. */
+    @Provides
+    @Singleton
+    fun provideAgentBootstrap(
+        @ApplicationScope scope: CoroutineScope,
+        tools: ToolRegistry,
+        settingsStore: SettingsStore,
+        mcpOAuthManager: McpOAuthManager,
+        @McpAuthFailures mcpAuthFailures: MutableStateFlow<Set<String>>,
+    ): AgentBootstrap = AgentBootstrap(
+        scope = scope,
+        tools = tools,
+        settingsStore = settingsStore,
+        mcpOAuthManager = mcpOAuthManager,
+        mcpAuthFailures = mcpAuthFailures,
     )
 
     /** Background agent runs for files shared into Kortex from other apps. */

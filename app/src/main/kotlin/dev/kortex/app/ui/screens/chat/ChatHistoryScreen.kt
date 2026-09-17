@@ -48,19 +48,18 @@ import java.util.Locale
 @Composable
 fun HistoryScreen(
     onSelectSession: (String) -> Unit,
+    onNewChat: () -> Unit,
     vm: ChatViewModel = hiltViewModel()
 ) {
-    val sessions by vm.sessions.collectAsStateWithLifecycle(emptyList())
+    // Null while the first read is in flight: render nothing rather than the empty state.
+    val sessions by vm.sessions.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<ChatSessionEntity?>(null) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             FloatingActionButton(
-                onClick = {
-                    vm.startNewSession()
-                    onSelectSession("") // Triggers tab change
-                },
+                onClick = onNewChat,
                 containerColor = Synapse,
                 contentColor = Void,
             ) {
@@ -73,12 +72,12 @@ fun HistoryScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (sessions.isEmpty()) {
+            if (sessions?.isEmpty() == true) {
                 item {
                     Text("No conversations yet — tap + to start one.", color = Muted)
                 }
             }
-            items(sessions, key = { it.id }) { session ->
+            items(sessions.orEmpty(), key = { it.id }) { session ->
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()

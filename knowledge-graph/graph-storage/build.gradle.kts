@@ -25,7 +25,7 @@ android {
 }
 
 dependencies {
-    api(project(":graph-core"))
+    api(project(":knowledge-graph:graph-core"))
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)

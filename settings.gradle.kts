@@ -16,6 +16,6 @@ dependencyResolutionManagement {
 rootProject.name = "kortex"
 include(":core-agent")
 include(":app")
-include(":graph-core")
-include(":graph-storage")
+include(":knowledge-graph:graph-core")
+include(":knowledge-graph:graph-storage")
 include(":links")

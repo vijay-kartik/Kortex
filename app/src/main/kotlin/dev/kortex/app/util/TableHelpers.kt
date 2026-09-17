@@ -1,4 +1,4 @@
-package dev.kortex.app
+package dev.kortex.app.util
 
 data class ParsedMessage(val text: String, val tables: List<String>)
 

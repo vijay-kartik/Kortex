@@ -49,8 +49,8 @@ import com.halilibo.richtext.markdown.Markdown
 import com.halilibo.richtext.ui.material3.RichText
 import dev.kortex.app.ChatTurn
 import dev.kortex.app.PdfViewer
-import dev.kortex.app.convertTableToTsv
-import dev.kortex.app.parseMarkdownTables
+import dev.kortex.app.util.convertTableToTsv
+import dev.kortex.app.util.parseMarkdownTables
 import dev.kortex.app.ui.Alarm
 import dev.kortex.app.ui.Edge
 import dev.kortex.app.ui.Muted

@@ -67,8 +67,8 @@ android {
 
 dependencies {
     implementation(project(":core-agent"))
-    implementation(project(":graph-core"))
-    implementation(project(":graph-storage"))
+    implementation(project(":knowledge-graph:graph-core"))
+    implementation(project(":knowledge-graph:graph-storage"))
     implementation(project(":links"))
 
     implementation(libs.kotlinx.coroutines.android)

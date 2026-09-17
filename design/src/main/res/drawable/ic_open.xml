@@ -1,0 +1,25 @@
+<!-- External-link glyph (Figma icon/open). Stroke-drawn; tint via Icon(tint = …). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M10,5H5C4.558,5 4.134,5.176 3.821,5.488C3.509,5.801 3.333,6.225 3.333,6.667V15C3.333,15.442 3.509,15.866 3.821,16.179C4.134,16.491 4.558,16.667 5,16.667H13.333C13.775,16.667 14.199,16.491 14.512,16.179C14.824,15.866 15,15.442 15,15V10"/>
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M9.167,10.833L16.667,3.333"/>
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M12.5,3.333H16.667V7.5"/>
+</vector>

@@ -52,28 +52,26 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.kortex.app.ChatViewModel
-import dev.kortex.app.R
-import dev.kortex.app.VoiceState
-import dev.kortex.app.ui.Edge
+import androidx.hilt.navigation.compose.hiltViewModel
+import dev.kortex.design.R
+import dev.kortex.design.Edge
 import dev.kortex.app.ui.components.ListeningBar
 import dev.kortex.app.ui.components.MessageBubble
-import dev.kortex.app.ui.Mono
-import dev.kortex.app.ui.Muted
-import dev.kortex.app.ui.Panel
+import dev.kortex.design.Mono
+import dev.kortex.design.Muted
+import dev.kortex.design.Panel
 import dev.kortex.app.ui.components.PulsingDot
 import dev.kortex.app.ui.components.ReasoningPanel
-import dev.kortex.app.ui.Synapse
-import dev.kortex.app.ui.SynapseDim
-import dev.kortex.app.ui.Void
-import dev.kortex.app.util.formatVoiceDuration
+import dev.kortex.design.Synapse
+import dev.kortex.design.SynapseDim
+import dev.kortex.design.Void
+import dev.kortex.app.ui.util.formatVoiceDuration
 import dev.kortex.core.state.Attachment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Composable
-fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = viewModel()) {
+fun ChatScreen(modifier: Modifier = Modifier, vm: ChatViewModel = hiltViewModel()) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()

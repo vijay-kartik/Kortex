@@ -4,22 +4,40 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import dev.kortex.app.data.auth.McpOAuthManager
+import dev.kortex.app.di.ApplicationScope
+import dev.kortex.core.log.AndroidLogger
 import dev.kortex.core.log.e
 import dev.kortex.core.log.w
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class OAuthCallbackActivity : Activity() {
+
+    /** Hilt can't field-inject a plain [Activity], so dependencies come from the singleton graph. */
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface Dependencies {
+        @ApplicationScope fun appScope(): CoroutineScope
+        fun mcpOAuthManager(): McpOAuthManager
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         val uri = intent.data
         if (uri != null) {
-            val app = application as KortexApp
-            app.container.appScope.launch {
+            val app = applicationContext
+            val deps = EntryPointAccessors.fromApplication(app, Dependencies::class.java)
+            deps.appScope().launch {
                 try {
-                    app.container.mcpOAuthManager.handleCallback(uri)
+                    deps.mcpOAuthManager().handleCallback(uri)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(app, "OAuth linked successfully", Toast.LENGTH_SHORT).show()
                     }

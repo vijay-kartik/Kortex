@@ -26,17 +26,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.kortex.app.ChatViewModel
-import dev.kortex.app.R
-import dev.kortex.app.RunsScreen
-import dev.kortex.app.SettingsScreen
+import androidx.hilt.navigation.compose.hiltViewModel
+import dev.kortex.app.ui.screens.chat.ChatViewModel
+import dev.kortex.design.R
+import dev.kortex.app.ui.screens.runs.RunsScreen
+import dev.kortex.app.ui.screens.settings.SettingsScreen
 import dev.kortex.app.ui.appbar.KortexAppBar
 import dev.kortex.app.ui.screens.chat.ChatScreen
-import dev.kortex.app.ui.screens.GraphScreen
-import dev.kortex.app.ui.screens.HistoryScreen
-import dev.kortex.app.ui.screens.links.CreateLinkScreen
-import dev.kortex.app.ui.screens.links.LinksScreen
+import dev.kortex.app.ui.screens.graph.GraphScreen
+import dev.kortex.app.ui.screens.chat.HistoryScreen
+import dev.kortex.links.ui.CreateLinkScreen
+import dev.kortex.links.ui.LinksScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,9 +56,9 @@ fun RootScreen(
     var showCreateLinks by rememberSaveable { mutableStateOf(false) }
     // Address to pre-fill in the new-link screen; empty when opened from the Links tab.
     var createLinkUrl by rememberSaveable { mutableStateOf("") }
-    val vm: ChatViewModel = viewModel()
+    val vm: ChatViewModel = hiltViewModel()
     val chatUi by vm.ui.collectAsStateWithLifecycle()
-    val homeVm: HomeViewModel = viewModel()
+    val homeVm: HomeViewModel = hiltViewModel()
     val onboardingSeen by homeVm.onboardingSeen.collectAsStateWithLifecycle()
     val onboarding = !onboardingSeen && expanded == TabCategory.MyInfo
 
@@ -139,7 +139,7 @@ fun RootScreen(
 
                         else -> when (selected) {
                             KortexTab.Chat -> ChatScreen(vm = vm)
-                            KortexTab.Graph -> GraphScreen(vm = viewModel())
+                            KortexTab.Graph -> GraphScreen(vm = hiltViewModel())
                             KortexTab.History -> HistoryScreen(
                                 vm = vm,
                                 onSelectSession = { sessionId ->

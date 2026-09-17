@@ -10,13 +10,13 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import dev.kortex.app.ChatUi
-import dev.kortex.app.R
-import dev.kortex.app.ui.Muted
+import dev.kortex.app.ui.screens.chat.ChatUi
+import dev.kortex.design.R
+import dev.kortex.design.Muted
 import dev.kortex.app.ui.screens.home.KortexTab
 import dev.kortex.app.ui.screens.home.TabCategory
 import dev.kortex.app.ui.screens.home.Wordmark
-import dev.kortex.app.util.conversationAsText
+import dev.kortex.app.ui.util.conversationAsText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

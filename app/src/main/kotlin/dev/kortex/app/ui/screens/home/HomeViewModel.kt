@@ -1,16 +1,19 @@
 package dev.kortex.app.ui.screens.home
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.kortex.app.KortexApp
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.kortex.app.data.settings.SettingsStore
+import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class HomeViewModel(application: Application) : AndroidViewModel(application) {
-    private val store = (application as KortexApp).container.settingsStore
+@HiltViewModel
+class HomeViewModel @Inject constructor(
+    private val store: SettingsStore,
+) : ViewModel() {
 
     /**
      * Starts at `true` so a returning user never sees the onboarding flash before DataStore

@@ -26,13 +26,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.kortex.app.VoiceState
-import dev.kortex.app.ui.Edge
-import dev.kortex.app.ui.Muted
-import dev.kortex.app.ui.Panel
-import dev.kortex.app.ui.Synapse
-import dev.kortex.app.ui.Void
-import dev.kortex.app.util.formatVoiceDuration
+import dev.kortex.app.ui.screens.chat.VoiceState
+import dev.kortex.design.Edge
+import dev.kortex.design.Muted
+import dev.kortex.design.Panel
+import dev.kortex.design.Synapse
+import dev.kortex.design.Void
+import dev.kortex.app.ui.util.formatVoiceDuration
 
 /**
  * The composer's listening face — same silhouette as the text field so dictation reads as

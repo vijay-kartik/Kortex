@@ -27,7 +27,7 @@ the HTML test report) to see the per-case pass/fail lines.
 ## Running live evals
 
 Set `KORTEX_EVAL_LIVE=1` plus an API key (OpenAI is preferred if both are set, mirroring
-`KortexContainer`), then run the same test class:
+`AgentModule.provideLlmProvider`), then run the same test class:
 
 ```powershell
 $env:KORTEX_EVAL_LIVE = "1"

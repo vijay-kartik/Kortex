@@ -8,9 +8,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.kortex.app.ui.KortexTheme
+import dev.kortex.design.KortexTheme
 import dev.kortex.app.ui.screens.home.RootScreen
-import dev.kortex.app.ui.screens.links.linkDomain
+import dev.kortex.links.ui.linkDomain
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 

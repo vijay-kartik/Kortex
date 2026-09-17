@@ -6,8 +6,10 @@ added, removed, or its behavior/signature changes.**
 
 Builtin tools live in `core-agent/src/main/kotlin/dev/kortex/core/tool/builtin/` and are
 assembled by `defaultTools()` in `BuiltinTools.kt`. The app wires them up in
-`KortexContainer` via `ToolRegistry(defaultTools())`. Host (Android) tools live in
-`app/src/main/kotlin/dev/kortex/app/tools/`.
+`AgentModule.provideToolRegistry` (`app/.../di/AgentModule.kt`) via `ToolRegistry(defaultTools() + ...)`. Tools that need an Android `Context`
+also live in `core-agent` but are not part of `defaultTools()`: device-intent tools in
+`core/tool/android/` and `gmail_search` in `core/gmail/`. Knowledge-graph tools live in
+`knowledge-graph/graph-tools/`.
 
 ## How tools work (infrastructure)
 
@@ -34,8 +36,8 @@ user's toggle is remembered and never overridden on reconnect.
 
 ## Default tool set (`defaultTools()`)
 
-Every agent starts with these six. Android-specific tools are added on top in the app
-module (in `KortexContainer`, e.g. `defaultTools() + gmailTool(...)`).
+Every agent starts with these six. Context-bound tools are added on top in the app
+module (in `AgentModule.provideToolRegistry`, e.g. `defaultTools() + gmailTool(...)`).
 
 ### `calculator` — `Calculator.kt`
 - **Description:** Evaluate an arithmetic expression and return the numeric result.
@@ -104,9 +106,30 @@ module (in `KortexContainer`, e.g. `defaultTools() + gmailTool(...)`).
   this tool can then read. Uses Android graphics APIs — `core-agent` is now an Android
   library module, no longer pure JVM.
 
-## Host (Android) tools — `app/.../tools/`
+## Context-bound tools — `core-agent`, registered by the app
 
-### `gmail_search` — `GmailTool.kt`
+These take a `Context`, so `defaultTools()` can't build them; `AgentModule` constructs
+and registers them on the shared registry.
+
+### `create_reminder` — `core/tool/android/ReminderTool.kt`
+- **Description:** Sets an alarm with a label as a reminder.
+- **Params:** `message` (string, required); `hour` (integer, required, 0–23); `minute`
+  (integer, required, 0–59).
+- **Risk:** LOW.
+- **Behavior:** Fires `AlarmClock.ACTION_SET_ALARM` with `EXTRA_SKIP_UI`. Needs the
+  `SET_ALARM` permission, declared in `core-agent`'s manifest.
+- **Status:** Registered in `AgentModule`.
+
+### `create_calendar_event` — `core/tool/android/CalendarEventTool.kt`
+- **Description:** Creates a calendar event; the description may contain links.
+- **Params:** `title` (string, required); `description` (string, optional); `start_time`,
+  `end_time` (string, required, ISO-8601 local date-time).
+- **Risk:** LOW.
+- **Behavior:** Opens the calendar app's insert screen (`Intent.ACTION_INSERT` on
+  `CalendarContract.Events.CONTENT_URI`) prefilled with the event; no permission needed.
+- **Status:** Registered in `AgentModule`.
+
+### `gmail_search` — `core/gmail/GmailTool.kt`
 - **Description:** Search and read emails from the user's Gmail account via the Gmail
   REST API (`core/gmail/GmailApi.kt`). The LLM translates the user's request into Gmail
   search operators.
@@ -125,30 +148,19 @@ module (in `KortexContainer`, e.g. `defaultTools() + gmailTool(...)`).
   them. Requires an OAuth2 token from the injected `tokenProvider`; returns actionable
   errors when Gmail isn't connected, the token expired (401), or the `gmail.readonly`
   scope is missing (403).
-- **Status:** Registered in `KortexContainer` on top of `defaultTools()`.
-
-### `whatsapp_send_message` — `WhatsAppTool.kt`
-- **Description:** Sends a real WhatsApp message to a named contact via Android 16
-  Platform App Functions.
-- **Params:** `contact_name` (string, required); `message` (string, required).
-- **Risk:** **HIGH** — always triggers the human-in-the-loop approval dialog.
-- **Behavior:** Requires Android 16+ (API 36 / "Baklava"). Uses reflection against
-  `AppFunctionManager` / `ExecuteAppFunctionRequest` to invoke `com.whatsapp` →
-  `sendMessage` with `recipientName` + `text`, bridging the `OutcomeReceiver` callback
-  into a suspending call.
-- **Status:** Defined but **not currently registered** in `KortexContainer` — the factory
-  (`whatsappTool(context)`) has no call site. Wire it into the registry to activate.
+- **Status:** Registered in `AgentModule` on top of `defaultTools()`.
 
 ## Adding a new builtin tool (checklist)
 
-1. Create a factory in `core/tool/builtin/` (or `app/.../tools/` if it needs Android)
+1. Create a factory in `core/tool/builtin/` (or `core/tool/android/` if it needs a `Context`)
    using the `tool(name, description) { ... }` DSL.
 2. Set an honest `risk(...)` — anything with side effects visible to the user or the
    outside world should be `MEDIUM`/`HIGH` so the governor asks first.
 3. Return `ToolResult(ok, content)`; catch failures and return `ok=false` with a message
    the LLM can act on (never throw — the governor catches, but a good message beats a
    stack trace).
-4. Add it to `defaultTools()` (core) or register it on the shared registry (app).
+4. Add it to `defaultTools()` (core), or for `Context`-bound tools register it on the
+   shared registry in `AgentModule.provideToolRegistry` (app).
 5. Unit-test pure logic in `core-agent/src/test/` (see `CalculatorTest`,
    `WebSearchParseTest`, `WebFetchParseTest` for the pattern).
 6. **Update this file.**

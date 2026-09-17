@@ -62,7 +62,7 @@ object EvalMode {
     val isLive: Boolean get() = System.getenv("KORTEX_EVAL_LIVE") == "1"
 
     /**
-     * Live provider selection mirrors the app's `KortexContainer`: OpenAI if
+     * Live provider selection mirrors the app's `AgentModule.provideLlmProvider`: OpenAI if
      * `OPENAI_API_KEY` is set, else Deepseek via `DEEPSEEK_API_KEY` (env vars here,
      * since tests don't see local.properties/BuildConfig).
      */

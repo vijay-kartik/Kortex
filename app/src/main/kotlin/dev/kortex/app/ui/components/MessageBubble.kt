@@ -47,16 +47,15 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.halilibo.richtext.markdown.Markdown
 import com.halilibo.richtext.ui.material3.RichText
-import dev.kortex.app.ChatTurn
-import dev.kortex.app.PdfViewer
-import dev.kortex.app.util.convertTableToTsv
-import dev.kortex.app.util.parseMarkdownTables
-import dev.kortex.app.ui.Alarm
-import dev.kortex.app.ui.Edge
-import dev.kortex.app.ui.Muted
-import dev.kortex.app.ui.Panel
-import dev.kortex.app.ui.Synapse
-import dev.kortex.app.ui.Void
+import dev.kortex.app.domain.chat.ChatTurn
+import dev.kortex.app.ui.util.convertTableToTsv
+import dev.kortex.app.ui.util.parseMarkdownTables
+import dev.kortex.design.Alarm
+import dev.kortex.design.Edge
+import dev.kortex.design.Muted
+import dev.kortex.design.Panel
+import dev.kortex.design.Synapse
+import dev.kortex.design.Void
 import dev.kortex.core.state.Attachment
 import dev.kortex.core.state.Message
 

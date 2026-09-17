@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- create_reminder (tool/android/ReminderTool.kt) sets alarms via AlarmClock.ACTION_SET_ALARM. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+</manifest>

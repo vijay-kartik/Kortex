@@ -69,7 +69,9 @@ dependencies {
     implementation(project(":core-agent"))
     implementation(project(":knowledge-graph:graph-core"))
     implementation(project(":knowledge-graph:graph-storage"))
+    implementation(project(":knowledge-graph:graph-tools"))
     implementation(project(":links"))
+    implementation(project(":design"))
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)

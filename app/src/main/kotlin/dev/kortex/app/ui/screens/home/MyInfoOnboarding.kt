@@ -19,14 +19,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.kortex.app.ui.Edge
-import dev.kortex.app.ui.Ink
-import dev.kortex.app.ui.Mono
-import dev.kortex.app.ui.Muted
-import dev.kortex.app.ui.Panel
-import dev.kortex.app.ui.Synapse
-import dev.kortex.app.ui.Void
-import dev.kortex.app.ui.components.dashedBorder
+import dev.kortex.design.Edge
+import dev.kortex.design.Ink
+import dev.kortex.design.Mono
+import dev.kortex.design.Muted
+import dev.kortex.design.Panel
+import dev.kortex.design.Synapse
+import dev.kortex.design.Void
+import dev.kortex.design.dashedBorder
 
 /**
  * First run under My Info (Figma: Tabs / 1 First run). Explains what the category is for and

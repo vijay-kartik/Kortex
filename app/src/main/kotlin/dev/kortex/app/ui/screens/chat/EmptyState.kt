@@ -10,7 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import dev.kortex.app.ui.Muted
+import dev.kortex.design.Muted
 import dev.kortex.app.ui.components.PulsingDot
 
 @Composable

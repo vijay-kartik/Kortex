@@ -29,9 +29,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.kortex.app.R
-import dev.kortex.app.ui.Void
-import dev.kortex.app.util.formatVoiceDuration
+import dev.kortex.design.R
+import dev.kortex.design.Void
+import dev.kortex.app.ui.util.formatVoiceDuration
 import dev.kortex.core.state.Attachment
 import java.io.File
 

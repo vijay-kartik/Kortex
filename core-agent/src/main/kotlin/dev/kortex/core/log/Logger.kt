@@ -4,7 +4,7 @@ package dev.kortex.core.log
  * Structured logging hook so a host (Logcat, console, file) can observe what the agent
  * is doing — LLM requests/responses, tool calls, and governor decisions. Kept as a plain
  * Kotlin interface (no android.util.Log dependency) so core-agent's JVM unit tests don't
- * need Robolectric; the app module wires in a Logcat-backed implementation.
+ * need Robolectric; [AndroidLogger] is the Logcat-backed implementation hosts wire in.
  */
 fun interface Logger {
     fun log(level: Level, tag: String, message: String, error: Throwable?)

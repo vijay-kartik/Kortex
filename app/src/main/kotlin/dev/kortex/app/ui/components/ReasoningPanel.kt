@@ -40,15 +40,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.kortex.app.ReasoningLine
-import dev.kortex.app.ReasoningStats
-import dev.kortex.app.ui.Alarm
-import dev.kortex.app.ui.Amber
-import dev.kortex.app.ui.Muted
-import dev.kortex.app.ui.Synapse
-import dev.kortex.app.ui.SynapseDim
-import dev.kortex.app.util.traceAsVisibleText
-import dev.kortex.app.util.traceTag
+import dev.kortex.app.domain.chat.ReasoningLine
+import dev.kortex.app.domain.chat.ReasoningStats
+import dev.kortex.design.Alarm
+import dev.kortex.design.Amber
+import dev.kortex.design.Muted
+import dev.kortex.design.Synapse
+import dev.kortex.design.SynapseDim
+import dev.kortex.app.ui.util.traceAsVisibleText
+import dev.kortex.app.ui.util.traceTag
 import dev.kortex.core.log.Logger
 
 /**

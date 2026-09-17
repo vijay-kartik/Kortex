@@ -19,7 +19,7 @@ class LinksRepository @Inject constructor(
     /** Newest first. */
     fun observeLinks(): Flow<List<LinkWithTags>> = linkDao.observeLinksWithTags()
 
-    /** Every tag, including unused ones (count 0), ordered by name. */
+    /** Every tag, including unused ones (count 0), ordered by name. Tags orphaned by [deleteLink] are gone. */
     fun observeTagLinkCounts(): Flow<List<TagLinkCount>> = tagDao.observeTagLinkCounts()
 
     /** No-op if a tag with this name already exists (names are case-insensitive). */
@@ -28,12 +28,13 @@ class LinksRepository @Inject constructor(
     }
 
     /**
-     * Deletes the link together with its tag assignments and its thumbnail in app storage. The row
-     * goes first: a crash before the files are removed leaves only orphans, which [LinkImageStore]
-     * sweeps up, never a link pointing at a missing image.
+     * Deletes the link together with its tag assignments, any tag left with no links because of it,
+     * and its thumbnail in app storage. The rows go first, in one transaction: a crash before the
+     * files are removed leaves only orphan files, which [LinkImageStore] sweeps up, never a link
+     * pointing at a missing image.
      */
     suspend fun deleteLink(id: Long) {
-        linkDao.delete(id)
+        linkDao.deleteWithOrphanedTags(id)
         imageStore.deleteImages(id)
     }
 

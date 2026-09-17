@@ -21,8 +21,16 @@ abstract class LinkDao {
     @Insert
     abstract suspend fun insert(link: LinkEntity): Long
 
+    /** @return rows updated: 0 when the link has been deleted meanwhile. */
     @Query("UPDATE links SET imageUrl = :imageUrl, imagePath = :imagePath WHERE id = :id")
-    abstract suspend fun updateImage(id: Long, imageUrl: String?, imagePath: String?)
+    abstract suspend fun updateImage(id: Long, imageUrl: String?, imagePath: String?): Int
+
+    /** Removes the link; its tag assignments go with it (foreign-key cascade). Its image files don't. */
+    @Query("DELETE FROM links WHERE id = :id")
+    abstract suspend fun delete(id: Long)
+
+    @Query("SELECT id FROM links")
+    abstract suspend fun getAllIds(): List<Long>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insertTagRefs(refs: List<LinkTagCrossRef>)

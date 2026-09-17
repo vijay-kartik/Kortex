@@ -27,6 +27,16 @@ class LinksRepository @Inject constructor(
         tagDao.insert(TagEntity(name = name.trim()))
     }
 
+    /**
+     * Deletes the link together with its tag assignments and its thumbnail in app storage. The row
+     * goes first: a crash before the files are removed leaves only orphans, which [LinkImageStore]
+     * sweeps up, never a link pointing at a missing image.
+     */
+    suspend fun deleteLink(id: Long) {
+        linkDao.delete(id)
+        imageStore.deleteImages(id)
+    }
+
     /** The saved link that [url] is an address of (see [linkUrlKey]), or null; follows saves as they happen. */
     fun observeSavedLink(url: String): Flow<LinkEntity?> = linkDao.observeByUrlKey(linkUrlKey(url))
 

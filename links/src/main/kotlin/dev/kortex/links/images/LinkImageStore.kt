@@ -67,6 +67,10 @@ class LinkImageStore @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val downloads = ConcurrentHashMap<String, MutableStateFlow<LinkImageState>>()
 
+    init {
+        scope.launch { deleteOrphanedImages() }
+    }
+
     /** Starts downloading [imageUrl] unless it already is (or has). */
     fun image(imageUrl: String): StateFlow<LinkImageState> {
         val state = downloads.computeIfAbsent(imageUrl) { MutableStateFlow<LinkImageState>(LinkImageState.Loading(null)).also { start(imageUrl, it) } }
@@ -97,15 +101,44 @@ class LinkImageStore @Inject constructor(
                 LinkImageSource.None -> return@launch
                 LinkImageSource.Unknown -> {
                     val found = metadataFetcher.fetch(pageUrl).imageUrl ?: return@launch
-                    found.also { linkDao.updateImage(linkId, it, imagePath = null) }
+                    // Deleted while the page was being read: nothing to attach to.
+                    if (linkDao.updateImage(linkId, found, imagePath = null) == 0) return@launch
+                    found
                 }
             }
             val ready = image(imageUrl).first { it !is LinkImageState.Loading } as? LinkImageState.Ready ?: return@launch
-            val saved = File(imagesDir(), "$linkId-${sha1(imageUrl).take(12)}.jpg")
+            val saved = File(imagesDir(), "${imageFilePrefix(linkId)}${sha1(imageUrl).take(12)}.jpg")
             File(ready.path).copyTo(saved, overwrite = true)
-            linkDao.updateImage(linkId, imageUrl, saved.path)
+            // The link may have been deleted while its image downloaded; don't keep a copy nobody owns.
+            if (linkDao.updateImage(linkId, imageUrl, saved.path) == 0) saved.delete()
         }
     }
+
+    /** Deletes every stored thumbnail of [linkId] from app storage. Call once its row is deleted. */
+    suspend fun deleteImages(linkId: Long) {
+        withContext(Dispatchers.IO) {
+            val prefix = imageFilePrefix(linkId)
+            imagesDir().listFiles { file -> file.name.startsWith(prefix) }?.forEach { it.delete() }
+        }
+    }
+
+    /**
+     * Removes thumbnails whose link no longer exists, e.g. when the process died between deleting a
+     * link's row and its files. Only files older than a minute are touched, so a thumbnail being
+     * attached to a link saved after the id snapshot is never mistaken for an orphan.
+     */
+    private suspend fun deleteOrphanedImages() {
+        val files = imagesDir().listFiles().orEmpty()
+        if (files.isEmpty()) return
+        val cutoff = System.currentTimeMillis() - ORPHAN_MIN_AGE_MS
+        val linkIds = linkDao.getAllIds().toHashSet()
+        files
+            .filter { it.lastModified() < cutoff && it.name.substringBefore('-').toLongOrNull() !in linkIds }
+            .forEach { it.delete() }
+    }
+
+    /** Thumbnail files are named `<linkId>-<hash>.jpg`; ids are never reused, so the prefix owns them. */
+    private fun imageFilePrefix(linkId: Long) = "$linkId-"
 
     private fun start(imageUrl: String, state: MutableStateFlow<LinkImageState>) {
         scope.launch {
@@ -212,6 +245,7 @@ class LinkImageStore @Inject constructor(
         const val THUMBNAIL_PX = 256
         const val JPEG_QUALITY = 85
         const val MAX_BYTES = 10L * 1024 * 1024
+        const val ORPHAN_MIN_AGE_MS = 60_000L
     }
 }
 

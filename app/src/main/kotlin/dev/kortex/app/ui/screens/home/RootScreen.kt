@@ -41,12 +41,8 @@ import dev.kortex.links.ui.LinksScreen
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RootScreen(
-    requestedSessionId: String? = null,
-    onSessionRequestConsumed: () -> Unit = {},
-    newLinkUrl: String? = null,
-    onNewLinkConsumed: () -> Unit = {},
-    newChatDraft: String? = null,
-    onNewChatConsumed: () -> Unit = {},
+    entryRequest: EntryRequest? = null,
+    onEntryRequestHandled: () -> Unit = {},
 ) {
     var selected by rememberSaveable { mutableStateOf(KortexTab.Links) }
     var expanded by rememberSaveable { mutableStateOf(TabCategory.MyInfo) }
@@ -68,35 +64,30 @@ fun RootScreen(
         if (tab.category == TabCategory.Agent) lastAgentTab = tab
     }
 
-    // Notification tap → load that session on the Chat tab.
-    LaunchedEffect(requestedSessionId) {
-        if (requestedSessionId != null) {
-            vm.loadSession(requestedSessionId)
-            openTab(KortexTab.Chat)
-            onSessionRequestConsumed()
+    // Notification taps, launcher shortcuts and shares: act once, then clear the request.
+    LaunchedEffect(entryRequest) {
+        when (val request = entryRequest ?: return@LaunchedEffect) {
+            // Load that session on the Chat tab.
+            is EntryRequest.OpenSession -> {
+                vm.loadSession(request.sessionId)
+                openTab(KortexTab.Chat)
+            }
+            // New-link screen, address filled in when there is one.
+            is EntryRequest.NewLink -> {
+                showSettings = false
+                openTab(KortexTab.Links)
+                createLinkUrl = request.url
+                showCreateLinks = true
+            }
+            // A new chat with the draft in the composer, not sent.
+            is EntryRequest.NewChat -> {
+                showSettings = false
+                showCreateLinks = false
+                vm.startNewSession(draft = request.draft)
+                openTab(KortexTab.Chat)
+            }
         }
-    }
-
-    // Shared link or "Save to links" shortcut → new-link screen, address filled in when there is one.
-    LaunchedEffect(newLinkUrl) {
-        if (newLinkUrl != null) {
-            showSettings = false
-            openTab(KortexTab.Links)
-            createLinkUrl = newLinkUrl
-            showCreateLinks = true
-            onNewLinkConsumed()
-        }
-    }
-
-    // Shared text or "Ask agent" shortcut → a new chat with the draft in the composer, not sent.
-    LaunchedEffect(newChatDraft) {
-        if (newChatDraft != null) {
-            showSettings = false
-            showCreateLinks = false
-            vm.startNewSession(draft = newChatDraft)
-            openTab(KortexTab.Chat)
-            onNewChatConsumed()
-        }
+        onEntryRequestHandled()
     }
 
     when {

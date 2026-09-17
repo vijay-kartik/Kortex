@@ -7,24 +7,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import dev.kortex.design.KortexTheme
+import dev.kortex.app.ui.screens.home.EntryRequest
 import dev.kortex.app.ui.screens.home.RootScreen
 import dev.kortex.links.ui.linkDomain
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.MutableStateFlow
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    /** Session requested by a notification tap (share-intake result); consumed by RootScreen. */
-    private val requestedSessionId = MutableStateFlow<String?>(null)
-
-    /** Address for the new-link screen (empty from the shortcut); consumed by RootScreen. */
-    private val newLinkUrl = MutableStateFlow<String?>(null)
-
-    /** Composer text for a new chat (empty from the shortcut); consumed by RootScreen. */
-    private val newChatDraft = MutableStateFlow<String?>(null)
+    /** Latest request from a notification, shortcut or share; RootScreen clears it once handled. */
+    private var entryRequest by mutableStateOf<EntryRequest?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,16 +35,11 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
-        requestedSessionId.value = intent.getStringExtra(EXTRA_OPEN_SESSION_ID)
         setContent {
             KortexTheme {
                 RootScreen(
-                    requestedSessionId = requestedSessionId.collectAsStateWithLifecycle().value,
-                    onSessionRequestConsumed = { requestedSessionId.value = null },
-                    newLinkUrl = newLinkUrl.collectAsStateWithLifecycle().value,
-                    onNewLinkConsumed = { newLinkUrl.value = null },
-                    newChatDraft = newChatDraft.collectAsStateWithLifecycle().value,
-                    onNewChatConsumed = { newChatDraft.value = null },
+                    entryRequest = entryRequest,
+                    onEntryRequestHandled = { entryRequest = null },
                 )
             }
         }
@@ -57,15 +48,21 @@ class MainActivity : ComponentActivity() {
     // launchMode="singleTop": a notification tap, share or shortcut while the app is open lands here.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.getStringExtra(EXTRA_OPEN_SESSION_ID)?.let { requestedSessionId.value = it }
         handleEntryIntent(intent)
     }
 
-    /** Routes launcher shortcuts and shares to their screen. Returns false only for a share that was rejected. */
+    /**
+     * Turns a notification tap, launcher shortcut or share into an [EntryRequest].
+     * Returns false only for a share that was rejected.
+     */
     private fun handleEntryIntent(intent: Intent): Boolean {
+        intent.getStringExtra(EXTRA_OPEN_SESSION_ID)?.let {
+            entryRequest = EntryRequest.OpenSession(it)
+            return true
+        }
         when (intent.action) {
-            ACTION_SAVE_LINK -> newLinkUrl.value = ""
-            ACTION_ASK_AGENT -> newChatDraft.value = ""
+            ACTION_SAVE_LINK -> entryRequest = EntryRequest.NewLink()
+            ACTION_ASK_AGENT -> entryRequest = EntryRequest.NewChat()
             Intent.ACTION_SEND -> return acceptShare(intent)
         }
         return true
@@ -82,8 +79,8 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, "Nothing to open — the shared text was empty.", Toast.LENGTH_SHORT).show()
                 return false
             }
-            text.none(Char::isWhitespace) && linkDomain(text) != null -> newLinkUrl.value = text
-            else -> newChatDraft.value = text
+            text.none(Char::isWhitespace) && linkDomain(text) != null -> entryRequest = EntryRequest.NewLink(text)
+            else -> entryRequest = EntryRequest.NewChat(text)
         }
         return true
     }

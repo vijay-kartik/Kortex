@@ -1,9 +1,10 @@
-package dev.kortex.app
+package dev.kortex.app.domain
 
 import android.service.voice.VoiceInteractionService
 import android.service.voice.VoiceInteractionSessionService
 import android.speech.RecognitionService
 import android.content.Intent
+import android.os.Bundle
 
 /** 
  * Boilerplate to satisfy the android.app.role.ASSISTANT requirements.
@@ -12,7 +13,7 @@ import android.content.Intent
  */
 
 class AssistantSessionService : VoiceInteractionSessionService() {
-    override fun onNewSession(args: android.os.Bundle?) = null
+    override fun onNewSession(args: Bundle?) = null
 }
 
 class AssistantService : VoiceInteractionService()

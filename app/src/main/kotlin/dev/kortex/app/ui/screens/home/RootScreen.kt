@@ -1,13 +1,13 @@
 package dev.kortex.app.ui.screens.home
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
+import android.content.Context
+import android.content.Intent
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -15,163 +15,205 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
-import dev.kortex.app.ui.screens.chat.ChatViewModel
-import dev.kortex.design.R
-import dev.kortex.app.ui.screens.runs.RunsScreen
-import dev.kortex.app.ui.screens.settings.SettingsScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.kortex.app.domain.chat.ChatTurn
 import dev.kortex.app.ui.appbar.KortexAppBar
 import dev.kortex.app.ui.screens.chat.ChatScreen
-import dev.kortex.app.ui.screens.graph.GraphScreen
+import dev.kortex.app.ui.screens.chat.ChatViewModel
 import dev.kortex.app.ui.screens.chat.HistoryScreen
+import dev.kortex.app.ui.screens.graph.GraphScreen
+import dev.kortex.app.ui.screens.runs.RunsScreen
+import dev.kortex.app.ui.screens.settings.SettingsScreen
+import dev.kortex.app.ui.util.conversationAsText
+import dev.kortex.design.KortexTheme
+import dev.kortex.design.Muted
+import dev.kortex.design.Panel
 import dev.kortex.links.ui.CreateLinkScreen
 import dev.kortex.links.ui.LinksScreen
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Stateful entry to the home UI: the only place that touches ViewModels. Everything it
+ * draws goes through [RootContent], with the real screens passed in as slots.
+ */
 @Composable
 fun RootScreen(
     entryRequest: EntryRequest? = null,
     onEntryRequestHandled: () -> Unit = {},
 ) {
-    var selected by rememberSaveable { mutableStateOf(KortexTab.Links) }
-    var expanded by rememberSaveable { mutableStateOf(TabCategory.MyInfo) }
-    // Coming back to Agent restores the leaf the user left, rather than resetting to Chat.
-    var lastAgentTab by rememberSaveable { mutableStateOf(KortexTab.Chat) }
-    var showSettings by remember { mutableStateOf(false) }
-    var showCreateLinks by rememberSaveable { mutableStateOf(false) }
-    // Address to pre-fill in the new-link screen; empty when opened from the Links tab.
-    var createLinkUrl by rememberSaveable { mutableStateOf("") }
-    val vm: ChatViewModel = hiltViewModel()
-    val chatUi by vm.ui.collectAsStateWithLifecycle()
+    val state = rememberRootState()
+    val chatVm: ChatViewModel = hiltViewModel()
     val homeVm: HomeViewModel = hiltViewModel()
+    val chatUi by chatVm.ui.collectAsStateWithLifecycle()
     val onboardingSeen by homeVm.onboardingSeen.collectAsStateWithLifecycle()
-    val onboarding = !onboardingSeen && expanded == TabCategory.MyInfo
+    val context = LocalContext.current
 
-    fun openTab(tab: KortexTab) {
-        selected = tab
-        expanded = tab.category
-        if (tab.category == TabCategory.Agent) lastAgentTab = tab
-    }
+    EntryRequestEffect(entryRequest, state, chatVm, onEntryRequestHandled)
 
-    // Notification taps, launcher shortcuts and shares: act once, then clear the request.
-    LaunchedEffect(entryRequest) {
-        when (val request = entryRequest ?: return@LaunchedEffect) {
-            // Load that session on the Chat tab.
-            is EntryRequest.OpenSession -> {
-                vm.loadSession(request.sessionId)
-                openTab(KortexTab.Chat)
-            }
-            // New-link screen, address filled in when there is one.
-            is EntryRequest.NewLink -> {
-                showSettings = false
-                openTab(KortexTab.Links)
-                createLinkUrl = request.url
-                showCreateLinks = true
-            }
-            // A new chat with the draft in the composer, not sent.
-            is EntryRequest.NewChat -> {
-                showSettings = false
-                showCreateLinks = false
-                vm.startNewSession(draft = request.draft)
-                openTab(KortexTab.Chat)
-            }
-        }
-        onEntryRequestHandled()
-    }
+    // CreateLinkScreen registers its own BackHandler; Settings has none, so close it here.
+    BackHandler(enabled = state.overlay == Overlay.Settings, onBack = state::closeOverlay)
 
-    when {
-        showSettings -> SettingsScreen(onDismiss = { showSettings = false })
-        // Keyed on the address so a new share replaces a half-filled form instead of merging into it.
-        showCreateLinks -> key(createLinkUrl) {
-            CreateLinkScreen(onBack = { showCreateLinks = false }, initialUrl = createLinkUrl)
-        }
-        else -> {
-            Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
-                topBar = {
-                    Column {
-                        KortexAppBar(
-                            selected = selected,
-                            expanded = expanded,
-                            onboarding = onboarding,
-                            chatUi = chatUi,
-                            onMcpSettingsClick = { showSettings = true },
-                            onCategorySelected = { category ->
-                                expanded = category
-                                selected = when (category) {
-                                    TabCategory.Agent -> lastAgentTab
-                                    TabCategory.MyInfo -> KortexTab.Links
-                                }
-                            },
-                            onTabSelected = ::openTab,
-                        )
+    RootContent(
+        state = state,
+        onboarding = !onboardingSeen && state.expanded == TabCategory.MyInfo,
+        onOnboardingDone = {
+            homeVm.markOnboardingSeen()
+            state.openTab(KortexTab.Links)
+        },
+        onShareConversation = chatUi.turns
+            .takeIf { state.selected == KortexTab.Chat && it.isNotEmpty() }
+            ?.let { turns -> { shareConversation(context, turns) } },
+        overlayContent = { overlay ->
+            when (overlay) {
+                Overlay.None -> Unit
+                Overlay.Settings -> SettingsScreen(onDismiss = state::closeOverlay)
+                // Keyed on the address so a new share replaces a half-filled form instead of merging into it.
+                is Overlay.CreateLink -> key(overlay.url) {
+                    CreateLinkScreen(onBack = state::closeOverlay, initialUrl = overlay.url)
+                }
+            }
+        },
+        tabContent = { tab ->
+            when (tab) {
+                KortexTab.Chat -> ChatScreen()
+                KortexTab.Graph -> GraphScreen()
+                KortexTab.History -> HistoryScreen(
+                    onSelectSession = { sessionId ->
+                        chatVm.loadSession(sessionId)
+                        state.openTab(KortexTab.Chat)
                     }
-                },
-            ) { innerPadding ->
-                Box(Modifier.padding(innerPadding)) {
-                    when {
-                        onboarding -> MyInfoOnboarding(
-                            onOpenLinks = {
-                                homeVm.markOnboardingSeen()
-                                openTab(KortexTab.Links)
-                            }
-                        )
+                )
+                KortexTab.Runs -> RunsScreen()
+                KortexTab.Links -> LinksScreen(onCreateLink = { state.openCreateLink() })
+            }
+        },
+    )
+}
 
-                        else -> when (selected) {
-                            KortexTab.Chat -> ChatScreen(vm = vm)
-                            KortexTab.Graph -> GraphScreen(vm = hiltViewModel())
-                            KortexTab.History -> HistoryScreen(
-                                vm = vm,
-                                onSelectSession = { sessionId ->
-                                    vm.loadSession(sessionId)
-                                    openTab(KortexTab.Chat)
-                                }
-                            )
-
-                            KortexTab.Runs -> RunsScreen()
-                            KortexTab.Links -> LinksScreen(
-                                onCreateLink = {
-                                    createLinkUrl = ""
-                                    showCreateLinks = true
-                                }
-                            )
-                        }
-                    }
+/**
+ * Stateless home shell: app bar, category tabs, onboarding and the switch between the tabbed
+ * UI and a full-screen [Overlay]. Screen bodies come from [overlayContent] and [tabContent].
+ *
+ * @param onShareConversation shows the share action when non-null.
+ */
+@Composable
+fun RootContent(
+    state: RootState,
+    onboarding: Boolean,
+    onOnboardingDone: () -> Unit,
+    onShareConversation: (() -> Unit)?,
+    overlayContent: @Composable (Overlay) -> Unit,
+    tabContent: @Composable (KortexTab) -> Unit,
+) {
+    when (val overlay = state.overlay) {
+        Overlay.None -> Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                // KortexAppBar emits the app bar and the tab bar as siblings; stack them.
+                Column {
+                    KortexAppBar(
+                        selected = state.selected,
+                        expanded = state.expanded,
+                        onboarding = onboarding,
+                        onShareConversation = onShareConversation,
+                        onMcpSettingsClick = state::openSettings,
+                        onCategorySelected = state::openCategory,
+                        onTabSelected = state::openTab,
+                    )
+                }
+            },
+        ) { innerPadding ->
+            Box(Modifier.padding(innerPadding)) {
+                if (onboarding) {
+                    MyInfoOnboarding(onOpenLinks = onOnboardingDone)
+                } else {
+                    tabContent(state.selected)
                 }
             }
         }
+        else -> overlayContent(overlay)
     }
 }
 
-/** Status light + tracked-out wordmark: the app reads as an instrument, not a toy. */
+/** Acts on a notification tap, launcher shortcut or share once, then clears the request. */
 @Composable
-fun Wordmark() {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Image(
-            painterResource(R.drawable.ic_kortex_mark),
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
+private fun EntryRequestEffect(
+    request: EntryRequest?,
+    state: RootState,
+    chatVm: ChatViewModel,
+    onHandled: () -> Unit,
+) {
+    LaunchedEffect(request) {
+        when (val pending = request ?: return@LaunchedEffect) {
+            // Load that session on the Chat tab.
+            is EntryRequest.OpenSession -> {
+                chatVm.loadSession(pending.sessionId)
+                state.openTab(KortexTab.Chat)
+            }
+            // New-link screen, address filled in when there is one.
+            is EntryRequest.NewLink -> {
+                state.openTab(KortexTab.Links)
+                state.openCreateLink(pending.url)
+            }
+            // A new chat with the draft in the composer, not sent.
+            is EntryRequest.NewChat -> {
+                state.closeOverlay()
+                chatVm.startNewSession(draft = pending.draft)
+                state.openTab(KortexTab.Chat)
+            }
+        }
+        onHandled()
+    }
+}
+
+private fun shareConversation(context: Context, turns: List<ChatTurn>) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, conversationAsText(turns))
+    }
+    context.startActivity(Intent.createChooser(send, "Share conversation"))
+}
+
+// ── Previews ──────────────────────────────────────────────────────
+
+@Composable
+private fun PreviewSlot(label: String) {
+    Box(Modifier.fillMaxSize().background(Panel), contentAlignment = Alignment.Center) {
+        Text(label, color = Muted)
+    }
+}
+
+@Preview
+@Composable
+private fun RootContentChatPreview() {
+    KortexTheme {
+        RootContent(
+            state = remember { RootState(selected = KortexTab.Chat) },
+            onboarding = false,
+            onOnboardingDone = {},
+            onShareConversation = {},
+            overlayContent = { PreviewSlot(it.toString()) },
+            tabContent = { PreviewSlot(it.label) },
         )
-        Text(
-            "KORTEX",
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 4.sp,
-            ),
+    }
+}
+
+@Preview
+@Composable
+private fun RootContentOnboardingPreview() {
+    KortexTheme {
+        RootContent(
+            state = remember { RootState(selected = KortexTab.Links) },
+            onboarding = true,
+            onOnboardingDone = {},
+            onShareConversation = null,
+            overlayContent = { PreviewSlot(it.toString()) },
+            tabContent = { PreviewSlot(it.label) },
         )
     }
 }

@@ -1,5 +1,6 @@
 package dev.kortex.app.ui.screens.graph
 
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -216,7 +217,7 @@ class GraphViewModel @Inject constructor(
 }
 
 @Composable
-fun GraphScreen(vm: GraphViewModel) {
+fun GraphScreen(vm: GraphViewModel = hiltViewModel()) {
     val nodes by vm.nodes.collectAsState()
     val edges by vm.edges.collectAsState()
     val selectedNodeDetails by vm.selectedNodeDetails.collectAsState()

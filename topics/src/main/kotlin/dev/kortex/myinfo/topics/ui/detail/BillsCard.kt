@@ -16,6 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,7 +51,7 @@ internal fun BillsCard(bills: BillSummary, nowMillis: Long, modifier: Modifier =
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (settled) "BILLS · ALL PAID" else "BILLS · OUTSTANDING", style = MetaStyle, color = if (settled) Muted else Amber, modifier = Modifier.weight(1f))
+            Text(if (settled) "BILLS · ALL PAID" else "BILLS · OUTSTANDING", style = MetaStyle, color = if (settled) Muted else Amber, modifier = Modifier.weight(1f).semantics { heading() })
             Text("${bills.paid.done}/${bills.paid.total} PAID", style = MetaStyle, color = Muted)
         }
         Text(

@@ -1,6 +1,17 @@
 package dev.kortex.app.ui.screens.home
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +41,8 @@ import dev.kortex.app.ui.screens.settings.SettingsScreen
 import dev.kortex.design.KortexTheme
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
+import dev.kortex.design.anim.EmphasizedDecelerate
+import dev.kortex.design.anim.StandardEasing
 import dev.kortex.links.ui.CreateLinkScreen
 import dev.kortex.links.ui.LinksScreen
 import dev.kortex.myinfo.topics.ui.TopicsScreen
@@ -122,35 +135,80 @@ fun RootContent(
     overlayContent: @Composable (Overlay) -> Unit,
     tabContent: @Composable (KortexTab) -> Unit,
 ) {
-    when (val overlay = state.overlay) {
-        Overlay.None -> Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            topBar = {
-                // KortexAppBar emits the app bar and the tab bar as siblings; stack them.
-                Column {
-                    KortexAppBar(
-                        selected = state.selected,
-                        expanded = state.expanded,
-                        onboarding = onboarding,
-                        actions = { tabActions(state.selected) },
-                        onMcpSettingsClick = state::openSettings,
-                        onCategorySelected = state::openCategory,
-                        onTabSelected = state::openTab,
-                    )
-                }
-            },
-        ) { innerPadding ->
-            Box(Modifier.padding(innerPadding)) {
-                if (onboarding) {
-                    MyInfoOnboarding(onOpenLinks = onOnboardingDone)
-                } else {
-                    tabContent(state.selected)
+    AnimatedContent(
+        targetState = state.overlay,
+        transitionSpec = { overlayTransition() },
+        label = "overlay",
+    ) { overlay ->
+        when (overlay) {
+            Overlay.None -> Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = {
+                    // KortexAppBar emits the app bar and the tab bar as siblings; stack them.
+                    Column {
+                        KortexAppBar(
+                            selected = state.selected,
+                            expanded = state.expanded,
+                            onboarding = onboarding,
+                            actions = { tabActions(state.selected) },
+                            onMcpSettingsClick = state::openSettings,
+                            onCategorySelected = state::openCategory,
+                            onTabSelected = state::openTab,
+                        )
+                    }
+                },
+            ) { innerPadding ->
+                Box(Modifier.padding(innerPadding)) {
+                    if (onboarding) {
+                        MyInfoOnboarding(onOpenLinks = onOnboardingDone)
+                    } else {
+                        tabContent(state.selected)
+                    }
                 }
             }
+            else -> overlayContent(overlay)
         }
-        else -> overlayContent(overlay)
     }
 }
+
+/**
+ * How one screen gives way to the next. The Topics screens push in from the end and fall back the
+ * same way, and one Topics screen replacing another (a search result opening its topic) crossfades.
+ * Every other overlay keeps switching instantly, as it always has.
+ */
+private fun AnimatedContentTransitionScope<Overlay>.overlayTransition(): ContentTransform {
+    val from = initialState
+    val to = targetState
+    if (!from.isTopics && !to.isTopics) return EnterTransition.None togetherWith ExitTransition.None
+    return when {
+        from == Overlay.None -> (
+            slideInHorizontally(tween(OVERLAY_ENTER_MS, easing = EmphasizedDecelerate)) { it / OVERLAY_SLIDE_FRACTION } +
+                fadeIn(tween(OVERLAY_ENTER_MS, easing = EmphasizedDecelerate))
+            ) togetherWith fadeOut(tween(OVERLAY_EXIT_MS, easing = StandardEasing))
+        // The screen being closed stays on top while it slides away, so the tabs appear beneath it.
+        to == Overlay.None -> (
+            fadeIn(tween(OVERLAY_ENTER_MS, easing = StandardEasing)) togetherWith (
+                slideOutHorizontally(tween(OVERLAY_EXIT_MS, easing = StandardEasing)) { it / OVERLAY_SLIDE_FRACTION } +
+                    fadeOut(tween(OVERLAY_EXIT_MS, easing = StandardEasing))
+                )
+            ).apply { targetContentZIndex = -1f }
+        else -> fadeIn(tween(OVERLAY_ENTER_MS, easing = StandardEasing)) togetherWith
+            fadeOut(tween(OVERLAY_EXIT_MS, easing = StandardEasing))
+    }
+}
+
+/** The full-screen Topics screens: the new-topic form, a topic's feed, and search. */
+private val Overlay.isTopics: Boolean
+    get() = when (this) {
+        Overlay.NewTopic, Overlay.TopicSearch, is Overlay.Topic -> true
+        else -> false
+    }
+
+private const val OVERLAY_ENTER_MS = 300
+private const val OVERLAY_EXIT_MS = 200
+
+/** A nudge rather than a full-width slide: the screen arrives from a little way off, not the edge. */
+private const val OVERLAY_SLIDE_FRACTION = 8
 
 /** Acts on a notification tap, launcher shortcut or share once, then clears the request. */
 @Composable

@@ -15,10 +15,14 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,6 +34,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -49,6 +54,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -83,6 +90,7 @@ import dev.kortex.myinfo.topics.ui.common.MetaStyle
 import dev.kortex.myinfo.topics.ui.common.RowTitleStyle
 import dev.kortex.myinfo.topics.ui.common.formatDate
 import dev.kortex.myinfo.topics.ui.common.noun
+import dev.kortex.myinfo.topics.ui.common.spokenName
 import kotlinx.coroutines.launch
 
 /**
@@ -247,10 +255,10 @@ internal fun QuickCaptureContent(
             }
             val others = state.types - state.type
             if (others.isNotEmpty()) {
+                // No vertical spacing: each chip already stands in a 48dp slot, which is gap enough.
                 FlowRow(
                     modifier = Modifier.padding(top = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     others.forEach { type -> TypeChip(type, selected = false, onClick = { onIntent(QuickCaptureIntent.ChooseType(type)) }) }
                 }
@@ -280,8 +288,8 @@ internal fun QuickCaptureContent(
 
         Label("TOPIC", Modifier.padding(top = 6.dp))
         FlowRow(
+            modifier = Modifier.selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             state.topics.forEach { topic ->
                 TopicChip(
@@ -298,6 +306,7 @@ internal fun QuickCaptureContent(
                     style = ChipTextStyle,
                     color = Muted,
                     modifier = Modifier
+                        .minimumInteractiveComponentSize()
                         .clip(ChipShape)
                         .background(Well)
                         .dashedBorder(EdgeStrong, cornerRadius = 8.dp)
@@ -352,13 +361,15 @@ internal fun QuickCaptureContent(
 /** What the sheet is holding instead of pasted text, and the way back out of it. */
 @Composable
 private fun AttachedFile(state: QuickCaptureState, onRemove: () -> Unit) {
+    // No vertical padding: REMOVE stands in a 48dp slot, which sets the row's height.
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .clip(FieldShape)
             .background(Well)
             .border(1.dp, Edge, FieldShape)
-            .padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = 14.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val file = state.file
@@ -376,8 +387,10 @@ private fun AttachedFile(state: QuickCaptureState, onRemove: () -> Unit) {
                 style = MetaStyle,
                 color = Muted,
                 modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .semantics { contentDescription = "Remove file" }
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClickLabel = "Remove file", role = Role.Button, onClick = onRemove)
+                    .clickable(role = Role.Button, onClick = onRemove)
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             )
         }
@@ -403,6 +416,7 @@ private fun AttachButton(label: String, onClick: () -> Unit) {
         style = ChipTextStyle,
         color = Muted,
         modifier = Modifier
+            .minimumInteractiveComponentSize()
             .clip(ChipShape)
             .background(Well)
             .dashedBorder(EdgeStrong, cornerRadius = 8.dp)
@@ -423,14 +437,15 @@ private fun BillFieldsBlock(
     val nowMillis = remember { System.currentTimeMillis() }
     Label("AMOUNT", Modifier.padding(top = 8.dp))
     FlowRow(
+        modifier = Modifier.selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         QuickCaptureViewModel.currencyChoices(state.billCurrency).forEach { code ->
             SmallChip(
                 label = code,
                 selected = code == state.billCurrency,
                 accent = Amber,
+                role = Role.RadioButton,
                 onClick = { onIntent(QuickCaptureIntent.ChooseCurrency(code)) },
             )
         }
@@ -461,8 +476,10 @@ private fun BillFieldsBlock(
                 style = MetaStyle,
                 color = Muted,
                 modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .semantics { contentDescription = "Clear due date" }
                     .clip(RoundedCornerShape(7.dp))
-                    .clickable(onClickLabel = "Clear due date", role = Role.Button) { onIntent(QuickCaptureIntent.SetDueDate(null)) }
+                    .clickable(role = Role.Button) { onIntent(QuickCaptureIntent.SetDueDate(null)) }
                     .padding(horizontal = 7.dp, vertical = 7.dp),
             )
         }
@@ -470,6 +487,9 @@ private fun BillFieldsBlock(
             label = if (state.billPaid) "PAID ✓" else "MARK PAID",
             selected = state.billPaid,
             accent = Amber,
+            role = Role.Checkbox,
+            // "Paid, checkbox, checked" — the caps and the tick are for the eye.
+            spokenLabel = "Paid",
             onClick = { onIntent(QuickCaptureIntent.SetPaid(!state.billPaid)) },
         )
     }
@@ -522,9 +542,11 @@ private fun PastedField(text: String, onTextChange: (String) -> Unit, placeholde
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 6.dp)
+                    .semantics { contentDescription = "Paste from clipboard" }
                     .clip(RoundedCornerShape(8.dp))
                     .clickable(role = Role.Button) { clipboard.getText()?.text?.let(onTextChange) }
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    // As tall as the field it sits in, so the whole right end of it pastes.
+                    .padding(horizontal = 8.dp, vertical = 13.dp),
             )
         }
     }
@@ -611,12 +633,17 @@ private fun TypeChip(type: ItemType, selected: Boolean, onClick: () -> Unit) {
         selected = selected,
         accent = Synapse,
         role = Role.RadioButton,
-        enabled = !selected,
+        spokenLabel = type.spokenName,
         onClick = onClick,
     )
 }
 
-/** The uppercase pill the sheet picks everything with: a type, a currency, a date, paid or not. */
+/**
+ * The uppercase pill the sheet picks everything with: a type, a currency, a date, paid or not.
+ * [role] says what kind of pick it is, and screen readers hear it that way — a radio button
+ * reports whether it's the one chosen, a checkbox whether it's ticked. [spokenLabel] replaces a
+ * label written for the eye (caps, a tick) with one written for the ear.
+ */
 @Composable
 private fun SmallChip(
     label: String,
@@ -624,7 +651,7 @@ private fun SmallChip(
     accent: Color,
     modifier: Modifier = Modifier,
     role: Role = Role.Button,
-    enabled: Boolean = true,
+    spokenLabel: String? = null,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(7.dp)
@@ -634,10 +661,12 @@ private fun SmallChip(
         color = if (selected) accent else Muted,
         maxLines = 1,
         modifier = modifier
+            .minimumInteractiveComponentSize()
+            .then(if (spokenLabel != null) Modifier.semantics { contentDescription = spokenLabel } else Modifier)
             .clip(shape)
             .background(if (selected) SynapseDim else Well)
             .border(1.dp, if (selected) accent else Edge, shape)
-            .clickable(enabled = enabled, role = role, onClick = onClick)
+            .then(pickModifier(selected, role, onClick))
             .padding(horizontal = 11.dp, vertical = 7.dp),
     )
 }
@@ -649,12 +678,22 @@ private fun TopicChip(name: String, selected: Boolean, onClick: () -> Unit) {
         style = ChipTextStyle,
         color = if (selected) Synapse else Muted,
         modifier = Modifier
+            .minimumInteractiveComponentSize()
+            // The tick is for the eye; a radio button already says it's the one chosen.
+            .semantics { contentDescription = name }
             .clip(ChipShape)
             .background(if (selected) SynapseDim else Well)
             .border(1.dp, if (selected) Synapse else Edge, ChipShape)
-            .clickable(role = Role.RadioButton, onClick = onClick)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 9.dp),
     )
+}
+
+/** Tap handling that reports the right state for the kind of pick [role] is. */
+private fun pickModifier(selected: Boolean, role: Role, onClick: () -> Unit): Modifier = when (role) {
+    Role.RadioButton, Role.Tab -> Modifier.selectable(selected = selected, role = role, onClick = onClick)
+    Role.Checkbox, Role.Switch -> Modifier.toggleable(value = selected, role = role, onValueChange = { onClick() })
+    else -> Modifier.clickable(role = role, onClick = onClick)
 }
 
 @Composable

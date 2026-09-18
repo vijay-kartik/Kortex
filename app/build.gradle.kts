@@ -99,4 +99,6 @@ dependencies {
 
     implementation(libs.richtext.commonmark)
     implementation(libs.richtext.material3)
+
+    testImplementation(libs.junit)
 }

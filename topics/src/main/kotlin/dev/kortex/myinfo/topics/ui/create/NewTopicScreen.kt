@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -34,6 +35,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,6 +54,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -190,6 +194,7 @@ private fun FormHeader(saveEnabled: Boolean, onClose: () -> Unit, onSave: () -> 
             tint = Muted,
             modifier = Modifier
                 .align(Alignment.CenterStart)
+                .minimumInteractiveComponentSize()
                 .clip(RoundedCornerShape(12.dp))
                 .clickable(role = Role.Button, onClick = onClose)
                 .padding(12.dp)
@@ -207,6 +212,7 @@ private fun FormHeader(saveEnabled: Boolean, onClose: () -> Unit, onSave: () -> 
             color = if (saveEnabled) Synapse else Muted,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
+                .minimumInteractiveComponentSize()
                 .clip(RoundedCornerShape(12.dp))
                 .clickable(enabled = saveEnabled, role = Role.Button, onClick = onSave)
                 .padding(12.dp),
@@ -307,10 +313,8 @@ private fun PurposeField(purpose: String, onPurposeChange: (String) -> Unit) {
 private fun SectionPicker(sections: Set<ItemType>, onToggle: (ItemType) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         FieldLabel("SECTIONS TO SHOW")
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        // No vertical spacing: each chip stands in a 48dp slot, which is gap enough.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionOrder.forEach { type ->
                 SectionChip(type, selected = type in sections, onClick = { onToggle(type) })
             }
@@ -323,15 +327,19 @@ private fun SectionPicker(sections: Set<ItemType>, onToggle: (ItemType) -> Unit)
 private fun SectionChip(type: ItemType, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(8.dp)
     val label = type.noun(2).uppercase()
+    // A checkbox to TalkBack — "Notes, checkbox, checked" — rather than the caps and the tick.
+    val spoken = type.noun(2).replaceFirstChar { it.titlecase() }
     Text(
         if (selected) "$label ✓" else label,
         style = MetaStyle.copy(letterSpacing = 0.sp),
         color = if (selected) Synapse else Muted,
         modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .semantics { contentDescription = spoken }
             .clip(shape)
             .background(if (selected) SynapseDim else Panel)
             .border(1.dp, if (selected) Synapse else Edge, shape)
-            .clickable(role = Role.Checkbox, onClick = onClick)
+            .toggleable(value = selected, role = Role.Checkbox, onValueChange = { onClick() })
             .padding(horizontal = 13.dp, vertical = 9.dp),
     )
 }
@@ -344,7 +352,8 @@ private fun PinRow(pinned: Boolean, onPinnedChange: (Boolean) -> Unit) {
             .clip(FieldShape)
             .background(Panel)
             .border(1.dp, Edge, FieldShape)
-            .clickable(role = Role.Switch) { onPinnedChange(!pinned) }
+            // The whole row is one switch to TalkBack: its two lines, then "switch, on" or "off".
+            .toggleable(value = pinned, role = Role.Switch, onValueChange = onPinnedChange)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

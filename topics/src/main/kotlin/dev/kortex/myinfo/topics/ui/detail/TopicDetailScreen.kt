@@ -6,6 +6,16 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +30,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,6 +38,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -45,7 +58,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,7 +73,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -79,6 +99,8 @@ import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
 import dev.kortex.design.Void
 import dev.kortex.design.Well
+import dev.kortex.design.anim.EmphasizedDecelerate
+import dev.kortex.design.anim.StandardEasing
 import dev.kortex.design.dashedBorder
 import dev.kortex.mvi.ObserveEffects
 import dev.kortex.mvi.ScopedViewModelStore
@@ -169,33 +191,51 @@ fun TopicDetailScreen(
     val detail = state.detail
     // Selection takes over the screen: its own bar, its own actions, and back gets out of it.
     BackHandler(enabled = state.selecting) { onIntent(TopicDetailIntent.ClearSelection) }
+
+    // The selection bars keep showing the last selection while they animate away; read live, they'd
+    // flash "0 selected" and flip Pin to Unpin on their way out.
+    var lastSelecting by remember { mutableStateOf(state) }
+    SideEffect { if (state.selecting) lastSelecting = state }
+    val bars = if (state.selecting) state else lastSelecting
+
     Scaffold(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
-            if (state.selecting) {
-                SelectionTopBar(
-                    count = state.selection.size,
-                    allSelected = state.selection.size == state.items.size,
-                    onClear = { onIntent(TopicDetailIntent.ClearSelection) },
-                    onSelectAll = { onIntent(TopicDetailIntent.SelectAll) },
-                )
-            } else {
-                DetailTopBar(
-                    pinned = detail?.topic?.pinned == true,
-                    menuEnabled = detail != null,
-                    onBack = onBack,
-                    onSetPinned = { onIntent(TopicDetailIntent.SetPinned(it)) },
-                    onDelete = { onIntent(TopicDetailIntent.AskDelete) },
-                )
+            AnimatedContent(
+                targetState = state.selecting,
+                transitionSpec = { fadeIn(tween(BAR_ENTER_MS, easing = StandardEasing)) togetherWith fadeOut(tween(BAR_EXIT_MS)) },
+                label = "top bar",
+            ) { selecting ->
+                if (selecting) {
+                    SelectionTopBar(
+                        count = bars.selection.size,
+                        allSelected = bars.selection.size == bars.items.size,
+                        onClear = { onIntent(TopicDetailIntent.ClearSelection) },
+                        onSelectAll = { onIntent(TopicDetailIntent.SelectAll) },
+                    )
+                } else {
+                    DetailTopBar(
+                        pinned = detail?.topic?.pinned == true,
+                        menuEnabled = detail != null,
+                        onBack = onBack,
+                        onSetPinned = { onIntent(TopicDetailIntent.SetPinned(it)) },
+                        onDelete = { onIntent(TopicDetailIntent.AskDelete) },
+                    )
+                }
             }
         },
         bottomBar = {
-            if (state.selecting) {
+            AnimatedVisibility(
+                visible = state.selecting,
+                enter = slideInVertically(tween(BAR_ENTER_MS, easing = EmphasizedDecelerate)) { it } + fadeIn(tween(BAR_ENTER_MS)),
+                exit = slideOutVertically(tween(BAR_EXIT_MS, easing = StandardEasing)) { it } + fadeOut(tween(BAR_EXIT_MS)),
+                label = "selection actions",
+            ) {
                 SelectionActionBar(
-                    pinned = state.selectionPinned,
-                    canMove = state.canMoveSelection,
+                    pinned = bars.selectionPinned,
+                    canMove = bars.canMoveSelection,
                     onPin = { onIntent(TopicDetailIntent.PinSelection) },
                     onMove = { onIntent(TopicDetailIntent.AskMoveSelection) },
                     onDelete = { onIntent(TopicDetailIntent.AskDeleteSelection) },
@@ -203,7 +243,12 @@ fun TopicDetailScreen(
             }
         },
         floatingActionButton = {
-            if (detail != null && detail.items.isNotEmpty() && !state.selecting) {
+            AnimatedVisibility(
+                visible = detail != null && detail.items.isNotEmpty() && !state.selecting,
+                enter = scaleIn(tween(BAR_ENTER_MS, easing = EmphasizedDecelerate)) + fadeIn(tween(BAR_ENTER_MS)),
+                exit = scaleOut(tween(BAR_EXIT_MS, easing = StandardEasing)) + fadeOut(tween(BAR_EXIT_MS)),
+                label = "add button",
+            ) {
                 FloatingActionButton(
                     onClick = { onIntent(TopicDetailIntent.Add) },
                     shape = RoundedCornerShape(14.dp),
@@ -278,7 +323,12 @@ private fun DetailFeed(
     ) {
         item(key = "header") {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.padding(top = 5.dp)) {
-                Text(detail.topic.name, style = HeroTitleStyle.copy(lineHeight = 29.sp), color = Ink)
+                Text(
+                    detail.topic.name,
+                    style = HeroTitleStyle.copy(lineHeight = 29.sp),
+                    color = Ink,
+                    modifier = Modifier.semantics { heading() },
+                )
                 Text(metaLine(detail, nowMillis), style = MetaStyle.copy(letterSpacing = 1.2.sp), color = Muted)
             }
         }
@@ -355,7 +405,11 @@ private fun DetailFeed(
     }
 }
 
-/** Feed / Timeline / By type (Figma: Topics 1c). */
+/**
+ * Feed / Timeline / By type (Figma: Topics 1c). A 48dp track of 44dp segments: Compose widens a
+ * touch to 48dp within the track, so every segment is a full-size target without the switch
+ * growing past the chips around it.
+ */
 @Composable
 private fun ViewModeSwitch(mode: TopicViewMode, onSelect: (TopicViewMode) -> Unit) {
     Row(
@@ -364,32 +418,39 @@ private fun ViewModeSwitch(mode: TopicViewMode, onSelect: (TopicViewMode) -> Uni
             .clip(RoundedCornerShape(10.dp))
             .background(Well)
             .border(1.dp, Edge, RoundedCornerShape(10.dp))
-            .padding(3.dp),
+            .padding(2.dp)
+            .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         TopicViewMode.entries.forEach { entry ->
-            val selected = entry == mode
-            Text(
-                modeLabel(entry),
-                style = ChipStyle,
-                color = if (selected) Synapse else Muted,
-                textAlign = TextAlign.Center,
+            val isSelected = entry == mode
+            Box(
+                contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .weight(1f)
+                    .heightIn(min = SEGMENT_HEIGHT)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (selected) SynapseDim else Color.Transparent)
-                    .clickable(enabled = !selected, role = Role.Tab, onClick = { onSelect(entry) })
-                    .padding(vertical = 9.dp),
-            )
+                    .background(if (isSelected) SynapseDim else Color.Transparent)
+                    .selectable(selected = isSelected, role = Role.Tab, onClick = { onSelect(entry) }),
+            ) {
+                Text(
+                    modeLabel(entry),
+                    style = ChipStyle,
+                    color = if (isSelected) Synapse else Muted,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }
 
-/** "TODAY · 4" over the run of cards it gathers. */
+/** "TODAY · 4" over the run of cards it gathers; read as one heading, so TalkBack can jump between them. */
 @Composable
 private fun GroupHeading(label: String, count: Int) {
     Row(
-        modifier = Modifier.padding(top = 6.dp),
+        modifier = Modifier
+            .padding(top = 6.dp)
+            .semantics(mergeDescendants = true) { heading() },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -414,7 +475,13 @@ private fun SelectionTopBar(count: Int, allSelected: Boolean, onClear: () -> Uni
             "$count SELECTED",
             style = MetaStyle.copy(letterSpacing = 1.2.sp),
             color = Synapse,
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier
+                .align(Alignment.Center)
+                // Read out as the count changes, so picking by touch alone is followable.
+                .semantics {
+                    contentDescription = if (count == 1) "1 item selected" else "$count items selected"
+                    liveRegion = LiveRegionMode.Polite
+                },
         )
         if (!allSelected) {
             Text(
@@ -423,6 +490,7 @@ private fun SelectionTopBar(count: Int, allSelected: Boolean, onClear: () -> Uni
                 color = Muted,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
+                    .minimumInteractiveComponentSize()
                     .clip(RoundedCornerShape(10.dp))
                     .clickable(onClickLabel = "Select every item", role = Role.Button, onClick = onSelectAll)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -561,6 +629,13 @@ private fun groupKey(group: FeedGroup): String = when (group) {
 
 private const val DISABLED_ALPHA = 0.38f
 
+// Selection bars arrive a touch slower than they leave, so leaving feels immediate.
+private const val BAR_ENTER_MS = 220
+private const val BAR_EXIT_MS = 160
+
+/** View-mode segments: 44dp inside a 48dp track (see [ViewModeSwitch]). */
+private val SEGMENT_HEIGHT = 44.dp
+
 @Composable
 private fun DetailTopBar(
     pinned: Boolean,
@@ -609,6 +684,7 @@ private fun DetailTopBar(
     }
 }
 
+/** A bare glyph as a button. Read by its [label]: TalkBack would otherwise say "‹" or "⋯". */
 @Composable
 private fun BarGlyph(glyph: String, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Text(
@@ -617,8 +693,10 @@ private fun BarGlyph(glyph: String, label: String, onClick: () -> Unit, modifier
         color = Muted,
         textAlign = TextAlign.Center,
         modifier = modifier
+            .minimumInteractiveComponentSize()
+            .semantics { contentDescription = label }
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClickLabel = label, role = Role.Button, onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     )
 }
@@ -636,14 +714,17 @@ private fun ActionButton(label: String, primary: Boolean, onClick: () -> Unit, m
             .background(if (primary) Synapse else Panel)
             .then(if (primary) Modifier else Modifier.border(1.dp, Edge, shape))
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(vertical = 11.dp),
+            // 19sp of text and 29dp of padding: a 48dp button.
+            .padding(vertical = 14.5.dp),
     )
 }
 
 @Composable
 private fun FilterChips(state: TopicDetailState, onSelect: (ItemType?) -> Unit) {
     Row(
-        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         FilterChip("ALL ${state.detail?.items?.size ?: 0}", selected = state.activeFilter == null) { onSelect(null) }
@@ -665,10 +746,11 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
         style = ChipStyle,
         color = if (selected) Synapse else Muted,
         modifier = Modifier
+            .minimumInteractiveComponentSize()
             .clip(shape)
             .background(if (selected) SynapseDim else Panel)
             .border(1.dp, if (selected) Synapse else Edge, shape)
-            .clickable(role = Role.Tab, onClick = onClick)
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 7.dp),
     )
 }
@@ -700,6 +782,7 @@ private fun EmptyTopic(onAdd: () -> Unit) {
             style = ButtonStyle.copy(fontSize = 14.sp),
             color = Void,
             modifier = Modifier
+                .minimumInteractiveComponentSize()
                 .clip(RoundedCornerShape(50))
                 .background(Synapse)
                 .clickable(role = Role.Button, onClick = onAdd)

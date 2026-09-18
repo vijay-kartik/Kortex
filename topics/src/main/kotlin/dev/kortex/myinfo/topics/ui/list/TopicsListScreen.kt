@@ -19,9 +19,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -30,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -44,6 +48,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -173,15 +178,17 @@ private fun TopicsList(
                 color = Muted,
                 modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp),
             )
+            // The sort chips stand in 48dp slots, 10dp taller than they look above and below, so
+            // the padding around them is 10dp less than the gaps it leaves.
             SearchPill(
                 onClick = { onIntent(TopicsListIntent.Search) },
-                modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 12.dp),
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 2.dp),
             )
             SortChips(
                 selected = state.sort,
                 pinnedCount = state.pinnedCount,
                 onSelect = { onIntent(TopicsListIntent.SelectSort(it)) },
-                modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 14.dp),
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 4.dp),
             )
         }
         LazyColumn(
@@ -261,11 +268,13 @@ private fun SearchPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
             .background(Panel)
             .border(1.dp, Edge, shape)
             .clickable(onClickLabel = "Search topics", role = Role.Button, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("⌕", style = BodyStyle.copy(fontSize = 17.sp), color = Muted)
+        // Decoration: the words say what the pill does, so TalkBack skips the glyph.
+        Text("⌕", style = BodyStyle.copy(fontSize = 17.sp), color = Muted, modifier = Modifier.clearAndSetSemantics { })
         Text("Search notes, links, files and bills", style = BodyStyle, color = Muted)
     }
 }
@@ -277,7 +286,7 @@ private fun SortChips(
     onSelect: (TopicSort) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         SortChip("RECENT", selected == TopicSort.Recent) { onSelect(TopicSort.Recent) }
         SortChip("PINNED $pinnedCount", selected == TopicSort.Pinned) { onSelect(TopicSort.Pinned) }
         SortChip("A–Z", selected == TopicSort.Alphabetical) { onSelect(TopicSort.Alphabetical) }
@@ -292,10 +301,11 @@ private fun SortChip(label: String, selected: Boolean, onClick: () -> Unit) {
         style = ChipStyle,
         color = if (selected) Synapse else Muted,
         modifier = Modifier
+            .minimumInteractiveComponentSize()
             .clip(shape)
             .background(if (selected) SynapseDim else Panel)
             .border(1.dp, if (selected) Synapse else Edge, shape)
-            .clickable(role = Role.Tab, onClick = onClick)
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 7.dp),
     )
 }

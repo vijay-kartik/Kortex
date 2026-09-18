@@ -9,6 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -55,14 +57,27 @@ internal val ItemType.badge: String
         ItemType.Bill -> "BIL"
     }
 
+/** What a screen reader calls a type, where the badge shows [badge]. */
+internal val ItemType.spokenName: String
+    get() = when (this) {
+        ItemType.Note -> "Note"
+        ItemType.Link -> "Link"
+        ItemType.Article -> "Article"
+        ItemType.Video -> "Video"
+        ItemType.Doc -> "Document"
+        ItemType.Image -> "Image"
+        ItemType.Bill -> "Bill"
+    }
+
 /** Money is amber everywhere; every other type wears the accent. */
 internal val ItemType.accent get() = if (this == ItemType.Bill) Amber else Synapse
 
-/** A type code on a recessed square (Figma: Topics 1a, 1g). */
+/** A type code on a recessed square (Figma: Topics 1a, 1g). Read aloud as the type's name, not its code. */
 @Composable
 internal fun TypeBadge(type: ItemType, modifier: Modifier = Modifier, size: Dp = 34.dp, cornerRadius: Dp = 8.dp) {
     Box(
         modifier = modifier
+            .clearAndSetSemantics { contentDescription = type.spokenName }
             .size(size)
             .clip(RoundedCornerShape(cornerRadius))
             .background(Sunken),

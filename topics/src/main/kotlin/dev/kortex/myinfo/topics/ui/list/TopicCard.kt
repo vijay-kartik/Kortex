@@ -31,6 +31,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +48,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
@@ -362,9 +364,11 @@ internal fun DeletedTopicRow(name: String, deletion: PendingTopicDeletion, onUnd
             style = MetaStyle,
             color = Synapse,
             modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .semantics { contentDescription = "Undo delete" }
                 .clip(undoShape)
                 .border(1.dp, Synapse, undoShape)
-                .clickable(onClickLabel = "Undo delete", role = Role.Button, onClick = onUndo)
+                .clickable(role = Role.Button, onClick = onUndo)
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }

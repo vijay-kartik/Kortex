@@ -14,17 +14,21 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,7 +42,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -157,8 +166,10 @@ private fun SearchField(
             color = Muted,
             textAlign = TextAlign.Center,
             modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .semantics { contentDescription = "Back" }
                 .clip(RoundedCornerShape(12.dp))
-                .clickable(onClickLabel = "Back", role = Role.Button, onClick = onClose)
+                .clickable(role = Role.Button, onClick = onClose)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         )
         BasicTextField(
@@ -192,8 +203,10 @@ private fun SearchField(
                 style = ButtonStyle,
                 color = Muted,
                 modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .semantics { contentDescription = "Clear search" }
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable(onClickLabel = "Clear search", role = Role.Button, onClick = onClear)
+                    .clickable(role = Role.Button, onClick = onClear)
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             )
         }
@@ -205,20 +218,22 @@ private fun ScopeChips(state: TopicSearchState, onSelect: (SearchScope) -> Unit)
     Row(
         modifier = Modifier
             .horizontalScroll(rememberScrollState())
-            .padding(start = 18.dp, end = 18.dp, bottom = 4.dp),
+            .padding(start = 18.dp, end = 18.dp)
+            .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         state.scopes.forEach { scope ->
-            val selected = scope == state.scope
+            val isSelected = scope == state.scope
             Text(
                 scopeLabel(scope),
                 style = ChipStyle,
-                color = if (selected) Synapse else Muted,
+                color = if (isSelected) Synapse else Muted,
                 modifier = Modifier
+                    .minimumInteractiveComponentSize()
                     .clip(ChipShape)
-                    .background(if (selected) SynapseDim else Panel)
-                    .border(1.dp, if (selected) Synapse else Edge, ChipShape)
-                    .clickable(enabled = !selected, role = Role.Tab) { onSelect(scope) }
+                    .background(if (isSelected) SynapseDim else Panel)
+                    .border(1.dp, if (isSelected) Synapse else Edge, ChipShape)
+                    .selectable(selected = isSelected, role = Role.Tab) { onSelect(scope) }
                     .padding(horizontal = 12.dp, vertical = 7.dp),
             )
         }
@@ -238,7 +253,10 @@ private fun ResultSummary(state: TopicSearchState) {
         line,
         style = MetaStyle.copy(letterSpacing = 1.2.sp),
         color = Muted,
-        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
+        modifier = Modifier
+            .padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 10.dp)
+            // Read out once typing settles, so a screen-reader user hears how the search went.
+            .semantics { liveRegion = LiveRegionMode.Polite },
     )
 }
 
@@ -262,27 +280,29 @@ private fun SearchResultsList(state: TopicSearchState, onOpenTopic: (Long) -> Un
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 40.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // Rows slide to their new places as the query narrows, rather than the list jumping.
         state.results.groups.forEach { group ->
             item(key = "topic-${group.topic.id}") {
-                TopicResultHeader(group, onClick = { onOpenTopic(group.topic.id) })
+                TopicResultHeader(group, onClick = { onOpenTopic(group.topic.id) }, modifier = Modifier.animateItem())
             }
             items(group.hits, key = { it.item.id }) { hit ->
-                HitRow(hit, onClick = { onOpenTopic(group.topic.id) })
+                HitRow(hit, onClick = { onOpenTopic(group.topic.id) }, modifier = Modifier.animateItem())
             }
         }
     }
 }
 
-/** The topic a run of results sits in; tapping it opens the topic itself. */
+/** The topic a run of results sits in; tapping it opens the topic itself. A heading, for TalkBack to jump between. */
 @Composable
-private fun TopicResultHeader(group: TopicResults, onClick: () -> Unit) {
+private fun TopicResultHeader(group: TopicResults, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
+            .heightIn(min = 48.dp)
+            .semantics { heading() }
             .clip(RoundedCornerShape(10.dp))
-            .clickable(onClickLabel = "Open topic", role = Role.Button, onClick = onClick)
-            .padding(vertical = 4.dp),
+            .clickable(onClickLabel = "Open topic", role = Role.Button, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
@@ -304,9 +324,9 @@ private fun TopicResultHeader(group: TopicResults, onClick: () -> Unit) {
 
 /** One matching item: its type, the line it matched on, and the address or code under it. */
 @Composable
-private fun HitRow(hit: SearchHit, onClick: () -> Unit) {
+private fun HitRow(hit: SearchHit, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RowShape)
             .background(Panel)

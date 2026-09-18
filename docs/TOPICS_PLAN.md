@@ -96,4 +96,20 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
    with no write path having to remember to. Pinning the topic or its updated time don't.
    An out-of-date summary is shown dimmed with "Topic changed since" and a Refresh action; the
    model is only called when the user taps Summarise / Refresh / Try again, never on its own.
-10. **Polish** — motion, accessibility, previews per state, ViewModel tests with fakes.
+10. **Polish** — partly done.
+   - **Accessibility** ✅ — every tap target in Topics is at least 48dp
+     (`minimumInteractiveComponentSize`, with padding trimmed where that would have grown the
+     visible gaps). Picks report their state: filter, view-mode, scope and sort chips are
+     selectable tabs in a `selectableGroup`; type, currency and topic chips are radio buttons;
+     done chips, section chips, "paid" and the pin row are real toggles (`toggleable`), not
+     `clickable` with a role. Glyph buttons (‹ ⋯ ✕ ⌕) and type badges are read by name. Topic
+     titles, feed groups, search groups and card titles are headings. The selection count, the
+     search result count and the summary's status are live regions.
+   - **Motion** ✅ — Topics overlays push in from the end and fall back the same way; one Topics
+     screen replacing another crossfades (other overlays still switch instantly). Selection bars
+     fade and slide, holding their last selection while they leave; the add button scales out
+     under selection; the summary crossfades; search results move with `animateItem`.
+   - **Tests** ✅ — `TopicsListViewModel` (undo window on virtual time, accepting suggestions,
+     navigation); `:app` gains a unit-test setup, covering `LlmTopicSummarizer`'s prompt and
+     output cleaning.
+   - **Deferred:** previews per state, and Room migration tests (which need schema export).

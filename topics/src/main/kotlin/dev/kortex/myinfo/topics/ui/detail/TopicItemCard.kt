@@ -3,7 +3,6 @@ package dev.kortex.myinfo.topics.ui.detail
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,8 +12,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
@@ -24,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.selected
@@ -161,12 +163,12 @@ private fun DoneChip(item: TopicItem, done: Boolean, onSetDone: (Boolean) -> Uni
         color = if (done) accent else Muted,
         maxLines = 1,
         modifier = modifier
+            .minimumInteractiveComponentSize()
+            // A checkbox to TalkBack: "Paid, checkbox, checked", not the chip's caps and tick.
+            .semantics { contentDescription = doneWord(item).lowercase().replaceFirstChar { it.titlecase() } }
             .clip(shape)
             .then(if (done) Modifier.background(Sunken) else Modifier.border(1.dp, Edge, shape))
-            .clickable(
-                onClickLabel = if (done) "Mark not ${doneWord(item).lowercase()}" else doneAction(item),
-                role = Role.Checkbox,
-            ) { onSetDone(!done) }
+            .toggleable(value = done, role = Role.Checkbox, onValueChange = onSetDone)
             .padding(horizontal = 8.dp, vertical = 5.dp),
     )
 }

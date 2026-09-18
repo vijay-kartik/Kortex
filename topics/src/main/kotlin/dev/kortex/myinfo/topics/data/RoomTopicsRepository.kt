@@ -70,6 +70,9 @@ class RoomTopicsRepository(
 
     override suspend fun setItemDone(itemId: Long, done: Boolean, nowMillis: Long) = dao.setDone(itemId, done, nowMillis)
 
+    override suspend fun setItemsPinned(itemIds: Collection<Long>, pinned: Boolean, nowMillis: Long) =
+        dao.setItemsPinned(itemIds, pinned, nowMillis)
+
     override suspend fun moveItems(itemIds: Collection<Long>, toTopicId: Long, nowMillis: Long) =
         dao.moveItems(itemIds, toTopicId, nowMillis)
 

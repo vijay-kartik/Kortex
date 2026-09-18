@@ -1,8 +1,10 @@
 package dev.kortex.myinfo.topics.ui.detail
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,10 +16,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -33,6 +43,7 @@ import dev.kortex.design.Muted
 import dev.kortex.design.Panel
 import dev.kortex.design.Sunken
 import dev.kortex.design.Synapse
+import dev.kortex.design.SynapseDim
 import dev.kortex.design.Void
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.TopicItem
@@ -58,15 +69,61 @@ internal fun TopicItemCard(
     nowMillis: Long,
     onClick: (() -> Unit)?,
     onSetDone: (Boolean) -> Unit,
+    onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Selection mode (Figma: Topics 1e): tapping picks out instead of opening. */
+    selecting: Boolean = false,
+    selected: Boolean = false,
 ) {
+    val view = LocalView.current
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val currentOnClick by rememberUpdatedState(onClick)
+    // Held aside: inside the semantics block, `selected` is the property being set, not this flag.
+    val isSelected = selected
+    val shape = ItemShape
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(ItemShape)
-            .background(Panel)
-            .border(1.dp, Edge, ItemShape)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            .clip(shape)
+            .background(if (isSelected) SynapseDim else Panel)
+            .border(
+                width = if (isSelected) 1.5.dp else 1.dp,
+                color = if (isSelected) Synapse else Edge,
+                shape = shape,
+            )
+            .pointerInput(selecting) {
+                detectTapGestures(
+                    onLongPress = {
+                        if (!selecting) {
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            currentOnLongPress()
+                        }
+                    },
+                    // In selection mode every card is tappable, even ones with nowhere to open.
+                    onTap = { if (selecting) currentOnLongPress() else currentOnClick?.invoke() },
+                )
+            }
+            .semantics {
+                if (selecting) {
+                    // Qualified: the bare name is this composable's parameter, not the property.
+                    this.selected = isSelected
+                    onClick(label = if (isSelected) "Deselect item" else "Select item") {
+                        currentOnLongPress()
+                        true
+                    }
+                } else {
+                    currentOnClick?.let { open ->
+                        onClick(label = "Open item") {
+                            open()
+                            true
+                        }
+                    }
+                    onLongClick(label = "Select item") {
+                        currentOnLongPress()
+                        true
+                    }
+                }
+            },
     ) {
         media(item)?.let { (path, corner) -> MediaHeader(path, corner) }
         Column(
@@ -77,8 +134,12 @@ internal fun TopicItemCard(
             if (item is TopicItem.Bill) BillDates(item, nowMillis)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(typeLabel(item), style = MetaStyle, color = typeColor(item), modifier = Modifier.weight(1f))
-                item.done?.let { done ->
-                    DoneChip(item, done, onSetDone, Modifier.padding(end = 10.dp))
+                if (item.pinned) {
+                    Text("PINNED", style = MetaStyle, color = Synapse, modifier = Modifier.padding(end = 10.dp))
+                }
+                // A tap in selection mode picks the card out, so the chip would be unreachable anyway.
+                if (!selecting) {
+                    item.done?.let { done -> DoneChip(item, done, onSetDone, Modifier.padding(end = 10.dp)) }
                 }
                 Text(ageLabel(item.addedAtMillis, nowMillis), style = MetaStyle, color = Muted)
             }

@@ -7,6 +7,8 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "topics", indices = [Index(value = ["name"], unique = true)])
 data class TopicEntity(
@@ -59,9 +61,20 @@ data class TopicItemEntity(
     val readingMinutes: Int? = null,
     /** Article read, video watched, bill paid. */
     @ColumnInfo(defaultValue = "0") val done: Boolean = false,
+    /** Kept at the top of the topic's feed, in every view mode. */
+    @ColumnInfo(defaultValue = "0") val pinned: Boolean = false,
 )
 
-@Database(entities = [TopicEntity::class, TopicItemEntity::class], version = 1, exportSchema = false)
+@Database(entities = [TopicEntity::class, TopicItemEntity::class], version = 2, exportSchema = false)
 abstract class TopicsDatabase : RoomDatabase() {
     abstract fun topicDao(): TopicDao
+
+    companion object {
+        /** Item pinning (Figma: Topics 1e). Everything already saved starts unpinned. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE topic_items ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+    }
 }

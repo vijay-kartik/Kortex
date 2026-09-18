@@ -30,6 +30,7 @@ import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSuggestions
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
 import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
+import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
 import dev.kortex.myinfo.topics.domain.usecase.SetTopicPinned
 import dev.kortex.myinfo.topics.domain.usecase.UpdateTopic
 import kotlinx.coroutines.CoroutineScope
@@ -48,7 +49,9 @@ object TopicsModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TopicsDatabase =
-        Room.databaseBuilder(context, TopicsDatabase::class.java, "topics.db").build()
+        Room.databaseBuilder(context, TopicsDatabase::class.java, "topics.db")
+            .addMigrations(TopicsDatabase.MIGRATION_1_2)
+            .build()
 
     @Provides
     fun provideTopicDao(database: TopicsDatabase): TopicDao = database.topicDao()
@@ -100,6 +103,9 @@ object TopicsModule {
 
     @Provides
     fun provideSetItemDone(repository: TopicsRepository, clock: Clock) = SetItemDone(repository, clock)
+
+    @Provides
+    fun provideSetItemsPinned(repository: TopicsRepository, clock: Clock) = SetItemsPinned(repository, clock)
 
     @Provides
     fun provideKeepPickedFile(fileVault: FileVault) = KeepPickedFile(fileVault)

@@ -14,6 +14,17 @@ class MoveItems(
     }
 }
 
+/** Keeps items at the top of their topic, whichever way its feed is arranged (Figma: Topics 1e). */
+class SetItemsPinned(
+    private val repository: TopicsRepository,
+    private val clock: Clock,
+) {
+    suspend operator fun invoke(itemIds: Collection<Long>, pinned: Boolean) {
+        if (itemIds.isEmpty()) return
+        repository.setItemsPinned(itemIds, pinned, clock.nowMillis())
+    }
+}
+
 /**
  * Ticks an item off: an article read, a video watched, a bill paid (Figma: Topics 1b). It counts
  * as working on the topic, so the topic moves up Recent.

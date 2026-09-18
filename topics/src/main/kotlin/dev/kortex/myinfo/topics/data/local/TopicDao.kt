@@ -69,6 +69,9 @@ abstract class TopicDao {
     @Query("UPDATE topic_items SET topicId = :topicId WHERE id = :id")
     abstract suspend fun setTopic(id: Long, topicId: Long)
 
+    @Query("UPDATE topic_items SET pinned = :pinned WHERE id IN (:ids)")
+    abstract suspend fun setItemsPinned(ids: Collection<Long>, pinned: Boolean)
+
     @Query("DELETE FROM topic_items WHERE id IN (:ids)")
     abstract suspend fun deleteItemRows(ids: Collection<Long>)
 
@@ -100,6 +103,15 @@ abstract class TopicDao {
         val topicIds = getItems(ids).map { it.topicId }.toSet()
         if (topicIds.isEmpty()) return
         deleteItemRows(ids)
+        touch(topicIds, nowMillis)
+    }
+
+    /** Pins or unpins items and marks the topics they sit in changed. */
+    @Transaction
+    open suspend fun setItemsPinned(ids: Collection<Long>, pinned: Boolean, nowMillis: Long) {
+        val topicIds = getItems(ids).map { it.topicId }.toSet()
+        if (topicIds.isEmpty()) return
+        setItemsPinned(ids, pinned)
         touch(topicIds, nowMillis)
     }
 

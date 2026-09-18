@@ -21,7 +21,7 @@ import dev.kortex.myinfo.topics.ui.capture.CaptureError
 import dev.kortex.myinfo.topics.ui.capture.QuickCaptureEffect
 import dev.kortex.myinfo.topics.ui.capture.QuickCaptureIntent
 import dev.kortex.myinfo.topics.ui.capture.QuickCaptureViewModel
-import dev.kortex.myinfo.topics.ui.capture.TopicChoice
+import dev.kortex.myinfo.topics.ui.common.TopicChoice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

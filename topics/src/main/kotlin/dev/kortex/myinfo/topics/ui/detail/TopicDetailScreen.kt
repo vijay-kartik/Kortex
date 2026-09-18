@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,11 +13,16 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,14 +33,18 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,9 +55,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,22 +70,28 @@ import dev.kortex.design.Alarm
 import dev.kortex.design.Edge
 import dev.kortex.design.EdgeStrong
 import dev.kortex.design.Ink
+import dev.kortex.design.InkSoft
 import dev.kortex.design.KortexTheme
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
+import dev.kortex.design.R
 import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
 import dev.kortex.design.Void
+import dev.kortex.design.Well
 import dev.kortex.design.dashedBorder
 import dev.kortex.mvi.ObserveEffects
 import dev.kortex.mvi.ScopedViewModelStore
 import dev.kortex.myinfo.topics.data.files.TopicFiles
+import dev.kortex.myinfo.topics.domain.model.FeedGroup
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.model.StoredFile
+import dev.kortex.myinfo.topics.domain.model.TimePeriod
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.TopicViewMode
 import dev.kortex.myinfo.topics.domain.model.storedFile
 import dev.kortex.myinfo.topics.ui.capture.QuickCaptureSheet
 import dev.kortex.myinfo.topics.ui.common.BodyStyle
@@ -80,6 +99,8 @@ import dev.kortex.myinfo.topics.ui.common.ButtonStyle
 import dev.kortex.myinfo.topics.ui.common.ChipStyle
 import dev.kortex.myinfo.topics.ui.common.HeroTitleStyle
 import dev.kortex.myinfo.topics.ui.common.MetaStyle
+import dev.kortex.myinfo.topics.ui.common.TopicChoice
+import dev.kortex.myinfo.topics.ui.common.TrayLabelStyle
 import dev.kortex.myinfo.topics.ui.common.noun
 import dev.kortex.myinfo.topics.ui.common.updatedLabel
 import kotlinx.coroutines.launch
@@ -146,21 +167,43 @@ fun TopicDetailScreen(
     snackbars: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val detail = state.detail
+    // Selection takes over the screen: its own bar, its own actions, and back gets out of it.
+    BackHandler(enabled = state.selecting) { onIntent(TopicDetailIntent.ClearSelection) }
     Scaffold(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
-            DetailTopBar(
-                pinned = detail?.topic?.pinned == true,
-                menuEnabled = detail != null,
-                onBack = onBack,
-                onSetPinned = { onIntent(TopicDetailIntent.SetPinned(it)) },
-                onDelete = { onIntent(TopicDetailIntent.AskDelete) },
-            )
+            if (state.selecting) {
+                SelectionTopBar(
+                    count = state.selection.size,
+                    allSelected = state.selection.size == state.items.size,
+                    onClear = { onIntent(TopicDetailIntent.ClearSelection) },
+                    onSelectAll = { onIntent(TopicDetailIntent.SelectAll) },
+                )
+            } else {
+                DetailTopBar(
+                    pinned = detail?.topic?.pinned == true,
+                    menuEnabled = detail != null,
+                    onBack = onBack,
+                    onSetPinned = { onIntent(TopicDetailIntent.SetPinned(it)) },
+                    onDelete = { onIntent(TopicDetailIntent.AskDelete) },
+                )
+            }
+        },
+        bottomBar = {
+            if (state.selecting) {
+                SelectionActionBar(
+                    pinned = state.selectionPinned,
+                    canMove = state.canMoveSelection,
+                    onPin = { onIntent(TopicDetailIntent.PinSelection) },
+                    onMove = { onIntent(TopicDetailIntent.AskMoveSelection) },
+                    onDelete = { onIntent(TopicDetailIntent.AskDeleteSelection) },
+                )
+            }
         },
         floatingActionButton = {
-            if (detail != null && detail.items.isNotEmpty()) {
+            if (detail != null && detail.items.isNotEmpty() && !state.selecting) {
                 FloatingActionButton(
                     onClick = { onIntent(TopicDetailIntent.Add) },
                     shape = RoundedCornerShape(14.dp),
@@ -175,6 +218,31 @@ fun TopicDetailScreen(
         if (detail != null) {
             DetailFeed(state, detail, onIntent, Modifier.padding(innerPadding))
         }
+    }
+
+    if (state.movingSelection) {
+        MoveToTopicSheet(
+            targets = state.moveTargets,
+            count = state.selection.size,
+            onPick = { onIntent(TopicDetailIntent.MoveSelectionTo(it)) },
+            onDismiss = { onIntent(TopicDetailIntent.CancelMoveSelection) },
+        )
+    }
+
+    if (state.confirmingSelectionDelete) {
+        val count = state.selection.size
+        AlertDialog(
+            onDismissRequest = { onIntent(TopicDetailIntent.CancelDeleteSelection) },
+            title = { Text(if (count == 1) "Delete this item?" else "Delete $count items?") },
+            text = { Text("Any files they keep go with them. Links stay in your Links tab.") },
+            confirmButton = {
+                TextButton(onClick = { onIntent(TopicDetailIntent.ConfirmDeleteSelection) }) { Text("Delete", color = Alarm) }
+            },
+            dismissButton = {
+                TextButton(onClick = { onIntent(TopicDetailIntent.CancelDeleteSelection) }) { Text("Cancel", color = Muted) }
+            },
+            containerColor = Panel,
+        )
     }
 
     if (state.confirmingDelete && detail != null) {
@@ -200,8 +268,8 @@ private fun DetailFeed(
     onIntent: (TopicDetailIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Ages only need minute precision; refresh them whenever the feed changes.
-    val nowMillis = remember(detail) { System.currentTimeMillis() }
+    // Stamped by the ViewModel with the feed, so its groups and ages agree with each other.
+    val nowMillis = state.nowMillis
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         // Extra bottom room so the FAB never covers the last card.
@@ -226,23 +294,43 @@ private fun DetailFeed(
             detail.bills?.let { bills ->
                 item(key = "bills") { BillsCard(bills, nowMillis, Modifier.padding(top = 2.dp)) }
             }
+            item(key = "modes") {
+                ViewModeSwitch(state.mode, onSelect = { onIntent(TopicDetailIntent.SelectMode(it)) })
+            }
             item(key = "filters") {
                 FilterChips(state, onSelect = { onIntent(TopicDetailIntent.SelectFilter(it)) })
             }
-            items(state.items, key = { it.id }) { item ->
-                TopicItemCard(
-                    item = item,
-                    nowMillis = nowMillis,
-                    onClick = if (item.opens()) ({ onIntent(TopicDetailIntent.OpenItem(item)) }) else null,
-                    onSetDone = { done -> onIntent(TopicDetailIntent.SetItemDone(item, done)) },
-                    modifier = Modifier.animateItem(),
-                )
+            state.sections.forEach { section ->
+                // Feed is one unbroken run of cards, so it gets no heading at all.
+                if (section.group != FeedGroup.Everything) {
+                    item(key = "group-${'$'}{groupKey(section.group)}") {
+                        GroupHeading(groupLabel(section.group), section.items.size)
+                    }
+                }
+                items(section.items, key = { it.id }) { item ->
+                    TopicItemCard(
+                        item = item,
+                        nowMillis = nowMillis,
+                        onClick = if (item.opens()) ({ onIntent(TopicDetailIntent.OpenItem(item)) }) else null,
+                        onSetDone = { done -> onIntent(TopicDetailIntent.SetItemDone(item, done)) },
+                        onLongPress = {
+                            if (state.selecting) {
+                                onIntent(TopicDetailIntent.ToggleSelection(item.id))
+                            } else {
+                                onIntent(TopicDetailIntent.StartSelection(item.id))
+                            }
+                        },
+                        selecting = state.selecting,
+                        selected = item.id in state.selection,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
             }
             if (state.items.isEmpty()) {
                 item(key = "none") {
                     val type = state.activeFilter
                     Text(
-                        if (type == null) "Nothing here." else "No ${type.noun(2)} yet.",
+                        if (type == null) "Nothing here." else "No ${'$'}{type.noun(2)} yet.",
                         style = BodyStyle,
                         color = Muted,
                         modifier = Modifier.padding(top = 4.dp),
@@ -252,6 +340,212 @@ private fun DetailFeed(
         }
     }
 }
+
+/** Feed / Timeline / By type (Figma: Topics 1c). */
+@Composable
+private fun ViewModeSwitch(mode: TopicViewMode, onSelect: (TopicViewMode) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Well)
+            .border(1.dp, Edge, RoundedCornerShape(10.dp))
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        TopicViewMode.entries.forEach { entry ->
+            val selected = entry == mode
+            Text(
+                modeLabel(entry),
+                style = ChipStyle,
+                color = if (selected) Synapse else Muted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (selected) SynapseDim else Color.Transparent)
+                    .clickable(enabled = !selected, role = Role.Tab, onClick = { onSelect(entry) })
+                    .padding(vertical = 9.dp),
+            )
+        }
+    }
+}
+
+/** "TODAY · 4" over the run of cards it gathers. */
+@Composable
+private fun GroupHeading(label: String, count: Int) {
+    Row(
+        modifier = Modifier.padding(top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(label, style = MetaStyle.copy(letterSpacing = 1.4.sp), color = InkSoft)
+        HorizontalDivider(thickness = 1.dp, color = Edge, modifier = Modifier.weight(1f))
+        Text("${'$'}count", style = MetaStyle, color = Muted)
+    }
+}
+
+/** The bar that replaces the top bar while items are picked out (Figma: Topics 1e). */
+@Composable
+private fun SelectionTopBar(count: Int, allSelected: Boolean, onClear: () -> Unit, onSelectAll: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(Panel)
+            .statusBarsPadding()
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+    ) {
+        BarGlyph("✕", "Leave selection", onClear, Modifier.align(Alignment.CenterStart))
+        Text(
+            "${'$'}count SELECTED",
+            style = MetaStyle.copy(letterSpacing = 1.2.sp),
+            color = Synapse,
+            modifier = Modifier.align(Alignment.Center),
+        )
+        if (!allSelected) {
+            Text(
+                "ALL",
+                style = MetaStyle.copy(letterSpacing = 1.2.sp),
+                color = Muted,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClickLabel = "Select every item", role = Role.Button, onClick = onSelectAll)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            )
+        }
+    }
+}
+
+/** Move, Pin and Delete for the selection, along the bottom (Figma: Topics 1e). */
+@Composable
+private fun SelectionActionBar(
+    pinned: Boolean,
+    canMove: Boolean,
+    onPin: () -> Unit,
+    onMove: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Column(Modifier.background(Panel)) {
+        HorizontalDivider(thickness = 1.dp, color = Edge)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .height(IntrinsicSize.Min),
+        ) {
+            SelectionAction(R.drawable.ic_open, "Move", Synapse, Ink, enabled = canMove, onClick = onMove)
+            VerticalDivider(thickness = 1.dp, color = Edge)
+            SelectionAction(R.drawable.ic_pin, if (pinned) "Unpin" else "Pin", Synapse, Ink, onClick = onPin)
+            VerticalDivider(thickness = 1.dp, color = Edge)
+            SelectionAction(R.drawable.ic_trash, "Delete", Alarm, Alarm, onClick = onDelete)
+        }
+    }
+}
+
+@Composable
+private fun RowScope.SelectionAction(
+    @DrawableRes icon: Int,
+    label: String,
+    iconTint: Color,
+    labelColor: Color,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(vertical = 13.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        val alpha = if (enabled) 1f else DISABLED_ALPHA
+        Icon(painterResource(icon), contentDescription = null, tint = iconTint.copy(alpha = alpha), modifier = Modifier.size(20.dp))
+        Text(label, style = TrayLabelStyle, color = labelColor.copy(alpha = alpha))
+    }
+}
+
+/** Where the selection goes (Figma: Topics 1e). Only topics other than this one are offered. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MoveToTopicSheet(
+    targets: List<TopicChoice>,
+    count: Int,
+    onPick: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Panel,
+        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 18.dp, end = 18.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                if (count == 1) "MOVE 1 ITEM TO" else "MOVE ${'$'}count ITEMS TO",
+                style = MetaStyle.copy(letterSpacing = 1.4.sp),
+                color = Muted,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+            targets.forEach { target ->
+                Text(
+                    target.name,
+                    style = BodyStyle.copy(fontSize = 15.sp),
+                    color = Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(Well)
+                        .border(1.dp, Edge, RoundedCornerShape(11.dp))
+                        .clickable(role = Role.Button) { onPick(target.id) }
+                        .padding(horizontal = 15.dp, vertical = 14.dp),
+                )
+            }
+            Text(
+                "A link the other topic already holds isn't moved twice — it is dropped.",
+                style = BodyStyle,
+                color = Muted,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
+
+private fun modeLabel(mode: TopicViewMode): String = when (mode) {
+    TopicViewMode.Feed -> "FEED"
+    TopicViewMode.Timeline -> "TIMELINE"
+    TopicViewMode.ByType -> "BY TYPE"
+}
+
+private fun groupLabel(group: FeedGroup): String = when (group) {
+    FeedGroup.Pinned -> "PINNED"
+    FeedGroup.Everything -> ""
+    is FeedGroup.Period -> when (group.period) {
+        TimePeriod.Today -> "TODAY"
+        TimePeriod.Yesterday -> "YESTERDAY"
+        TimePeriod.ThisWeek -> "THIS WEEK"
+        TimePeriod.ThisMonth -> "THIS MONTH"
+        TimePeriod.Earlier -> "EARLIER"
+    }
+    is FeedGroup.Type -> group.type.noun(2).uppercase()
+}
+
+/** Stable across recompositions so a heading keeps its place in the lazy list. */
+private fun groupKey(group: FeedGroup): String = when (group) {
+    FeedGroup.Pinned -> "pinned"
+    FeedGroup.Everything -> "all"
+    is FeedGroup.Period -> group.period.name
+    is FeedGroup.Type -> group.type.name
+}
+
+private const val DISABLED_ALPHA = 0.38f
 
 @Composable
 private fun DetailTopBar(
@@ -456,8 +750,39 @@ private fun TopicDetailPreview() {
             durationSeconds = 842, watched = false,
         ),
         TopicItem.Note(2, 1, now - 5 * 3_600_000, "Metro red line closes 00:30 — book a Careem back from the marina, not a street taxi."),
+        TopicItem.Note(3, 1, now - 9 * 86_400_000, "Passport has 7 months left — fine for a 30-day visa.", pinned = true),
     )
     KortexTheme {
-        TopicDetailScreen(state = TopicDetailState(detail = TopicDetail(topic, items)), onIntent = {}, onBack = {})
+        TopicDetailScreen(
+            state = TopicDetailState(detail = TopicDetail(topic, items), nowMillis = now),
+            onIntent = {},
+            onBack = {},
+        )
+    }
+}
+
+/** The same feed cut by date, with two items picked out (Figma: Topics 1c, 1e). */
+@Preview
+@Composable
+private fun TopicDetailSelectingPreview() {
+    val now = System.currentTimeMillis()
+    val topic = Topic(1, "Trip to Dubai", purpose = null, pinned = false, ItemType.DefaultSections, 0, now)
+    val items = listOf(
+        TopicItem.Note(1, 1, now - 3_600_000, "Metro red line closes 00:30."),
+        TopicItem.Note(2, 1, now - 2 * 86_400_000, "Pack adapters — type G sockets."),
+        TopicItem.Note(3, 1, now - 40L * 86_400_000, "Hotel booking reference QX-4471."),
+    )
+    KortexTheme {
+        TopicDetailScreen(
+            state = TopicDetailState(
+                detail = TopicDetail(topic, items),
+                mode = TopicViewMode.Timeline,
+                selected = setOf(1, 3),
+                moveTargets = listOf(TopicChoice(2, "Job switch prep")),
+                nowMillis = now,
+            ),
+            onIntent = {},
+            onBack = {},
+        )
     }
 }

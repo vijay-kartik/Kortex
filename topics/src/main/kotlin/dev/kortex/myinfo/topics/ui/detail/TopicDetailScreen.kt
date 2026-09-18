@@ -303,7 +303,7 @@ private fun DetailFeed(
             state.sections.forEach { section ->
                 // Feed is one unbroken run of cards, so it gets no heading at all.
                 if (section.group != FeedGroup.Everything) {
-                    item(key = "group-${'$'}{groupKey(section.group)}") {
+                    item(key = "group-${groupKey(section.group)}") {
                         GroupHeading(groupLabel(section.group), section.items.size)
                     }
                 }
@@ -330,7 +330,7 @@ private fun DetailFeed(
                 item(key = "none") {
                     val type = state.activeFilter
                     Text(
-                        if (type == null) "Nothing here." else "No ${'$'}{type.noun(2)} yet.",
+                        if (type == null) "Nothing here." else "No ${type.noun(2)} yet.",
                         style = BodyStyle,
                         color = Muted,
                         modifier = Modifier.padding(top = 4.dp),
@@ -381,7 +381,7 @@ private fun GroupHeading(label: String, count: Int) {
     ) {
         Text(label, style = MetaStyle.copy(letterSpacing = 1.4.sp), color = InkSoft)
         HorizontalDivider(thickness = 1.dp, color = Edge, modifier = Modifier.weight(1f))
-        Text("${'$'}count", style = MetaStyle, color = Muted)
+        Text("$count", style = MetaStyle, color = Muted)
     }
 }
 
@@ -397,7 +397,7 @@ private fun SelectionTopBar(count: Int, allSelected: Boolean, onClear: () -> Uni
     ) {
         BarGlyph("✕", "Leave selection", onClear, Modifier.align(Alignment.CenterStart))
         Text(
-            "${'$'}count SELECTED",
+            "$count SELECTED",
             style = MetaStyle.copy(letterSpacing = 1.2.sp),
             color = Synapse,
             modifier = Modifier.align(Alignment.Center),
@@ -487,7 +487,7 @@ private fun MoveToTopicSheet(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                if (count == 1) "MOVE 1 ITEM TO" else "MOVE ${'$'}count ITEMS TO",
+                if (count == 1) "MOVE 1 ITEM TO" else "MOVE $count ITEMS TO",
                 style = MetaStyle.copy(letterSpacing = 1.4.sp),
                 color = Muted,
                 modifier = Modifier.padding(bottom = 4.dp),

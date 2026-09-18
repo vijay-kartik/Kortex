@@ -26,6 +26,7 @@ import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
+import dev.kortex.myinfo.topics.domain.usecase.ObserveSearchCorpus
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSuggestions
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
@@ -79,6 +80,9 @@ object TopicsModule {
 
     @Provides
     fun provideObserveTopic(repository: TopicsRepository) = ObserveTopic(repository)
+
+    @Provides
+    fun provideObserveSearchCorpus(repository: TopicsRepository) = ObserveSearchCorpus(repository)
 
     @Provides
     fun provideCreateTopic(repository: TopicsRepository, clock: Clock) = CreateTopic(repository, clock)

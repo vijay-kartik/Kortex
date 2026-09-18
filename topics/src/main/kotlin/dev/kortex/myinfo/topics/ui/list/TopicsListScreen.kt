@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -72,6 +73,7 @@ import dev.kortex.myinfo.topics.ui.common.MetaStyle
 fun TopicsListRoute(
     onOpenTopic: (Long) -> Unit,
     onCreateTopic: () -> Unit,
+    onSearch: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: TopicsListViewModel = hiltViewModel(),
 ) {
@@ -80,6 +82,7 @@ fun TopicsListRoute(
         when (effect) {
             is TopicsListEffect.OpenTopic -> onOpenTopic(effect.topicId)
             TopicsListEffect.OpenNewTopic -> onCreateTopic()
+            TopicsListEffect.OpenSearch -> onSearch()
         }
     }
     TopicsListScreen(state = state, onIntent = viewModel::onIntent, modifier = modifier)
@@ -170,6 +173,10 @@ private fun TopicsList(
                 color = Muted,
                 modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp),
             )
+            SearchPill(
+                onClick = { onIntent(TopicsListIntent.Search) },
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 12.dp),
+            )
             SortChips(
                 selected = state.sort,
                 pinnedCount = state.pinnedCount,
@@ -239,6 +246,27 @@ private fun TopicsList(
                 .fillMaxWidth()
                 .padding(start = 18.dp, top = 8.dp, bottom = 30.dp),
         )
+    }
+}
+
+/** Opens search across every topic (Figma: Topics 1a, 1f). A pill, not a field: the screen it
+ * opens owns the query and the keyboard. */
+@Composable
+private fun SearchPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Panel)
+            .border(1.dp, Edge, shape)
+            .clickable(onClickLabel = "Search topics", role = Role.Button, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("⌕", style = BodyStyle.copy(fontSize = 17.sp), color = Muted)
+        Text("Search notes, links, files and bills", style = BodyStyle, color = Muted)
     }
 }
 

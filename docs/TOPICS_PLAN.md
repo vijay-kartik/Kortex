@@ -69,6 +69,19 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
    lead in every mode. Long-press picks an item out; the top bar becomes a count with "all" and the
    bottom bar offers Move (a sheet of the other topics), Pin/Unpin and Delete (confirmed). Items
    gained a `pinned` column — `topics.db` is at version 2, migrated in place.
-8. **Search across topics (1f)** — FTS, scope chips, grouped results, highlight, debounce.
+8. **Search across topics (1f)** ✅ — a search pill on the list opens `Overlay.TopicSearch`.
+   `SearchCorpus.search` matches every word of the query, ignoring case, over note text, link
+   titles and addresses, doc and bill titles, image captions and currency codes — plus topic
+   names, which surface a topic even when none of its items match. Scope chips (Everything /
+   Notes / Links / Files / Bills) narrow the items, never the names; results are grouped by topic
+   (name matches first, then busiest, then most recently changed) with every occurrence
+   highlighted. Typing is debounced 220ms; a scope tap answers at once.
+
+   **Not FTS, deliberately.** A topic's link-backed items keep only a `linkId`; their titles and
+   addresses live in the Links library, in another database. An FTS index over `topic_items`
+   would therefore miss every link title — and a second matcher for those would give two
+   different notions of "matches". Search reads the same resolved items the topics list already
+   loads, so one matcher covers everything and there is no index to keep in step with the rows.
+   If the corpus ever outgrows memory, the fix is to page the corpus, not to split the matcher.
 9. **Agent summary (1b)** — `TopicSummarizer` in `:app`, cached, invalidated on item change.
 10. **Polish** — motion, accessibility, previews per state, ViewModel tests with fakes.

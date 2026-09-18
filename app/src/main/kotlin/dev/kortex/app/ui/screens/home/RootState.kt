@@ -23,6 +23,9 @@ sealed interface Overlay {
 
     /** One topic's feed. */
     data class Topic(val topicId: Long) : Overlay
+
+    /** Search across every topic, opened from the Topics tab. */
+    data object TopicSearch : Overlay
 }
 
 /**
@@ -93,6 +96,10 @@ class RootState(
         overlay = Overlay.NewTopic
     }
 
+    fun openTopicSearch() {
+        overlay = Overlay.TopicSearch
+    }
+
     /** Replaces whatever overlay is open, so a topic just created opens in place of its form. */
     fun openTopic(topicId: Long) {
         overlay = Overlay.Topic(topicId)
@@ -107,6 +114,7 @@ class RootState(
         private const val CREATE_LINK = "create_link"
         private const val NEW_TOPIC = "new_topic"
         private const val TOPIC = "topic"
+        private const val TOPIC_SEARCH = "topic_search"
         private const val LOAD_SESSION = "load_session"
         private const val NEW_SESSION = "new_session"
         private const val NEW_SESSION_WITH_DRAFT = "new_session_draft"
@@ -125,6 +133,7 @@ class RootState(
                         is Overlay.CreateLink -> CREATE_LINK
                         Overlay.NewTopic -> NEW_TOPIC
                         is Overlay.Topic -> TOPIC
+                        Overlay.TopicSearch -> TOPIC_SEARCH
                     },
                     when (overlay) {
                         is Overlay.CreateLink -> overlay.url
@@ -154,6 +163,7 @@ class RootState(
                         CREATE_LINK -> Overlay.CreateLink(saved[3])
                         NEW_TOPIC -> Overlay.NewTopic
                         TOPIC -> Overlay.Topic(saved[3].toLong())
+                        TOPIC_SEARCH -> Overlay.TopicSearch
                         else -> Overlay.None
                     },
                     pendingChatRequest = when (saved[4]) {

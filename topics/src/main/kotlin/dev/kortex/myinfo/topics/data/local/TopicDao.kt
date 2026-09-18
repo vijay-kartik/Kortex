@@ -49,6 +49,20 @@ abstract class TopicDao {
     @Query("SELECT * FROM topic_items WHERE id IN (:ids)")
     abstract suspend fun getItems(ids: Collection<Long>): List<TopicItemEntity>
 
+    /** Only the types that have something to be done with; the rest keep `done` false. */
+    @Query("UPDATE topic_items SET done = :done WHERE id = :id AND type IN ('Article', 'Video', 'Bill')")
+    abstract suspend fun setDone(id: Long, done: Boolean): Int
+
+    @Query("SELECT filePath FROM topic_items WHERE id IN (:ids) AND filePath IS NOT NULL")
+    abstract suspend fun filePathsOf(ids: Collection<Long>): List<String>
+
+    @Query("SELECT filePath FROM topic_items WHERE topicId = :topicId AND filePath IS NOT NULL")
+    abstract suspend fun filePathsOfTopic(topicId: Long): List<String>
+
+    /** Every file any item still holds; the file store sweeps whatever isn't here. */
+    @Query("SELECT filePath FROM topic_items WHERE filePath IS NOT NULL")
+    abstract suspend fun allFilePaths(): List<String>
+
     @Query("SELECT EXISTS(SELECT 1 FROM topic_items WHERE topicId = :topicId AND linkId = :linkId)")
     abstract suspend fun holdsLink(topicId: Long, linkId: Long): Boolean
 
@@ -87,5 +101,12 @@ abstract class TopicDao {
         if (topicIds.isEmpty()) return
         deleteItemRows(ids)
         touch(topicIds, nowMillis)
+    }
+
+    /** Marks the item done and its topic changed; a type with nothing to be done leaves both. */
+    @Transaction
+    open suspend fun setDone(id: Long, done: Boolean, nowMillis: Long) {
+        if (setDone(id, done) == 0) return
+        getItems(listOf(id)).firstOrNull()?.let { touch(listOf(it.topicId), nowMillis) }
     }
 }

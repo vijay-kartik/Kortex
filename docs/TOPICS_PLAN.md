@@ -57,8 +57,12 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
    (`LinkCatalog.lookUp`); topic chips + inline "+ New topic"; `CaptureItem` checks the item before
    creating a topic. Links reuse Links by address. Saving elsewhere shows "Saved to …". Opening it
    from `ShareToKortexActivity` is still to do.
-6. **Rich item types** — video (watched), doc/image (file picker → app storage), bill (amount,
-   currency, due; bills card), article read state (list progress bar).
+6. **Rich item types (1b, 1d)** ✅ — `FileVault` port on `TopicFileStore` (files copied into
+   `files/topic-files`, PDF pages counted, orphans swept, a FileProvider so a tapped doc opens
+   elsewhere); quick capture grows a file picker and a photo picker, and bill fields (amount in the
+   currency's minor unit via `MoneyAmount`, currency, due date, paid); `SetItemDone` ticks an
+   article read, a video watched or a bill paid from its card; `BillSummary` + bills card above the
+   feed. Deleting an item or a topic takes its files with it.
 7. **Timeline, type-filtered view, multi-select (1c, 1e)** — Timeline / Feed / By type; Move / Pin /
    Delete.
 8. **Search across topics (1f)** — FTS, scope chips, grouped results, highlight, debounce.

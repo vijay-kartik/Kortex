@@ -14,6 +14,17 @@ class MoveItems(
     }
 }
 
+/**
+ * Ticks an item off: an article read, a video watched, a bill paid (Figma: Topics 1b). It counts
+ * as working on the topic, so the topic moves up Recent.
+ */
+class SetItemDone(
+    private val repository: TopicsRepository,
+    private val clock: Clock,
+) {
+    suspend operator fun invoke(itemId: Long, done: Boolean) = repository.setItemDone(itemId, done, clock.nowMillis())
+}
+
 /** Removes items from their topics. Their links, if any, stay in the Links library. */
 class DeleteItems(
     private val repository: TopicsRepository,

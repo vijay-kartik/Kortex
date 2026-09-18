@@ -8,9 +8,11 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.myinfo.topics.data.RoomTopicsRepository
+import dev.kortex.myinfo.topics.data.files.TopicFileStore
 import dev.kortex.myinfo.topics.data.local.TopicDao
 import dev.kortex.myinfo.topics.data.local.TopicsDatabase
 import dev.kortex.myinfo.topics.domain.port.Clock
+import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import dev.kortex.myinfo.topics.domain.repository.TopicsRepository
 import dev.kortex.myinfo.topics.domain.usecase.AcceptTopicSuggestion
@@ -20,13 +22,19 @@ import dev.kortex.myinfo.topics.domain.usecase.CreateTopic
 import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
 import dev.kortex.myinfo.topics.domain.usecase.DetectItemType
+import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
+import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSuggestions
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
+import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetTopicPinned
 import dev.kortex.myinfo.topics.domain.usecase.UpdateTopic
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import javax.inject.Singleton
 
 /**
@@ -47,8 +55,18 @@ object TopicsModule {
 
     @Provides
     @Singleton
-    fun provideRepository(dao: TopicDao, linkCatalog: LinkCatalog): TopicsRepository =
-        RoomTopicsRepository(dao, linkCatalog)
+    fun provideFileVault(@ApplicationContext context: Context, dao: TopicDao): FileVault =
+        TopicFileStore(context, dao)
+
+    @Provides
+    @Singleton
+    fun provideRepository(dao: TopicDao, linkCatalog: LinkCatalog, fileVault: FileVault): TopicsRepository =
+        RoomTopicsRepository(dao, linkCatalog, fileVault)
+
+    @Provides
+    @Singleton
+    @TopicsScope
+    fun provideTopicsScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Provides
     fun provideClock(): Clock = Clock.System
@@ -79,6 +97,15 @@ object TopicsModule {
 
     @Provides
     fun provideDeleteItems(repository: TopicsRepository, clock: Clock) = DeleteItems(repository, clock)
+
+    @Provides
+    fun provideSetItemDone(repository: TopicsRepository, clock: Clock) = SetItemDone(repository, clock)
+
+    @Provides
+    fun provideKeepPickedFile(fileVault: FileVault) = KeepPickedFile(fileVault)
+
+    @Provides
+    fun provideDiscardPickedFile(fileVault: FileVault) = DiscardPickedFile(fileVault)
 
     @Provides
     fun provideDetectItemType() = DetectItemType()

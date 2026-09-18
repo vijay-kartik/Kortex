@@ -1,6 +1,7 @@
 package dev.kortex.myinfo.topics.ui.detail
 
 import dev.kortex.myinfo.topics.domain.model.ItemType
+import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
 import dev.kortex.myinfo.topics.domain.model.TopicItem
 import dev.kortex.myinfo.topics.ui.common.SectionOrder
@@ -33,6 +34,9 @@ data class TypeFilter(val type: ItemType, val count: Int)
 sealed interface TopicDetailIntent {
     data class SelectFilter(val type: ItemType?) : TopicDetailIntent
     data class OpenItem(val item: TopicItem) : TopicDetailIntent
+
+    /** Tick an article read, a video watched or a bill paid — or untick it. */
+    data class SetItemDone(val item: TopicItem, val done: Boolean) : TopicDetailIntent
     data object Add : TopicDetailIntent
     data object CloseCapture : TopicDetailIntent
 
@@ -47,6 +51,9 @@ sealed interface TopicDetailIntent {
 
 sealed interface TopicDetailEffect {
     data class OpenUrl(val url: String) : TopicDetailEffect
+
+    /** Hand a kept doc, image or invoice to whichever app opens that type. */
+    data class OpenFile(val file: StoredFile) : TopicDetailEffect
     data class ShareText(val subject: String, val text: String) : TopicDetailEffect
     data class ShowMessage(val text: String) : TopicDetailEffect
 

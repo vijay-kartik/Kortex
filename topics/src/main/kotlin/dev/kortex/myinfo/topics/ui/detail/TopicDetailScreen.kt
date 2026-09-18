@@ -66,11 +66,14 @@ import dev.kortex.design.Void
 import dev.kortex.design.dashedBorder
 import dev.kortex.mvi.ObserveEffects
 import dev.kortex.mvi.ScopedViewModelStore
+import dev.kortex.myinfo.topics.data.files.TopicFiles
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.SavedLink
+import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.storedFile
 import dev.kortex.myinfo.topics.ui.capture.QuickCaptureSheet
 import dev.kortex.myinfo.topics.ui.common.BodyStyle
 import dev.kortex.myinfo.topics.ui.common.ButtonStyle
@@ -113,6 +116,9 @@ private fun TopicDetailContent(
     ObserveEffects(viewModel.effects) { effect ->
         when (effect) {
             is TopicDetailEffect.OpenUrl -> context.openUrl(effect.url)
+            is TopicDetailEffect.OpenFile -> if (!context.openFile(effect.file)) {
+                scope.launch { snackbars.showSnackbar("No app on this phone opens that file.") }
+            }
             is TopicDetailEffect.ShareText -> context.shareText(effect.subject, effect.text)
             // Launched, so a snackbar on screen doesn't hold up the effects behind it.
             is TopicDetailEffect.ShowMessage -> scope.launch { snackbars.showSnackbar(effect.text) }
@@ -217,6 +223,9 @@ private fun DetailFeed(
         if (detail.items.isEmpty()) {
             item(key = "empty") { EmptyTopic(onAdd = { onIntent(TopicDetailIntent.Add) }) }
         } else {
+            detail.bills?.let { bills ->
+                item(key = "bills") { BillsCard(bills, nowMillis, Modifier.padding(top = 2.dp)) }
+            }
             item(key = "filters") {
                 FilterChips(state, onSelect = { onIntent(TopicDetailIntent.SelectFilter(it)) })
             }
@@ -224,7 +233,8 @@ private fun DetailFeed(
                 TopicItemCard(
                     item = item,
                     nowMillis = nowMillis,
-                    onClick = if (item.type.isLink) ({ onIntent(TopicDetailIntent.OpenItem(item)) }) else null,
+                    onClick = if (item.opens()) ({ onIntent(TopicDetailIntent.OpenItem(item)) }) else null,
+                    onSetDone = { done -> onIntent(TopicDetailIntent.SetItemDone(item, done)) },
                     modifier = Modifier.animateItem(),
                 )
             }
@@ -390,6 +400,9 @@ private fun EmptyTopic(onAdd: () -> Unit) {
     }
 }
 
+/** Tapping opens a link in the browser or a kept file in whatever handles its type. */
+private fun TopicItem.opens(): Boolean = type.isLink || storedFile != null
+
 /** "25 ITEMS · UPDATED 2H AGO". */
 private fun metaLine(detail: TopicDetail, nowMillis: Long): String {
     val count = detail.items.size
@@ -401,6 +414,23 @@ private fun Context.openUrl(url: String) {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (e: ActivityNotFoundException) {
         // No browser; nothing sensible to open it with.
+    }
+}
+
+/**
+ * Hands a kept file to whichever app opens its type, with read access for that one launch.
+ * @return false when nothing on the phone will take it, so the caller can say so.
+ */
+private fun Context.openFile(file: StoredFile): Boolean {
+    val uri = TopicFiles.contentUri(this, file.path) ?: return false
+    val view = Intent(Intent.ACTION_VIEW)
+        .setDataAndType(uri, file.mimeType)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    return try {
+        startActivity(view)
+        true
+    } catch (e: ActivityNotFoundException) {
+        false
     }
 }
 

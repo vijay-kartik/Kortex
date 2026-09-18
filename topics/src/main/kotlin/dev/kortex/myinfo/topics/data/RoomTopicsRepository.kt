@@ -10,6 +10,7 @@ import dev.kortex.myinfo.topics.domain.model.NewItem
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import dev.kortex.myinfo.topics.domain.repository.TopicsRepository
 import kotlinx.coroutines.flow.Flow
@@ -20,10 +21,15 @@ import kotlinx.coroutines.flow.map
  * [TopicsRepository] on Room, with link-backed items resolved through [linkCatalog]. A link
  * deleted from the Links library leaves its topic rows behind; they are filtered out on read, and
  * since link ids are never reused they can't come back pointing at a different link.
+ *
+ * Files are the other way round: they belong to the topic, so deleting an item or a topic takes
+ * its files out of [fileVault] too. The rows go first — a file left behind is swept later, while
+ * a row pointing at a deleted file would show as a broken item.
  */
 class RoomTopicsRepository(
     private val dao: TopicDao,
     private val linkCatalog: LinkCatalog,
+    private val fileVault: FileVault,
 ) : TopicsRepository {
     override fun observeTopics(): Flow<List<Topic>> = dao.observeTopics().map { rows -> rows.map { it.toDomain() } }
 
@@ -50,7 +56,11 @@ class RoomTopicsRepository(
 
     override suspend fun setPinned(id: Long, pinned: Boolean) = dao.setPinned(id, pinned)
 
-    override suspend fun deleteTopic(id: Long) = dao.deleteTopic(id)
+    override suspend fun deleteTopic(id: Long) {
+        val files = dao.filePathsOfTopic(id)
+        dao.deleteTopic(id)
+        fileVault.delete(files)
+    }
 
     override suspend fun addItem(topicId: Long, item: NewItem, nowMillis: Long): Long? {
         // Saved to Links first: a link already there is reused, not duplicated.
@@ -58,10 +68,16 @@ class RoomTopicsRepository(
         return dao.addItem(item.toEntity(topicId, linkId, nowMillis), nowMillis).takeIf { it != -1L }
     }
 
+    override suspend fun setItemDone(itemId: Long, done: Boolean, nowMillis: Long) = dao.setDone(itemId, done, nowMillis)
+
     override suspend fun moveItems(itemIds: Collection<Long>, toTopicId: Long, nowMillis: Long) =
         dao.moveItems(itemIds, toTopicId, nowMillis)
 
-    override suspend fun deleteItems(itemIds: Collection<Long>, nowMillis: Long) = dao.deleteItems(itemIds, nowMillis)
+    override suspend fun deleteItems(itemIds: Collection<Long>, nowMillis: Long) {
+        val files = dao.filePathsOf(itemIds)
+        dao.deleteItems(itemIds, nowMillis)
+        fileVault.delete(files)
+    }
 
     private fun Flow<List<TopicItemEntity>>.resolved(): Flow<List<TopicItem>> =
         combine(this, linkCatalog.observeLinks()) { rows, links -> rows.mapNotNull { it.toDomain(links) } }

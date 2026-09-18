@@ -63,6 +63,33 @@ class TopicOverviewTest {
     }
 
     @Test
+    fun `the bills card totals what's still owed and counts what's paid`() {
+        val items = listOf(
+            bill(1, "AED", 291_000, paid = true, dueAt = 100),
+            bill(2, "AED", 37_000, paid = false, dueAt = 500),
+            bill(3, "AED", 50_000, paid = false, dueAt = 300),
+            bill(4, "INR", 1_845_000, paid = false, dueAt = null),
+            note(5),
+        )
+
+        val bills = checkNotNull(TopicDetail(topic(), items).bills)
+        assertEquals(listOf(Money(87_000, "AED"), Money(1_845_000, "INR")), bills.outstanding)
+        assertEquals(Progress(done = 1, total = 4), bills.paid)
+        // The paid bill's earlier date doesn't count: it isn't waiting on anyone.
+        assertEquals(300L, bills.nextDueAtMillis)
+    }
+
+    @Test
+    fun `a topic with every bill paid owes nothing, and one with no bills has no card`() {
+        val paid = checkNotNull(TopicDetail(topic(), listOf(bill(1, "AED", 291_000, paid = true))).bills)
+        assertEquals(emptyList<Money>(), paid.outstanding)
+        assertEquals(Progress(done = 1, total = 1), paid.paid)
+        assertNull(paid.nextDueAtMillis)
+
+        assertNull(TopicDetail(topic(), listOf(note(1))).bills)
+    }
+
+    @Test
     fun `sorts recent with pinned first, pinned only, and by name`() {
         val topics = listOf(
             overview(1, "b", pinned = false, updatedAt = 300),
@@ -97,9 +124,9 @@ class TopicOverviewTest {
     private fun article(id: Long, read: Boolean) =
         TopicItem.Article(id, topicId = 1, addedAtMillis = 0, link(id, null), readingMinutes = null, read = read)
 
-    private fun bill(id: Long, currency: String, minor: Long) = TopicItem.Bill(
+    private fun bill(id: Long, currency: String, minor: Long, paid: Boolean = false, dueAt: Long? = null) = TopicItem.Bill(
         id, topicId = 1, addedAtMillis = 0, title = "bill $id", amount = Money(minor, currency),
-        issuedAtMillis = null, dueAtMillis = null, paid = false, file = null,
+        issuedAtMillis = null, dueAtMillis = dueAt, paid = paid, file = null,
     )
 
     private fun link(id: Long, thumbnail: String?) = SavedLink(id, "https://example.com/$id", "Link $id", thumbnail)

@@ -42,6 +42,9 @@ interface TopicsRepository {
      */
     suspend fun setItemDone(itemId: Long, done: Boolean, nowMillis: Long)
 
+    /** Pinned items stay at the top of their topic whichever way its feed is arranged. */
+    suspend fun setItemsPinned(itemIds: Collection<Long>, pinned: Boolean, nowMillis: Long)
+
     /** An item whose link the target topic already holds is dropped rather than duplicated. */
     suspend fun moveItems(itemIds: Collection<Long>, toTopicId: Long, nowMillis: Long)
 

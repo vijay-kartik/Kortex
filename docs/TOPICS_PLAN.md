@@ -63,8 +63,12 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
    currency's minor unit via `MoneyAmount`, currency, due date, paid); `SetItemDone` ticks an
    article read, a video watched or a bill paid from its card; `BillSummary` + bills card above the
    feed. Deleting an item or a topic takes its files with it.
-7. **Timeline, type-filtered view, multi-select (1c, 1e)** — Timeline / Feed / By type; Move / Pin /
-   Delete.
+7. **Timeline, type-filtered view, multi-select (1c, 1e)** ✅ — `TopicViewMode` (Feed / Timeline /
+   By type) with `TopicFeed.sections` grouping in the domain: Timeline cuts by calendar day (today,
+   yesterday, this week, this month, earlier), By type puts the busiest type first, and pinned items
+   lead in every mode. Long-press picks an item out; the top bar becomes a count with "all" and the
+   bottom bar offers Move (a sheet of the other topics), Pin/Unpin and Delete (confirmed). Items
+   gained a `pinned` column — `topics.db` is at version 2, migrated in place.
 8. **Search across topics (1f)** — FTS, scope chips, grouped results, highlight, debounce.
 9. **Agent summary (1b)** — `TopicSummarizer` in `:app`, cached, invalidated on item change.
 10. **Polish** — motion, accessibility, previews per state, ViewModel tests with fakes.

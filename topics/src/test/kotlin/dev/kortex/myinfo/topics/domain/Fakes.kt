@@ -25,7 +25,9 @@ class FakeTopicsRepository : TopicsRepository {
     val topics = mutableListOf<TopicDraft>()
     val items = mutableListOf<NewItem>()
     var moves = 0
+    val moved = mutableListOf<Pair<Collection<Long>, Long>>()
     val pinned = mutableMapOf<Long, Boolean>()
+    val itemPins = mutableMapOf<Long, Boolean>()
     val done = mutableMapOf<Long, Boolean>()
     val deleted = mutableListOf<Long>()
     val deletedItems = mutableListOf<Long>()
@@ -70,8 +72,13 @@ class FakeTopicsRepository : TopicsRepository {
         this.done[itemId] = done
     }
 
+    override suspend fun setItemsPinned(itemIds: Collection<Long>, pinned: Boolean, nowMillis: Long) {
+        itemIds.forEach { itemPins[it] = pinned }
+    }
+
     override suspend fun moveItems(itemIds: Collection<Long>, toTopicId: Long, nowMillis: Long) {
         moves++
+        moved += itemIds to toTopicId
     }
 
     override suspend fun deleteItems(itemIds: Collection<Long>, nowMillis: Long) {

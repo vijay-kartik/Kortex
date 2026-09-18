@@ -1,20 +1,35 @@
 package dev.kortex.myinfo.topics.ui.detail
 
+import dev.kortex.myinfo.topics.domain.model.FeedSection
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
+import dev.kortex.myinfo.topics.domain.model.TopicFeed
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.TopicViewMode
 import dev.kortex.myinfo.topics.ui.common.SectionOrder
+import dev.kortex.myinfo.topics.ui.common.TopicChoice
 
-/** One topic's feed (Figma: Topics 1b), newest first. */
+/** One topic's feed (Figma: Topics 1b, 1c, 1e), newest first. */
 data class TopicDetailState(
     /** Null before the first read. */
     val detail: TopicDetail? = null,
     /** Null shows every item. */
     val filter: ItemType? = null,
+    /** How the feed is cut up (Figma: Topics 1c). */
+    val mode: TopicViewMode = TopicViewMode.Feed,
+    /** Items the user has picked out (Figma: Topics 1e). Read [selection] instead. */
+    val selected: Set<Long> = emptySet(),
+    /** The other topics the selection could move to, most recently changed first. */
+    val moveTargets: List<TopicChoice> = emptyList(),
+    /** The "move to" picker is open over the feed. */
+    val movingSelection: Boolean = false,
     val confirmingDelete: Boolean = false,
+    val confirmingSelectionDelete: Boolean = false,
     /** The quick-capture sheet is open over the feed. */
     val capturing: Boolean = false,
+    /** When the feed was last arranged, for its ages and date groups. */
+    val nowMillis: Long = 0,
 ) {
     /** One chip per visible section: most items first, then section order; empty sections last. */
     val filters: List<TypeFilter> = detail?.let { d ->
@@ -27,16 +42,47 @@ data class TopicDetailState(
     val activeFilter: ItemType? = filter?.takeIf { type -> filters.any { it.type == type } }
 
     val items: List<TopicItem> = detail?.items.orEmpty().filter { activeFilter == null || it.type == activeFilter }
+
+    val sections: List<FeedSection> = TopicFeed.sections(items, mode, nowMillis)
+
+    /** Only items still on screen: one hidden by a filter, or deleted elsewhere, drops out. */
+    val selection: Set<Long> = if (selected.isEmpty()) emptySet() else items.mapNotNullTo(mutableSetOf()) { it.id.takeIf { id -> id in selected } }
+
+    val selecting: Boolean = selection.isNotEmpty()
+
+    /** Pin flips the whole selection, so it unpins only when every one of them is already pinned. */
+    val selectionPinned: Boolean = selecting && items.none { it.id in selection && !it.pinned }
+
+    /** The picker has somewhere to send them; a lone topic has nowhere. */
+    val canMoveSelection: Boolean = selecting && moveTargets.isNotEmpty()
 }
 
 data class TypeFilter(val type: ItemType, val count: Int)
 
 sealed interface TopicDetailIntent {
     data class SelectFilter(val type: ItemType?) : TopicDetailIntent
+    data class SelectMode(val mode: TopicViewMode) : TopicDetailIntent
     data class OpenItem(val item: TopicItem) : TopicDetailIntent
 
     /** Tick an article read, a video watched or a bill paid — or untick it. */
     data class SetItemDone(val item: TopicItem, val done: Boolean) : TopicDetailIntent
+
+    // ── Selection (Figma: Topics 1e) ──
+    /** Long-pressing an item picks it out and puts the feed into selection mode. */
+    data class StartSelection(val itemId: Long) : TopicDetailIntent
+    data class ToggleSelection(val itemId: Long) : TopicDetailIntent
+    data object SelectAll : TopicDetailIntent
+    data object ClearSelection : TopicDetailIntent
+
+    /** Pins the selection, or unpins it when all of them already are. */
+    data object PinSelection : TopicDetailIntent
+    data object AskMoveSelection : TopicDetailIntent
+    data object CancelMoveSelection : TopicDetailIntent
+    data class MoveSelectionTo(val topicId: Long) : TopicDetailIntent
+    data object AskDeleteSelection : TopicDetailIntent
+    data object CancelDeleteSelection : TopicDetailIntent
+    data object ConfirmDeleteSelection : TopicDetailIntent
+
     data object Add : TopicDetailIntent
     data object CloseCapture : TopicDetailIntent
 

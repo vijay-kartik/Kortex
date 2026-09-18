@@ -65,12 +65,12 @@ internal fun TopicItemEntity.toDomain(links: Map<Long, SavedLink>): TopicItem? {
     val link = linkId?.let(links::get)
     val file = if (filePath != null && mimeType != null) StoredFile(filePath, mimeType) else null
     return when (type) {
-        ItemType.Note -> TopicItem.Note(id, topicId, addedAtMillis, text ?: return null)
-        ItemType.Link -> TopicItem.Link(id, topicId, addedAtMillis, link ?: return null)
-        ItemType.Article -> TopicItem.Article(id, topicId, addedAtMillis, link ?: return null, readingMinutes, read = done)
-        ItemType.Video -> TopicItem.Video(id, topicId, addedAtMillis, link ?: return null, durationSeconds, watched = done)
-        ItemType.Doc -> TopicItem.Doc(id, topicId, addedAtMillis, title ?: return null, file ?: return null, pageCount)
-        ItemType.Image -> TopicItem.Image(id, topicId, addedAtMillis, file ?: return null, caption = text)
+        ItemType.Note -> TopicItem.Note(id, topicId, addedAtMillis, text ?: return null, pinned)
+        ItemType.Link -> TopicItem.Link(id, topicId, addedAtMillis, link ?: return null, pinned)
+        ItemType.Article -> TopicItem.Article(id, topicId, addedAtMillis, link ?: return null, readingMinutes, read = done, pinned = pinned)
+        ItemType.Video -> TopicItem.Video(id, topicId, addedAtMillis, link ?: return null, durationSeconds, watched = done, pinned = pinned)
+        ItemType.Doc -> TopicItem.Doc(id, topicId, addedAtMillis, title ?: return null, file ?: return null, pageCount, pinned)
+        ItemType.Image -> TopicItem.Image(id, topicId, addedAtMillis, file ?: return null, caption = text, pinned = pinned)
         ItemType.Bill -> TopicItem.Bill(
             id = id,
             topicId = topicId,
@@ -81,6 +81,7 @@ internal fun TopicItemEntity.toDomain(links: Map<Long, SavedLink>): TopicItem? {
             dueAtMillis = dueAtMillis,
             paid = done,
             file = file,
+            pinned = pinned,
         )
     }
 }

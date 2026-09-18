@@ -7,6 +7,7 @@ import dev.kortex.myinfo.topics.domain.usecase.Detection
 import dev.kortex.myinfo.topics.domain.usecase.MoneyAmount
 import dev.kortex.myinfo.topics.domain.usecase.captureTypes
 import dev.kortex.myinfo.topics.domain.usecase.defaultCaptureType
+import dev.kortex.myinfo.topics.ui.common.TopicChoice
 
 /**
  * Quick-capture sheet (Figma: Topics 1d). Typed text — the pasted text, the title, a bill's
@@ -63,8 +64,6 @@ data class QuickCaptureState(
 
     val canSave: Boolean = hasContent && !saving && !attaching && (creatingTopic || selectedTopicId != null)
 }
-
-data class TopicChoice(val id: Long, val name: String)
 
 enum class CaptureError {
     AlreadyInTopic,

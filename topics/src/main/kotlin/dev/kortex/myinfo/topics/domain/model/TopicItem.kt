@@ -7,11 +7,15 @@ sealed interface TopicItem {
     val addedAtMillis: Long
     val type: ItemType
 
+    /** Kept at the top of its topic, whichever way the feed is arranged (Figma: Topics 1e). */
+    val pinned: Boolean
+
     data class Note(
         override val id: Long,
         override val topicId: Long,
         override val addedAtMillis: Long,
         val text: String,
+        override val pinned: Boolean = false,
     ) : TopicItem {
         override val type get() = ItemType.Note
     }
@@ -21,6 +25,7 @@ sealed interface TopicItem {
         override val topicId: Long,
         override val addedAtMillis: Long,
         val link: SavedLink,
+        override val pinned: Boolean = false,
     ) : TopicItem {
         override val type get() = ItemType.Link
     }
@@ -32,6 +37,7 @@ sealed interface TopicItem {
         val link: SavedLink,
         val readingMinutes: Int?,
         val read: Boolean,
+        override val pinned: Boolean = false,
     ) : TopicItem {
         override val type get() = ItemType.Article
     }
@@ -43,6 +49,7 @@ sealed interface TopicItem {
         val link: SavedLink,
         val durationSeconds: Int?,
         val watched: Boolean,
+        override val pinned: Boolean = false,
     ) : TopicItem {
         override val type get() = ItemType.Video
     }
@@ -54,6 +61,7 @@ sealed interface TopicItem {
         val title: String,
         val file: StoredFile,
         val pageCount: Int?,
+        override val pinned: Boolean = false,
     ) : TopicItem {
         override val type get() = ItemType.Doc
     }
@@ -64,6 +72,7 @@ sealed interface TopicItem {
         override val addedAtMillis: Long,
         val file: StoredFile,
         val caption: String?,
+        override val pinned: Boolean = false,
     ) : TopicItem {
         override val type get() = ItemType.Image
     }
@@ -79,6 +88,7 @@ sealed interface TopicItem {
         val paid: Boolean,
         /** The invoice or receipt, when one was attached. */
         val file: StoredFile?,
+        override val pinned: Boolean = false,
     ) : TopicItem {
         override val type get() = ItemType.Bill
     }

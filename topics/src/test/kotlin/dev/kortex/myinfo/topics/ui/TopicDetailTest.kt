@@ -8,15 +8,21 @@ import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.TopicViewMode
 import dev.kortex.myinfo.topics.domain.port.Clock
+import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
+import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
+import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
 import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
+import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
 import dev.kortex.myinfo.topics.domain.usecase.SetTopicPinned
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailEffect
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailIntent
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailState
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailViewModel
+import dev.kortex.myinfo.topics.ui.common.TopicChoice
 import dev.kortex.myinfo.topics.ui.detail.TypeFilter
 import dev.kortex.myinfo.topics.ui.detail.topicShareText
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +35,9 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -40,6 +48,7 @@ class TopicDetailTest {
     private val video = TopicItem.Video(1, 7, addedAtMillis = 30, link(1, "https://youtu.be/a", "Dubai in 3 days"), durationSeconds = null, watched = false)
     private val note = TopicItem.Note(2, 7, addedAtMillis = 20, text = "Metro closes 00:30")
     private val otherNote = TopicItem.Note(3, 7, addedAtMillis = 10, text = "Pack adapters")
+    private val otherTopic = topic.copy(id = 8, name = "Job switch prep")
 
     @Before
     fun setUp() {
@@ -136,11 +145,148 @@ class TopicDetailTest {
         assertEquals(mapOf(1L to false), repository.done)
     }
 
+    // ── Selection (Figma: Topics 1e) ──────────────────────────────
+
+    @Test
+    fun `long-pressing picks an item out, and tapping another adds it`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onIntent(TopicDetailIntent.StartSelection(video.id))
+        assertTrue(viewModel.state.value.selecting)
+
+        viewModel.onIntent(TopicDetailIntent.ToggleSelection(note.id))
+        assertEquals(setOf(video.id, note.id), viewModel.state.value.selection)
+
+        viewModel.onIntent(TopicDetailIntent.ToggleSelection(note.id))
+        assertEquals(setOf(video.id), viewModel.state.value.selection)
+
+        viewModel.onIntent(TopicDetailIntent.ClearSelection)
+        assertFalse(viewModel.state.value.selecting)
+    }
+
+    @Test
+    fun `a filter drops the selection rather than acting on what isn't on screen`() = runTest {
+        val viewModel = viewModel()
+        viewModel.onIntent(TopicDetailIntent.SelectAll)
+        assertEquals(setOf(video.id, note.id), viewModel.state.value.selection)
+
+        viewModel.onIntent(TopicDetailIntent.SelectFilter(ItemType.Video))
+
+        assertFalse(viewModel.state.value.selecting)
+    }
+
+    @Test
+    fun `an item deleted elsewhere leaves the selection on its own`() = runTest {
+        val viewModel = viewModel()
+        viewModel.onIntent(TopicDetailIntent.SelectAll)
+
+        repository.observedItems.value = listOf(video)
+
+        assertEquals(setOf(video.id), viewModel.state.value.selection)
+    }
+
+    @Test
+    fun `pinning the selection pins them all, and pins again only once all are pinned`() = runTest {
+        val viewModel = viewModel()
+        viewModel.onIntent(TopicDetailIntent.SelectAll)
+        // One of the two is pinned already, so the whole selection is not.
+        repository.observedItems.value = listOf(video.copy(pinned = true), note)
+        assertFalse(viewModel.state.value.selectionPinned)
+
+        viewModel.onIntent(TopicDetailIntent.PinSelection)
+
+        assertEquals(mapOf(video.id to true, note.id to true), repository.itemPins)
+        assertFalse("acting on the selection leaves selection mode", viewModel.state.value.selecting)
+    }
+
+    @Test
+    fun `unpinning happens when every picked item is already pinned`() = runTest {
+        val viewModel = viewModel()
+        repository.observedItems.value = listOf(video.copy(pinned = true), note.copy(pinned = true))
+        viewModel.onIntent(TopicDetailIntent.SelectAll)
+        assertTrue(viewModel.state.value.selectionPinned)
+
+        viewModel.onIntent(TopicDetailIntent.PinSelection)
+
+        assertEquals(mapOf(video.id to false, note.id to false), repository.itemPins)
+    }
+
+    @Test
+    fun `moving the selection offers every other topic and reports where they went`() = runTest {
+        repository.observedTopics.value = listOf(topic, otherTopic)
+        val viewModel = viewModel()
+        repository.observedTopics.value = listOf(topic, otherTopic)
+        assertEquals(listOf(TopicChoice(8, "Job switch prep")), viewModel.state.value.moveTargets)
+
+        viewModel.onIntent(TopicDetailIntent.SelectAll)
+        assertTrue(viewModel.state.value.canMoveSelection)
+        viewModel.onIntent(TopicDetailIntent.AskMoveSelection)
+        assertTrue(viewModel.state.value.movingSelection)
+        viewModel.onIntent(TopicDetailIntent.MoveSelectionTo(8))
+
+        assertEquals(setOf(video.id, note.id) to 8L, repository.moved.single().let { it.first.toSet() to it.second })
+        assertEquals(TopicDetailEffect.ShowMessage("2 items moved to Job switch prep"), viewModel.effects.first())
+        assertFalse(viewModel.state.value.selecting)
+    }
+
+    @Test
+    fun `with nowhere to move to, the move action is off`() = runTest {
+        val viewModel = viewModel()
+        viewModel.onIntent(TopicDetailIntent.SelectAll)
+
+        assertEquals(emptyList<TopicChoice>(), viewModel.state.value.moveTargets)
+        assertFalse(viewModel.state.value.canMoveSelection)
+    }
+
+    @Test
+    fun `deleting the selection is confirmed first`() = runTest {
+        val viewModel = viewModel()
+        viewModel.onIntent(TopicDetailIntent.ToggleSelection(note.id))
+
+        viewModel.onIntent(TopicDetailIntent.AskDeleteSelection)
+        assertTrue(viewModel.state.value.confirmingSelectionDelete)
+        viewModel.onIntent(TopicDetailIntent.CancelDeleteSelection)
+        assertTrue("cancelling keeps the items picked out", viewModel.state.value.selecting)
+        assertEquals(emptyList<Long>(), repository.deletedItems)
+
+        viewModel.onIntent(TopicDetailIntent.AskDeleteSelection)
+        viewModel.onIntent(TopicDetailIntent.ConfirmDeleteSelection)
+
+        assertEquals(listOf(note.id), repository.deletedItems)
+        assertEquals(TopicDetailEffect.ShowMessage("1 item deleted"), viewModel.effects.first())
+    }
+
+    @Test
+    fun `the view mode is remembered and re-stamps the feed's clock`() = runTest {
+        val viewModel = viewModel()
+        assertEquals(TopicViewMode.Feed, viewModel.state.value.mode)
+
+        viewModel.onIntent(TopicDetailIntent.SelectMode(TopicViewMode.Timeline))
+
+        assertEquals(TopicViewMode.Timeline, viewModel.state.value.mode)
+        assertEquals(NOW, viewModel.state.value.nowMillis)
+    }
+
     private fun viewModel(): TopicDetailViewModel {
-        repository.observedTopics.value = listOf(topic)
+        repository.observedTopics.value = repository.observedTopics.value.ifEmpty { listOf(topic) }
         repository.observedItems.value = listOf(video, note)
-        return TopicDetailViewModel(7, ObserveTopic(repository), SetTopicPinned(repository), SetItemDone(repository, Clock { 0 }), DeleteTopic(repository))
+        return TopicDetailViewModel(
+            topicId = 7,
+            observeTopic = ObserveTopic(repository),
+            observeTopics = ObserveTopics(repository),
+            clock = Clock { NOW },
+            setTopicPinned = SetTopicPinned(repository),
+            setItemDone = SetItemDone(repository, Clock { NOW }),
+            setItemsPinned = SetItemsPinned(repository, Clock { NOW }),
+            moveItems = MoveItems(repository, Clock { NOW }),
+            deleteItems = DeleteItems(repository, Clock { NOW }),
+            deleteTopic = DeleteTopic(repository),
+        )
     }
 
     private fun link(id: Long, url: String, title: String) = SavedLink(id, url, title, thumbnailPath = null)
+
+    private companion object {
+        const val NOW = 1_700_000_000_000L
+    }
 }

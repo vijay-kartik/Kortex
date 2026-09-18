@@ -71,6 +71,7 @@ dependencies {
     implementation(project(":knowledge-graph:graph-storage"))
     implementation(project(":knowledge-graph:graph-tools"))
     implementation(project(":links"))
+    implementation(project(":topics"))
     implementation(project(":design"))
 
     implementation(libs.kotlinx.coroutines.android)

@@ -66,6 +66,7 @@ fun CategoryTabBar(
     modifier: Modifier = Modifier,
 ) {
     val agentTabs = remember { KortexTab.of(TabCategory.Agent) }
+    val myInfoTabs = remember { KortexTab.of(TabCategory.MyInfo) }
     val agentExpanded = expanded == TabCategory.Agent
     // My Info shows as a category chip while it is collapsed — that is, whenever Agent is open,
     // and during onboarding, when it has not yet been unfolded into Links for the first time.
@@ -128,19 +129,21 @@ fun CategoryTabBar(
                 enabled = myInfoAsChip,
                 onClick = { onCategorySelected(TabCategory.MyInfo) },
             )
-            LeafTab(
-                label = KortexTab.Links.label,
-                selected = !myInfoAsChip && selected == KortexTab.Links,
-                enabled = !myInfoAsChip,
-                onClick = { onTabSelected(KortexTab.Links) },
-            )
+            myInfoTabs.forEach { tab ->
+                LeafTab(
+                    label = tab.label,
+                    selected = !myInfoAsChip && selected == tab,
+                    enabled = !myInfoAsChip,
+                    onClick = { onTabSelected(tab) },
+                )
+            }
         },
     ) { measurables, constraints ->
         val placeables = measurables.map { it.measure(Constraints()) }
         val agent = placeables.first()
         val leaves = placeables.subList(1, 1 + agentTabs.size)
-        val info = placeables[placeables.lastIndex - 1]
-        val links = placeables.last()
+        val info = placeables[1 + agentTabs.size]
+        val infoLeaves = placeables.subList(2 + agentTabs.size, placeables.size)
 
         val pad = HorizontalPadding.roundToPx()
         val gap = Gap.roundToPx()
@@ -150,17 +153,15 @@ fun CategoryTabBar(
         // Collapsed: Agent chip, then whichever My Info face is showing, both hard left.
         val collapsedSecondX = pad + agent.width + gap
         // Expanded: leaves run from the left edge, the My Info chip right-aligns.
-        var cursor = pad
-        val leafX = leaves.map { leaf ->
-            val x = cursor
-            cursor += leaf.width + gap
-            x
-        }
-        val leavesEnd = cursor - gap
+        val leafX = rowOffsets(leaves, pad, gap)
+        val leavesEnd = leafX.last() + leaves.last().width
+        // My Info's leaves run on from the Agent chip and travel as one group.
+        val infoLeafX = rowOffsets(infoLeaves, collapsedSecondX, gap)
+        val infoLeavesWidth = infoLeafX.last() + infoLeaves.last().width - collapsedSecondX
         // On a 412dp screen the leaves end well clear of the right-aligned chip. Narrower
         // screens run out of room — clamping keeps the two groups from overlapping, but the
         // real fix is the open decision in Tabs / Spec: cap the group or let it scroll.
-        fun rightSlot(p: Placeable) = maxOf(barWidth - pad - p.width, leavesEnd + gap)
+        fun rightSlot(width: Int) = maxOf(barWidth - pad - width, leavesEnd + gap)
 
         fun centreY(p: Placeable) = (barHeight - p.height) / 2
 
@@ -183,17 +184,29 @@ fun CategoryTabBar(
                     alpha = (progress.value * LEAF_FADE_RATE).coerceIn(0f, 1f)
                 }
             }
-            val infoTravel = (rightSlot(info) - collapsedSecondX).toFloat()
+            val infoTravel = (rightSlot(info.width) - collapsedSecondX).toFloat()
             info.placeWithLayer(collapsedSecondX, centreY(info), if (myInfoAsChip) front else back) {
                 translationX = infoTravel * progress.value
                 alpha = chipCrossfade.value
             }
-            val linksTravel = (rightSlot(links) - collapsedSecondX).toFloat()
-            links.placeWithLayer(collapsedSecondX, centreY(links), if (myInfoAsChip) back else front) {
-                translationX = linksTravel * progress.value
-                alpha = 1f - chipCrossfade.value
+            val infoLeavesTravel = (rightSlot(infoLeavesWidth) - collapsedSecondX).toFloat()
+            infoLeaves.forEachIndexed { i, leaf ->
+                leaf.placeWithLayer(infoLeafX[i], centreY(leaf), if (myInfoAsChip) back else front) {
+                    translationX = infoLeavesTravel * progress.value
+                    alpha = 1f - chipCrossfade.value
+                }
             }
         }
+    }
+}
+
+/** Left edges of [items] laid out in a row from [start], [gap] apart. */
+private fun rowOffsets(items: List<Placeable>, start: Int, gap: Int): List<Int> {
+    var cursor = start
+    return items.map { item ->
+        val x = cursor
+        cursor += item.width + gap
+        x
     }
 }
 

@@ -32,6 +32,9 @@ import dev.kortex.design.Muted
 import dev.kortex.design.Panel
 import dev.kortex.links.ui.CreateLinkScreen
 import dev.kortex.links.ui.LinksScreen
+import dev.kortex.myinfo.topics.ui.TopicsScreen
+import dev.kortex.myinfo.topics.ui.create.NewTopicRoute
+import dev.kortex.myinfo.topics.ui.detail.TopicDetailRoute
 
 /**
  * Stateful entry to the home UI. Owns [RootState] and onboarding; every screen it shows gets
@@ -48,7 +51,7 @@ fun RootScreen(
 
     EntryRequestEffect(entryRequest, state, onEntryRequestHandled)
 
-    // CreateLinkScreen registers its own BackHandler; Settings has none, so close it here.
+    // CreateLinkScreen and the Topics routes register their own BackHandler; Settings has none, so close it here.
     BackHandler(enabled = state.overlay == Overlay.Settings, onBack = state::closeOverlay)
 
     RootContent(
@@ -69,6 +72,11 @@ fun RootScreen(
                 is Overlay.CreateLink -> key(overlay.url) {
                     CreateLinkScreen(onBack = state::closeOverlay, initialUrl = overlay.url)
                 }
+                Overlay.NewTopic -> NewTopicRoute(onClose = state::closeOverlay, onCreated = state::openTopic)
+                // Keyed so opening another topic starts that topic's screen rather than reusing this one.
+                is Overlay.Topic -> key(overlay.topicId) {
+                    TopicDetailRoute(topicId = overlay.topicId, onClose = state::closeOverlay)
+                }
             }
         },
         tabContent = { tab ->
@@ -84,6 +92,10 @@ fun RootScreen(
                 )
                 KortexTab.Runs -> RunsScreen()
                 KortexTab.Links -> LinksScreen(onCreateLink = { state.openCreateLink() })
+                KortexTab.Topics -> TopicsScreen(
+                    onCreateTopic = state::openNewTopic,
+                    onOpenTopic = state::openTopic,
+                )
             }
         },
     )

@@ -26,8 +26,16 @@ val Panel = Color(0xFF141A26)
 val Edge = Color(0xFF242E42)
 val Ink = Color(0xFFE9EDF5)
 val Muted = Color(0xFF97A1B8)
+/** Long-form reading text (notes, summaries): softer than [Ink] so paragraphs don't glare. */
+val InkSoft = Color(0xFFC6CDDC)
 val Synapse = Color(0xFF7C8CFF)
 val SynapseDim = Color(0xFF232A52)
+/** Input and chip fill on a [Panel] sheet: darker than the panel, lighter than [Void]. */
+val Well = Color(0xFF0F141F)
+/** Recessed fill inside a panel: thumbnail placeholders, type badges, progress tracks. */
+val Sunken = Color(0xFF1C2333)
+/** A hairline that must read against [Panel]: pinned cards, dashed "add" outlines. */
+val EdgeStrong = Color(0xFF2E3A57)
 val Amber = Color(0xFFEFB358)
 val Alarm = Color(0xFFFF7182)
 

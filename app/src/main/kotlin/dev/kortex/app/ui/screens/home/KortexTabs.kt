@@ -12,7 +12,8 @@ enum class KortexTab(val label: String, val category: TabCategory) {
     Graph("Graph", TabCategory.Agent),
     History("History", TabCategory.Agent),
     Runs("Runs", TabCategory.Agent),
-    Links("Links", TabCategory.MyInfo);
+    Links("Links", TabCategory.MyInfo),
+    Topics("Topics", TabCategory.MyInfo);
 
     companion object {
         fun of(category: TabCategory): List<KortexTab> = entries.filter { it.category == category }

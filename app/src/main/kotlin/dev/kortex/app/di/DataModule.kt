@@ -9,9 +9,13 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.data.local.AppDatabase
 import dev.kortex.app.data.local.ChatSessionDao
+import dev.kortex.app.data.topics.LinksLinkCatalog
 import dev.kortex.core.observability.AgentRunStore
 import dev.kortex.core.observability.RoomAgentRunStore
 import dev.kortex.core.store.KortexDatabase
+import dev.kortex.links.data.LinksRepository
+import dev.kortex.links.tagging.PageMetadataFetcher
+import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import javax.inject.Singleton
 
 /** Room databases and the stores built on them. */
@@ -36,4 +40,9 @@ object DataModule {
 
     @Provides
     fun provideChatSessionDao(database: AppDatabase): ChatSessionDao = database.chatSessionDao()
+
+    /** Topics keep links in the Links library rather than their own copy. */
+    @Provides
+    @Singleton
+    fun provideLinkCatalog(links: LinksRepository, pages: PageMetadataFetcher): LinkCatalog = LinksLinkCatalog(links, pages)
 }

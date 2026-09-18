@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,14 +32,18 @@ import dev.kortex.design.InkSoft
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
 import dev.kortex.design.Sunken
+import dev.kortex.design.Synapse
 import dev.kortex.design.Void
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.done
 import dev.kortex.myinfo.topics.ui.common.LocalThumbnail
 import dev.kortex.myinfo.topics.ui.common.MetaStyle
 import dev.kortex.myinfo.topics.ui.common.TypeBadge
 import dev.kortex.myinfo.topics.ui.common.accent
 import dev.kortex.myinfo.topics.ui.common.ageLabel
+import dev.kortex.myinfo.topics.ui.common.dueLabel
+import dev.kortex.myinfo.topics.ui.common.formatDate
 import dev.kortex.myinfo.topics.ui.common.formatDuration
 import dev.kortex.myinfo.topics.ui.common.formatMoney
 import dev.kortex.myinfo.topics.ui.common.hostOf
@@ -52,6 +57,7 @@ internal fun TopicItemCard(
     item: TopicItem,
     nowMillis: Long,
     onClick: (() -> Unit)?,
+    onSetDone: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -68,12 +74,55 @@ internal fun TopicItemCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ItemBody(item)
+            if (item is TopicItem.Bill) BillDates(item, nowMillis)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(typeLabel(item), style = MetaStyle, color = typeColor(item), modifier = Modifier.weight(1f))
+                item.done?.let { done ->
+                    DoneChip(item, done, onSetDone, Modifier.padding(end = 10.dp))
+                }
                 Text(ageLabel(item.addedAtMillis, nowMillis), style = MetaStyle, color = Muted)
             }
         }
     }
+}
+
+/**
+ * Ticks the item off where it sits (Figma: Topics 1b). Unticked it is an outline the user is
+ * meant to act on; ticked it recedes, still tappable so a mistake can be undone.
+ */
+@Composable
+private fun DoneChip(item: TopicItem, done: Boolean, onSetDone: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(6.dp)
+    val accent = if (item is TopicItem.Bill) Amber else Synapse
+    Text(
+        if (done) "${doneWord(item)} ✓" else doneAction(item),
+        style = MetaStyle.copy(letterSpacing = 0.5.sp),
+        color = if (done) accent else Muted,
+        maxLines = 1,
+        modifier = modifier
+            .clip(shape)
+            .then(if (done) Modifier.background(Sunken) else Modifier.border(1.dp, Edge, shape))
+            .clickable(
+                onClickLabel = if (done) "Mark not ${doneWord(item).lowercase()}" else doneAction(item),
+                role = Role.Checkbox,
+            ) { onSetDone(!done) }
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    )
+}
+
+/** "ISSUED 3 FEB · DUE IN 4 DAYS", once a bill has either date. */
+@Composable
+private fun BillDates(bill: TopicItem.Bill, nowMillis: Long) {
+    val issued = bill.issuedAtMillis?.let { "ISSUED ${formatDate(it, nowMillis)}" }
+    // A paid bill's deadline is history, so it reads as a plain date rather than a countdown.
+    val due = bill.dueAtMillis?.let { if (bill.paid) "DUE ${formatDate(it, nowMillis)}" else dueLabel(it, nowMillis) }
+    if (issued == null && due == null) return
+    val overdue = !bill.paid && bill.dueAtMillis != null && bill.dueAtMillis < nowMillis
+    Text(
+        listOfNotNull(issued, due).joinToString(" · "),
+        style = MetaStyle.copy(letterSpacing = 0.5.sp),
+        color = if (overdue) Alarm else Muted,
+    )
 }
 
 @Composable
@@ -148,15 +197,27 @@ private fun media(item: TopicItem): Pair<String, String?>? = when (item) {
     is TopicItem.Note, is TopicItem.Doc, is TopicItem.Bill -> null
 }
 
+/** The type and what's worth knowing about it; whether it's done with is the chip's job. */
 private fun typeLabel(item: TopicItem): String = when (item) {
     is TopicItem.Note -> "NOTE"
     is TopicItem.Link -> "LINK"
-    is TopicItem.Article -> listOfNotNull("ARTICLE", item.readingMinutes?.let { "$it MIN" }, if (item.read) null else "UNREAD").joinToString(" · ")
-    is TopicItem.Video -> if (item.watched) "VIDEO · WATCHED" else "VIDEO"
+    is TopicItem.Article -> listOfNotNull("ARTICLE", item.readingMinutes?.let { "$it MIN" }).joinToString(" · ")
+    // The length rides on the thumbnail when there is one; without one this is the only place for it.
+    is TopicItem.Video -> listOfNotNull("VIDEO", item.durationSeconds?.takeIf { item.link.thumbnailPath == null }?.let(::formatDuration))
+        .joinToString(" · ")
     is TopicItem.Doc -> listOfNotNull("DOC", item.pageCount?.let { if (it == 1) "1 PAGE" else "$it PAGES" }).joinToString(" · ")
     is TopicItem.Image -> "IMAGE"
-    is TopicItem.Bill -> if (item.paid) "BILL · PAID" else "BILL · DUE"
+    is TopicItem.Bill -> if (item.file != null) "BILL · INVOICE" else "BILL"
 }
+
+/** What being done means for this item, as the chip says it once and as an action. */
+private fun doneWord(item: TopicItem): String = when (item) {
+    is TopicItem.Article -> "READ"
+    is TopicItem.Video -> "WATCHED"
+    else -> "PAID"
+}
+
+private fun doneAction(item: TopicItem): String = "MARK ${doneWord(item)}"
 
 private fun typeColor(item: TopicItem) = when {
     item is TopicItem.Bill && !item.paid -> Alarm

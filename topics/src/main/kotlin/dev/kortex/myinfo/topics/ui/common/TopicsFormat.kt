@@ -4,7 +4,10 @@ import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.Money
 import java.math.BigDecimal
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Currency
+import java.util.Date
 import java.util.Locale
 
 /** UPDATED JUST NOW, UPDATED 3H AGO, UPDATED YESTERDAY… (see [ageLabel]). */
@@ -57,6 +60,34 @@ internal fun ItemType.noun(count: Int): String {
     }
     return if (count == 1) singular else "${singular}s"
 }
+
+/** "14 MAR", with the year once the date isn't in the twelve months around today. */
+internal fun formatDate(atMillis: Long, nowMillis: Long, locale: Locale = Locale.getDefault()): String {
+    val far = kotlin.math.abs(atMillis - nowMillis) > 365L * 24 * 3_600_000
+    return SimpleDateFormat(if (far) "d MMM yyyy" else "d MMM", locale).format(Date(atMillis)).uppercase(locale)
+}
+
+/** "DUE IN 3 DAYS", "DUE TOMORROW", "DUE TODAY", "3 DAYS OVERDUE" — how a bill's date reads. */
+internal fun dueLabel(dueAtMillis: Long, nowMillis: Long): String {
+    // Whole days apart on the calendar, so "tomorrow" doesn't depend on the time of day.
+    val days = ((startOfDay(dueAtMillis) - startOfDay(nowMillis)) / 86_400_000L).toInt()
+    return when {
+        days == 0 -> "DUE TODAY"
+        days == 1 -> "DUE TOMORROW"
+        days == -1 -> "1 DAY OVERDUE"
+        days < -1 -> "${-days} DAYS OVERDUE"
+        days < 30 -> "DUE IN $days DAYS"
+        else -> "DUE ${formatDate(dueAtMillis, nowMillis)}"
+    }
+}
+
+private fun startOfDay(atMillis: Long): Long = Calendar.getInstance().apply {
+    timeInMillis = atMillis
+    set(Calendar.HOUR_OF_DAY, 0)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+}.timeInMillis
 
 /** "AED 4,280", or "AED 4,280.50" when there are minor units to show. */
 internal fun formatMoney(money: Money, locale: Locale = Locale.getDefault()): String {

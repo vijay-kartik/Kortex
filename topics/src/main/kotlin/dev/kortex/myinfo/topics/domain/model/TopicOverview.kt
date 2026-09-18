@@ -42,9 +42,33 @@ data class TopicDetail(
     val visibleSections: Set<ItemType> = ItemType.entries.filterTo(LinkedHashSet()) { it in topic.sections || it in counts }
 
     val billTotals: List<Money> = items.billTotals()
+
+    /** Null when the topic holds no bills. */
+    val bills: BillSummary? = BillSummary.of(items.filterIsInstance<TopicItem.Bill>())
 }
 
 data class Progress(val done: Int, val total: Int)
+
+/** What a topic's bills add up to (Figma: Topics 1b, bills card). */
+data class BillSummary(
+    /** One total per currency of the bills still to pay; empty once they all are. */
+    val outstanding: List<Money>,
+    val paid: Progress,
+    /** The soonest due date still to pay; null when none of them has one. */
+    val nextDueAtMillis: Long?,
+) {
+    companion object {
+        fun of(bills: List<TopicItem.Bill>): BillSummary? {
+            if (bills.isEmpty()) return null
+            val unpaid = bills.filterNot { it.paid }
+            return BillSummary(
+                outstanding = unpaid.map { it.amount }.totalPerCurrency(),
+                paid = Progress(done = bills.size - unpaid.size, total = bills.size),
+                nextDueAtMillis = unpaid.mapNotNull { it.dueAtMillis }.minOrNull(),
+            )
+        }
+    }
+}
 
 enum class TopicSort {
     /** Pinned topics first, then most recently changed. */
@@ -71,9 +95,11 @@ private fun List<TopicItem>.countByType(): Map<ItemType, Int> {
 }
 
 private fun List<TopicItem>.billTotals(): List<Money> =
-    filterIsInstance<TopicItem.Bill>()
-        .groupBy { it.amount.currency }
-        .map { (currency, bills) -> Money(bills.sumOf { it.amount.minorUnits }, currency) }
+    filterIsInstance<TopicItem.Bill>().map { it.amount }.totalPerCurrency()
+
+private fun List<Money>.totalPerCurrency(): List<Money> =
+    groupBy { it.currency }
+        .map { (currency, amounts) -> Money(amounts.sumOf { it.minorUnits }, currency) }
         .sortedBy { it.currency }
 
 private fun TopicItem.previewPath(): String? = when (this) {

@@ -30,14 +30,21 @@ interface TopicsRepository {
     /** Doesn't count as a change to the topic: its updated time stays. */
     suspend fun setPinned(id: Long, pinned: Boolean)
 
-    /** Removes the topic and its items. Links it held stay in the Links library. */
+    /** Removes the topic, its items and their files. Links it held stay in the Links library. */
     suspend fun deleteTopic(id: Long)
 
     /** @return the new item's id, or null when it is a link the topic already holds. */
     suspend fun addItem(topicId: Long, item: NewItem, nowMillis: Long): Long?
 
+    /**
+     * Marks an article read, a video watched or a bill paid. Items of the other types have
+     * nothing to be done with, and are left alone.
+     */
+    suspend fun setItemDone(itemId: Long, done: Boolean, nowMillis: Long)
+
     /** An item whose link the target topic already holds is dropped rather than duplicated. */
     suspend fun moveItems(itemIds: Collection<Long>, toTopicId: Long, nowMillis: Long)
 
+    /** Files the items kept go with them; links they pointed at stay in the Links library. */
     suspend fun deleteItems(itemIds: Collection<Long>, nowMillis: Long)
 }

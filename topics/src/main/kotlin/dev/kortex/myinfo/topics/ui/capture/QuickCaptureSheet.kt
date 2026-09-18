@@ -1,5 +1,8 @@
 package dev.kortex.myinfo.topics.ui.capture
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,9 +23,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDefaults
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,11 +55,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.design.Alarm
+import dev.kortex.design.Amber
 import dev.kortex.design.Edge
 import dev.kortex.design.EdgeStrong
 import dev.kortex.design.Grotesk
@@ -71,12 +81,14 @@ import dev.kortex.mvi.ScopedViewModelStore
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.ui.common.MetaStyle
 import dev.kortex.myinfo.topics.ui.common.RowTitleStyle
+import dev.kortex.myinfo.topics.ui.common.formatDate
 import dev.kortex.myinfo.topics.ui.common.noun
 import kotlinx.coroutines.launch
 
 /**
- * Quick capture (Figma: Topics 1d): paste or type, keep or change the detected type, pick a topic
- * (preselected: [topicId]) or start one, save. [onSaved] gets the topic it went into.
+ * Quick capture (Figma: Topics 1d): paste or type, or attach a file; keep or change the detected
+ * type, fill in a bill's amount and date if that's what it is, pick a topic (preselected:
+ * [topicId]) or start one, save. [onSaved] gets the topic it went into.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -129,8 +141,9 @@ private fun QuickCaptureForm(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var text by rememberSaveable { mutableStateOf("") }
     var title by rememberSaveable { mutableStateOf("") }
-    // Once the user types a title, the page's own no longer overwrites it.
+    // Once the user types a title, neither the page's nor the file's name overwrites it.
     var titleEdited by rememberSaveable { mutableStateOf(false) }
+    var billAmount by rememberSaveable { mutableStateOf("") }
     var newTopicName by rememberSaveable { mutableStateOf("") }
 
     ObserveEffects(viewModel.effects) { effect ->
@@ -141,6 +154,18 @@ private fun QuickCaptureForm(
     LaunchedEffect(state.lookup) {
         val pageTitle = state.lookup?.title
         if (!titleEdited && pageTitle != null) title = pageTitle
+    }
+    LaunchedEffect(state.file) {
+        // A doc is almost always kept under the name it arrived with; an image rarely is.
+        val name = state.file?.takeUnless { it.isImage }?.name
+        if (!titleEdited && name != null) title = name
+    }
+
+    val pickDocument = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { viewModel.onIntent(QuickCaptureIntent.AttachFile(it.toString())) }
+    }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri?.let { viewModel.onIntent(QuickCaptureIntent.AttachFile(it.toString())) }
     }
 
     QuickCaptureContent(
@@ -155,13 +180,20 @@ private fun QuickCaptureForm(
             title = it
             titleEdited = true
         },
+        billAmount = billAmount,
+        onBillAmountChange = {
+            billAmount = it
+            viewModel.onIntent(QuickCaptureIntent.BillAmountEdited)
+        },
         newTopicName = newTopicName,
         onNewTopicNameChange = {
             newTopicName = it
             viewModel.onIntent(QuickCaptureIntent.NewTopicNameEdited)
         },
         onIntent = viewModel::onIntent,
-        onSave = { viewModel.onIntent(QuickCaptureIntent.Save(text, title, newTopicName)) },
+        onPickDocument = { pickDocument.launch(arrayOf(ANY_MIME)) },
+        onPickImage = { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+        onSave = { viewModel.onIntent(QuickCaptureIntent.Save(text, title, newTopicName, billAmount)) },
         onCancel = onCancel,
     )
 }
@@ -174,9 +206,13 @@ internal fun QuickCaptureContent(
     onTextChange: (String) -> Unit,
     title: String,
     onTitleChange: (String) -> Unit,
+    billAmount: String,
+    onBillAmountChange: (String) -> Unit,
     newTopicName: String,
     onNewTopicNameChange: (String) -> Unit,
     onIntent: (QuickCaptureIntent) -> Unit,
+    onPickDocument: () -> Unit,
+    onPickImage: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -187,13 +223,20 @@ internal fun QuickCaptureContent(
             .padding(start = 18.dp, end = 18.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Label("PASTED", Modifier.padding(top = 8.dp))
-        PastedField(text, onTextChange)
-        if (state.lookup?.inLinks == true && state.type.isLink) {
-            Text("IN YOUR LINKS · THIS TOPIC WILL POINT AT IT", style = MetaStyle, color = Synapse)
+        if (state.fileMode) {
+            Label("FILE", Modifier.padding(top = 8.dp))
+            AttachedFile(state, onRemove = { onIntent(QuickCaptureIntent.RemoveFile) })
+        } else {
+            Label(if (state.type == ItemType.Bill) "BILL" else "PASTED", Modifier.padding(top = 8.dp))
+            PastedField(text, onTextChange, placeholder = pastedPlaceholder(state))
+            if (state.lookup?.inLinks == true && state.type.isLink) {
+                Text("IN YOUR LINKS · THIS TOPIC WILL POINT AT IT", style = MetaStyle, color = Synapse)
+            }
         }
 
-        if (!state.blank) {
+        AttachRow(fileMode = state.fileMode, onPickDocument = onPickDocument, onPickImage = onPickImage)
+
+        if (state.hasContent) {
             Row(
                 modifier = Modifier.padding(top = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -214,15 +257,24 @@ internal fun QuickCaptureContent(
             }
         }
 
-        if (state.type.isLink && state.detection.url != null) {
-            Label("TITLE", Modifier.padding(top = 8.dp))
+        if (state.showTitleField) {
+            Label(if (state.type == ItemType.Image) "CAPTION" else "TITLE", Modifier.padding(top = 8.dp))
             InputBox(
                 value = title,
                 onValueChange = onTitleChange,
-                placeholder = if (state.lookingUp) "Reading the page…" else "Title (optional)",
+                placeholder = titlePlaceholder(state),
                 textStyle = RowTitleStyle,
                 textColor = Ink,
                 singleLine = true,
+            )
+        }
+
+        if (state.showBillFields) {
+            BillFieldsBlock(
+                state = state,
+                amount = billAmount,
+                onAmountChange = onBillAmountChange,
+                onIntent = onIntent,
             )
         }
 
@@ -287,11 +339,163 @@ internal fun QuickCaptureContent(
             )
         }
     }
+
+    if (state.pickingDueDate) {
+        DueDatePicker(
+            selected = state.billDueAtMillis,
+            onPick = { onIntent(QuickCaptureIntent.SetDueDate(it)) },
+            onDismiss = { onIntent(QuickCaptureIntent.CloseDueDate) },
+        )
+    }
+}
+
+/** What the sheet is holding instead of pasted text, and the way back out of it. */
+@Composable
+private fun AttachedFile(state: QuickCaptureState, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(FieldShape)
+            .background(Well)
+            .border(1.dp, Edge, FieldShape)
+            .padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val file = state.file
+        Text(
+            if (file == null) "Keeping the file…" else file.name,
+            style = RowTitleStyle,
+            color = if (file == null) Muted else InkSoft,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (file != null) {
+            Text(
+                "REMOVE",
+                style = MetaStyle,
+                color = Muted,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClickLabel = "Remove file", role = Role.Button, onClick = onRemove)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+        }
+    }
+}
+
+/** The two ways in from storage: any file as a doc, or a picture from the photo picker. */
+@Composable
+private fun AttachRow(fileMode: Boolean, onPickDocument: () -> Unit, onPickImage: () -> Unit) {
+    Row(
+        modifier = Modifier.padding(top = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        AttachButton(if (fileMode) "Choose another" else "+ Attach file", onPickDocument)
+        AttachButton(if (fileMode) "Another photo" else "+ Photo", onPickImage)
+    }
+}
+
+@Composable
+private fun AttachButton(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        style = ChipTextStyle,
+        color = Muted,
+        modifier = Modifier
+            .clip(ChipShape)
+            .background(Well)
+            .dashedBorder(EdgeStrong, cornerRadius = 8.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 9.dp),
+    )
+}
+
+/** A bill's own fields: what it costs, when it's due, and whether it's been paid already. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BillFieldsBlock(
+    state: QuickCaptureState,
+    amount: String,
+    onAmountChange: (String) -> Unit,
+    onIntent: (QuickCaptureIntent) -> Unit,
+) {
+    val nowMillis = remember { System.currentTimeMillis() }
+    Label("AMOUNT", Modifier.padding(top = 8.dp))
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        QuickCaptureViewModel.currencyChoices(state.billCurrency).forEach { code ->
+            SmallChip(
+                label = code,
+                selected = code == state.billCurrency,
+                accent = Amber,
+                onClick = { onIntent(QuickCaptureIntent.ChooseCurrency(code)) },
+            )
+        }
+    }
+    InputBox(
+        value = amount,
+        onValueChange = onAmountChange,
+        placeholder = "0",
+        textStyle = AmountStyle,
+        textColor = Ink,
+        singleLine = true,
+        keyboardType = KeyboardType.Decimal,
+    )
+    Row(
+        modifier = Modifier.padding(top = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SmallChip(
+            label = state.billDueAtMillis?.let { "DUE ${formatDate(it, nowMillis)}" } ?: "SET DUE DATE",
+            selected = state.billDueAtMillis != null,
+            accent = Amber,
+            onClick = { onIntent(QuickCaptureIntent.OpenDueDate) },
+        )
+        if (state.billDueAtMillis != null) {
+            Text(
+                "CLEAR",
+                style = MetaStyle,
+                color = Muted,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(7.dp))
+                    .clickable(onClickLabel = "Clear due date", role = Role.Button) { onIntent(QuickCaptureIntent.SetDueDate(null)) }
+                    .padding(horizontal = 7.dp, vertical = 7.dp),
+            )
+        }
+        SmallChip(
+            label = if (state.billPaid) "PAID ✓" else "MARK PAID",
+            selected = state.billPaid,
+            accent = Amber,
+            onClick = { onIntent(QuickCaptureIntent.SetPaid(!state.billPaid)) },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DueDatePicker(selected: Long?, onPick: (Long?) -> Unit, onDismiss: () -> Unit) {
+    val pickerState = rememberDatePickerState(initialSelectedDateMillis = selected)
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { onPick(pickerState.selectedDateMillis) }) { Text("Set", color = Synapse) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Muted) }
+        },
+        colors = DatePickerDefaults.colors(containerColor = Panel),
+    ) {
+        DatePicker(state = pickerState, colors = DatePickerDefaults.colors(containerColor = Panel))
+    }
 }
 
 /** Where the text goes; offers the clipboard while it's empty. Focused as the sheet opens. */
 @Composable
-private fun PastedField(text: String, onTextChange: (String) -> Unit) {
+private fun PastedField(text: String, onTextChange: (String) -> Unit, placeholder: String) {
     val clipboard = LocalClipboardManager.current
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
@@ -302,7 +506,7 @@ private fun PastedField(text: String, onTextChange: (String) -> Unit) {
         InputBox(
             value = text,
             onValueChange = onTextChange,
-            placeholder = "Paste a link, or write a note",
+            placeholder = placeholder,
             textStyle = PastedStyle,
             textColor = InkSoft,
             singleLine = false,
@@ -348,7 +552,7 @@ private fun InputBox(
         textStyle = textStyle.copy(color = textColor),
         cursorBrush = SolidColor(Synapse),
         keyboardOptions = KeyboardOptions(
-            capitalization = if (keyboardType == KeyboardType.Uri) KeyboardCapitalization.None else KeyboardCapitalization.Sentences,
+            capitalization = if (keyboardType == KeyboardType.Text) KeyboardCapitalization.Sentences else KeyboardCapitalization.None,
             keyboardType = keyboardType,
             imeAction = if (singleLine) ImeAction.Done else ImeAction.Default,
         ),
@@ -402,16 +606,38 @@ private fun NewTopicField(name: String, onNameChange: (String) -> Unit) {
 
 @Composable
 private fun TypeChip(type: ItemType, selected: Boolean, onClick: () -> Unit) {
+    SmallChip(
+        label = type.noun(1).uppercase(),
+        selected = selected,
+        accent = Synapse,
+        role = Role.RadioButton,
+        enabled = !selected,
+        onClick = onClick,
+    )
+}
+
+/** The uppercase pill the sheet picks everything with: a type, a currency, a date, paid or not. */
+@Composable
+private fun SmallChip(
+    label: String,
+    selected: Boolean,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    role: Role = Role.Button,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
     val shape = RoundedCornerShape(7.dp)
     Text(
-        type.noun(1).uppercase(),
+        label,
         style = MetaStyle.copy(letterSpacing = 0.sp),
-        color = if (selected) Synapse else Muted,
-        modifier = Modifier
+        color = if (selected) accent else Muted,
+        maxLines = 1,
+        modifier = modifier
             .clip(shape)
             .background(if (selected) SynapseDim else Well)
-            .border(1.dp, if (selected) Synapse else Edge, shape)
-            .clickable(enabled = !selected, role = Role.RadioButton, onClick = onClick)
+            .border(1.dp, if (selected) accent else Edge, shape)
+            .clickable(enabled = enabled, role = role, onClick = onClick)
             .padding(horizontal = 11.dp, vertical = 7.dp),
     )
 }
@@ -442,16 +668,33 @@ private fun typeHint(state: QuickCaptureState): String = when {
     else -> "tap to change"
 }
 
+/** Without a file, a bill has no title field of its own, so this field is where its name goes. */
+private fun pastedPlaceholder(state: QuickCaptureState): String =
+    if (state.type == ItemType.Bill) "What is this bill for?" else "Paste a link, or write a note"
+
+private fun titlePlaceholder(state: QuickCaptureState): String = when {
+    state.type == ItemType.Image -> "Caption (optional)"
+    state.type == ItemType.Bill -> "What is this bill for?"
+    state.lookingUp -> "Reading the page…"
+    else -> "Title (optional)"
+}
+
 private fun errorText(error: CaptureError, state: QuickCaptureState): String = when (error) {
     CaptureError.AlreadyInTopic -> {
         val name = state.topics.firstOrNull { it.id == state.selectedTopicId }?.name ?: "this topic"
         "Already in $name."
     }
+    CaptureError.BillTitleBlank -> "Say what the bill is for."
+    CaptureError.BillAmountInvalid -> "Type the amount as a number, like 128.50."
     CaptureError.NewTopicNameBlank -> "Name the new topic."
     CaptureError.NewTopicNameTaken -> "You already have a topic with this name — pick it above."
+    CaptureError.FileUnreadable -> "That file couldn't be read. Try another."
 }
 
+private const val ANY_MIME = "*/*"
+
 private val PastedStyle = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 17.sp)
+private val AmountStyle = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 17.sp, lineHeight = 22.sp)
 private val ChipTextStyle = TextStyle(fontFamily = Grotesk, fontSize = 13.sp, lineHeight = 17.sp)
 private val HintStyle = TextStyle(fontFamily = Grotesk, fontSize = 12.sp, lineHeight = 16.sp)
 private val FieldShape = RoundedCornerShape(11.dp)

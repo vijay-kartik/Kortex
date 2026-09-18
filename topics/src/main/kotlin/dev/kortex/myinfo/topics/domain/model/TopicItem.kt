@@ -84,6 +84,27 @@ sealed interface TopicItem {
     }
 }
 
+/**
+ * Whether the item is done with — an article read, a video watched, a bill paid. Null for the
+ * types that are never "done": notes, links, docs and images.
+ */
+val TopicItem.done: Boolean?
+    get() = when (this) {
+        is TopicItem.Article -> read
+        is TopicItem.Video -> watched
+        is TopicItem.Bill -> paid
+        is TopicItem.Note, is TopicItem.Link, is TopicItem.Doc, is TopicItem.Image -> null
+    }
+
+/** The file an item keeps in app storage, if any; a bill's is its invoice. */
+val TopicItem.storedFile: StoredFile?
+    get() = when (this) {
+        is TopicItem.Doc -> file
+        is TopicItem.Image -> file
+        is TopicItem.Bill -> file
+        is TopicItem.Note, is TopicItem.Link, is TopicItem.Article, is TopicItem.Video -> null
+    }
+
 /** A link in the user's Links library, as a topic shows it. */
 data class SavedLink(
     val id: Long,

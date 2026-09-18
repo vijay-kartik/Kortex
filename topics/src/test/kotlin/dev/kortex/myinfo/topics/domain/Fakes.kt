@@ -2,10 +2,13 @@ package dev.kortex.myinfo.topics.domain
 
 import dev.kortex.myinfo.topics.domain.model.LinkLookup
 import dev.kortex.myinfo.topics.domain.model.NewItem
+import dev.kortex.myinfo.topics.domain.model.PickedFile
 import dev.kortex.myinfo.topics.domain.model.SavedLink
+import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import dev.kortex.myinfo.topics.domain.repository.TopicsRepository
 import kotlinx.coroutines.flow.Flow
@@ -23,7 +26,9 @@ class FakeTopicsRepository : TopicsRepository {
     val items = mutableListOf<NewItem>()
     var moves = 0
     val pinned = mutableMapOf<Long, Boolean>()
+    val done = mutableMapOf<Long, Boolean>()
     val deleted = mutableListOf<Long>()
+    val deletedItems = mutableListOf<Long>()
 
     val observedTopics = MutableStateFlow<List<Topic>>(emptyList())
     val observedItems = MutableStateFlow<List<TopicItem>>(emptyList())
@@ -61,11 +66,40 @@ class FakeTopicsRepository : TopicsRepository {
         return items.size.toLong()
     }
 
+    override suspend fun setItemDone(itemId: Long, done: Boolean, nowMillis: Long) {
+        this.done[itemId] = done
+    }
+
     override suspend fun moveItems(itemIds: Collection<Long>, toTopicId: Long, nowMillis: Long) {
         moves++
     }
 
-    override suspend fun deleteItems(itemIds: Collection<Long>, nowMillis: Long) = Unit
+    override suspend fun deleteItems(itemIds: Collection<Long>, nowMillis: Long) {
+        deletedItems += itemIds
+    }
+}
+
+/** Hands out a stored file per address, and remembers what was thrown away. */
+class FakeFileVault : FileVault {
+    /** Addresses that can't be read; [store] answers null for these. */
+    val unreadable = mutableSetOf<String>()
+    val deleted = mutableListOf<String>()
+    private var next = 1
+
+    override suspend fun store(uri: String): PickedFile? {
+        if (uri in unreadable) return null
+        val name = uri.substringAfterLast('/')
+        val isImage = name.endsWith(".jpg") || name.endsWith(".png")
+        return PickedFile(
+            file = StoredFile("/files/topic-files/${next++}-$name", if (isImage) "image/jpeg" else "application/pdf"),
+            name = name,
+            isImage = isImage,
+        )
+    }
+
+    override suspend fun delete(paths: Collection<String>) {
+        deleted += paths
+    }
 }
 
 /** Nothing saved; [findOrSave] hands out fresh ids and [lookUp] answers from [lookups]. */

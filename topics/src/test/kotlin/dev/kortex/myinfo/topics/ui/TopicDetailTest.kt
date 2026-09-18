@@ -4,11 +4,14 @@ import dev.kortex.myinfo.topics.domain.FakeTopicsRepository
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.Money
 import dev.kortex.myinfo.topics.domain.model.SavedLink
+import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.port.Clock
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
+import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetTopicPinned
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailEffect
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailIntent
@@ -79,7 +82,7 @@ class TopicDetailTest {
     }
 
     @Test
-    fun `tapping a link opens it; tapping a note does nothing`() = runTest {
+    fun `tapping a link opens it, tapping a note does nothing`() = runTest {
         val viewModel = viewModel()
 
         viewModel.onIntent(TopicDetailIntent.OpenItem(note))
@@ -110,10 +113,33 @@ class TopicDetailTest {
         assertEquals(TopicDetailEffect.Close, viewModel.effects.first())
     }
 
+    @Test
+    fun `tapping a doc hands its file out, a bill without an invoice has nothing to open`() = runTest {
+        val doc = TopicItem.Doc(5, 7, 40, "Visa checklist", StoredFile("/files/topic-files/1-visa.pdf", "application/pdf"), pageCount = 4)
+        val bill = TopicItem.Bill(6, 7, 35, "Hotel", Money(50_000, "AED"), issuedAtMillis = null, dueAtMillis = null, paid = false, file = null)
+        val viewModel = viewModel()
+
+        viewModel.onIntent(TopicDetailIntent.OpenItem(bill))
+        viewModel.onIntent(TopicDetailIntent.OpenItem(doc))
+
+        assertEquals(TopicDetailEffect.OpenFile(doc.file), viewModel.effects.first())
+    }
+
+    @Test
+    fun `an article can be ticked off and back`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onIntent(TopicDetailIntent.SetItemDone(video, done = true))
+        assertEquals(mapOf(1L to true), repository.done)
+
+        viewModel.onIntent(TopicDetailIntent.SetItemDone(video, done = false))
+        assertEquals(mapOf(1L to false), repository.done)
+    }
+
     private fun viewModel(): TopicDetailViewModel {
         repository.observedTopics.value = listOf(topic)
         repository.observedItems.value = listOf(video, note)
-        return TopicDetailViewModel(7, ObserveTopic(repository), SetTopicPinned(repository), DeleteTopic(repository))
+        return TopicDetailViewModel(7, ObserveTopic(repository), SetTopicPinned(repository), SetItemDone(repository, Clock { 0 }), DeleteTopic(repository))
     }
 
     private fun link(id: Long, url: String, title: String) = SavedLink(id, url, title, thumbnailPath = null)

@@ -6,6 +6,7 @@ import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
 import dev.kortex.myinfo.topics.domain.model.TopicFeed
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.TopicSummary
 import dev.kortex.myinfo.topics.domain.model.TopicViewMode
 import dev.kortex.myinfo.topics.ui.common.SectionOrder
 import dev.kortex.myinfo.topics.ui.common.TopicChoice
@@ -30,7 +31,25 @@ data class TopicDetailState(
     val capturing: Boolean = false,
     /** When the feed was last arranged, for its ages and date groups. */
     val nowMillis: Long = 0,
+    /** The last summary written for this topic, current or not (Figma: Topics 1b). */
+    val summary: TopicSummary? = null,
+    /** Fingerprint of the topic as it is now; a summary written from another one is out of date. */
+    val currentFingerprint: String? = null,
+    /** The agent is reading the topic. */
+    val summarizing: Boolean = false,
+    /** Why the last attempt failed, until the next one starts. */
+    val summaryError: String? = null,
 ) {
+    /** The card shows once there is something to summarise, or a summary to show. */
+    val showSummaryCard: Boolean = detail != null && (detail.items.isNotEmpty() || summary != null)
+
+    /** The topic changed after the summary was written. */
+    val summaryStale: Boolean =
+        summary != null && currentFingerprint != null && summary.fingerprint != currentFingerprint
+
+    /** Summarise, Refresh and Try again all ask for the same thing; none of them while it is running. */
+    val canSummarize: Boolean = !summarizing && detail != null && detail.items.isNotEmpty()
+
     /** One chip per visible section: most items first, then section order; empty sections last. */
     val filters: List<TypeFilter> = detail?.let { d ->
         d.visibleSections
@@ -66,6 +85,9 @@ sealed interface TopicDetailIntent {
 
     /** Tick an article read, a video watched or a bill paid — or untick it. */
     data class SetItemDone(val item: TopicItem, val done: Boolean) : TopicDetailIntent
+
+    /** Have the agent (re)write the topic's summary: Summarise, Refresh and Try again. */
+    data object Summarize : TopicDetailIntent
 
     // ── Selection (Figma: Topics 1e) ──
     /** Long-pressing an item picks it out and puts the feed into selection mode. */

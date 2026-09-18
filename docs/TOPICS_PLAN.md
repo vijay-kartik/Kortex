@@ -83,5 +83,17 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
    different notions of "matches". Search reads the same resolved items the topics list already
    loads, so one matcher covers everything and there is no index to keep in step with the rows.
    If the corpus ever outgrows memory, the fix is to page the corpus, not to split the matcher.
-9. **Agent summary (1b)** — `TopicSummarizer` in `:app`, cached, invalidated on item change.
+9. **Agent summary (1b)** ✅ — `TopicSummarizer` port in `:topics`, bound in `:app` to
+   `LlmTopicSummarizer`: one plain completion on the user's active provider and model (the same
+   ones the chat uses), no tools, items fenced as data rather than instructions, `<think>` blocks
+   stripped. `SummaryDigest` turns a topic into bounded text (pinned then newest, 60 items, lines
+   clipped to 240 chars) and fingerprints it; `SummarizeTopic` stamps each summary with that
+   fingerprint. Cached in `topic_summaries` (`topics.db` v3, cascades with the topic).
+
+   **Invalidation is by fingerprint, not by hooks.** A summary is out of date when the topic's
+   current fingerprint differs from the one it was written from — so an item added, removed,
+   ticked off, pinned or edited, or the topic renamed or its purpose changed, all invalidate it
+   with no write path having to remember to. Pinning the topic or its updated time don't.
+   An out-of-date summary is shown dimmed with "Topic changed since" and a Refresh action; the
+   model is only called when the user taps Summarise / Refresh / Try again, never on its own.
 10. **Polish** — motion, accessibility, previews per state, ViewModel tests with fakes.

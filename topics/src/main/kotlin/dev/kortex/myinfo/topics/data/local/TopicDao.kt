@@ -21,6 +21,16 @@ abstract class TopicDao {
     @Query("SELECT * FROM topic_items WHERE topicId = :topicId ORDER BY addedAtMillis DESC, id DESC")
     abstract fun observeItems(topicId: Long): Flow<List<TopicItemEntity>>
 
+    @Query("SELECT * FROM topic_summaries WHERE topicId = :topicId")
+    abstract fun observeSummary(topicId: Long): Flow<TopicSummaryEntity?>
+
+    /**
+     * Replaces the topic's summary. Throws [android.database.sqlite.SQLiteConstraintException]
+     * if the topic no longer exists.
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun upsertSummary(summary: TopicSummaryEntity)
+
     /** Throws [android.database.sqlite.SQLiteConstraintException] if the name is taken. */
     @Insert
     abstract suspend fun insertTopic(topic: TopicEntity): Long

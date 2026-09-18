@@ -5,11 +5,14 @@ import dev.kortex.myinfo.topics.domain.model.NewItem
 import dev.kortex.myinfo.topics.domain.model.PickedFile
 import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.model.StoredFile
+import dev.kortex.myinfo.topics.domain.model.SummaryDigest
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.TopicSummary
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
+import dev.kortex.myinfo.topics.domain.port.TopicSummarizer
 import dev.kortex.myinfo.topics.domain.repository.TopicsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +37,15 @@ class FakeTopicsRepository : TopicsRepository {
 
     val observedTopics = MutableStateFlow<List<Topic>>(emptyList())
     val observedItems = MutableStateFlow<List<TopicItem>>(emptyList())
+
+    /** One summary per topic, as the table keeps them; saving replaces. */
+    val summaries = MutableStateFlow<Map<Long, TopicSummary>>(emptyMap())
+
+    override fun observeSummary(topicId: Long): Flow<TopicSummary?> = summaries.map { it[topicId] }
+
+    override suspend fun saveSummary(summary: TopicSummary) {
+        summaries.update { it + (summary.topicId to summary) }
+    }
 
     override fun observeTopics(): Flow<List<Topic>> = observedTopics
     override fun observeTopic(id: Long): Flow<Topic?> = observedTopics.map { topics -> topics.firstOrNull { it.id == id } }
@@ -119,4 +131,16 @@ class FakeLinkCatalog : LinkCatalog {
     override suspend fun findOrSave(url: String, title: String?): Long = nextId++
 
     override suspend fun lookUp(url: String): LinkLookup = lookups[url] ?: LinkLookup(title = null, inLinks = false)
+}
+
+/** Answers with [reply], or throws [failure] when one is set; remembers every digest it read. */
+class FakeTopicSummarizer(var reply: String = "You're planning a trip.") : TopicSummarizer {
+    var failure: Exception? = null
+    val read = mutableListOf<SummaryDigest>()
+
+    override suspend fun summarize(digest: SummaryDigest): String {
+        read += digest
+        failure?.let { throw it }
+        return reply
+    }
 }

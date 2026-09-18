@@ -65,7 +65,25 @@ data class TopicItemEntity(
     @ColumnInfo(defaultValue = "0") val pinned: Boolean = false,
 )
 
-@Database(entities = [TopicEntity::class, TopicItemEntity::class], version = 2, exportSchema = false)
+/**
+ * The agent's summary of a topic (Figma: Topics 1b), one per topic. It goes when the topic does;
+ * when the topic changes it stays, and [fingerprint] tells the screen it is out of date.
+ */
+@Entity(
+    tableName = "topic_summaries",
+    foreignKeys = [
+        ForeignKey(entity = TopicEntity::class, parentColumns = ["id"], childColumns = ["topicId"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+data class TopicSummaryEntity(
+    @PrimaryKey val topicId: Long,
+    val text: String,
+    val generatedAtMillis: Long,
+    /** [dev.kortex.myinfo.topics.domain.model.SummaryDigest.fingerprint] it was written from. */
+    val fingerprint: String,
+)
+
+@Database(entities = [TopicEntity::class, TopicItemEntity::class, TopicSummaryEntity::class], version = 3, exportSchema = false)
 abstract class TopicsDatabase : RoomDatabase() {
     abstract fun topicDao(): TopicDao
 
@@ -74,6 +92,21 @@ abstract class TopicsDatabase : RoomDatabase() {
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE topic_items ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /** Agent summaries (Figma: Topics 1b). No topic has one yet. Must match [TopicSummaryEntity]. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `topic_summaries` (" +
+                        "`topicId` INTEGER NOT NULL, " +
+                        "`text` TEXT NOT NULL, " +
+                        "`generatedAtMillis` INTEGER NOT NULL, " +
+                        "`fingerprint` TEXT NOT NULL, " +
+                        "PRIMARY KEY(`topicId`), " +
+                        "FOREIGN KEY(`topicId`) REFERENCES `topics`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
+                )
             }
         }
     }

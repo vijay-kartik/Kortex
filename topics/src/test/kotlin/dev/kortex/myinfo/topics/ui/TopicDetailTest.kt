@@ -1,23 +1,28 @@
 package dev.kortex.myinfo.topics.ui
 
+import dev.kortex.myinfo.topics.domain.FakeTopicSummarizer
 import dev.kortex.myinfo.topics.domain.FakeTopicsRepository
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.Money
 import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.model.StoredFile
+import dev.kortex.myinfo.topics.domain.model.SummaryDigest
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.TopicSummary
 import dev.kortex.myinfo.topics.domain.model.TopicViewMode
 import dev.kortex.myinfo.topics.domain.port.Clock
 import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
+import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
 import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
 import dev.kortex.myinfo.topics.domain.usecase.SetTopicPinned
+import dev.kortex.myinfo.topics.domain.usecase.SummarizeTopic
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailEffect
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailIntent
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailState
@@ -40,10 +45,12 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TopicDetailTest {
     private val repository = FakeTopicsRepository()
+    private val summarizer = FakeTopicSummarizer(reply = "You're planning 3 days in Dubai.")
     private val topic = Topic(7, "Trip to Dubai", purpose = "4 nights in March", pinned = false, sections = setOf(ItemType.Note, ItemType.Doc), createdAtMillis = 0, updatedAtMillis = 0)
     private val video = TopicItem.Video(1, 7, addedAtMillis = 30, link(1, "https://youtu.be/a", "Dubai in 3 days"), durationSeconds = null, watched = false)
     private val note = TopicItem.Note(2, 7, addedAtMillis = 20, text = "Metro closes 00:30")
@@ -267,9 +274,86 @@ class TopicDetailTest {
         assertEquals(NOW, viewModel.state.value.nowMillis)
     }
 
-    private fun viewModel(): TopicDetailViewModel {
+    // ── Agent summary (Figma: Topics 1b) ─────────────────────────
+
+    @Test
+    fun `a topic with items offers a first summary`() = runTest {
+        val state = viewModel().state.value
+
+        assertTrue(state.showSummaryCard)
+        assertNull(state.summary)
+        assertTrue(state.canSummarize)
+        assertFalse(state.summaryStale)
+    }
+
+    @Test
+    fun `an empty topic has nothing to summarise, so no card`() = runTest {
+        val state = viewModel(items = emptyList()).state.value
+
+        assertFalse(state.showSummaryCard)
+        assertFalse(state.canSummarize)
+    }
+
+    @Test
+    fun `summarising shows the agent's words, kept and current`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onIntent(TopicDetailIntent.Summarize)
+
+        val state = viewModel.state.value
+        assertEquals("You're planning 3 days in Dubai.", state.summary?.text)
+        assertEquals(NOW, state.summary?.generatedAtMillis)
+        assertFalse(state.summarizing)
+        assertFalse(state.summaryStale)
+        assertEquals(state.summary, repository.summaries.value[7L])
+    }
+
+    @Test
+    fun `a change to the topic marks the summary out of date without asking the agent again`() = runTest {
+        val viewModel = viewModel()
+        viewModel.onIntent(TopicDetailIntent.Summarize)
+
+        repository.observedItems.value = listOf(video.copy(watched = true), note)
+
+        assertTrue(viewModel.state.value.summaryStale)
+        assertEquals("the model is only asked on request", 1, summarizer.read.size)
+
+        viewModel.onIntent(TopicDetailIntent.Summarize)
+        assertFalse("refreshing brings it up to date", viewModel.state.value.summaryStale)
+        assertEquals(2, summarizer.read.size)
+    }
+
+    @Test
+    fun `a summary kept from an earlier visit opens as current when nothing has changed`() = runTest {
+        val fingerprint = SummaryDigest.of(TopicDetail(topic, listOf(video, note))).fingerprint
+        repository.saveSummary(TopicSummary(7, "Written yesterday.", NOW - 86_400_000, fingerprint))
+
+        val state = viewModel().state.value
+
+        assertEquals("Written yesterday.", state.summary?.text)
+        assertFalse(state.summaryStale)
+        assertTrue("reading a kept summary costs no model call", summarizer.read.isEmpty())
+    }
+
+    @Test
+    fun `a failed summary says why, and trying again clears it`() = runTest {
+        val viewModel = viewModel()
+        summarizer.failure = IOException("Ollama Cloud is selected but no API key is set. Add one in Settings.")
+
+        viewModel.onIntent(TopicDetailIntent.Summarize)
+        assertEquals("Ollama Cloud is selected but no API key is set. Add one in Settings.", viewModel.state.value.summaryError)
+        assertFalse(viewModel.state.value.summarizing)
+        assertTrue("the card still offers to try again", viewModel.state.value.canSummarize)
+
+        summarizer.failure = null
+        viewModel.onIntent(TopicDetailIntent.Summarize)
+        assertNull(viewModel.state.value.summaryError)
+        assertEquals("You're planning 3 days in Dubai.", viewModel.state.value.summary?.text)
+    }
+
+    private fun viewModel(items: List<TopicItem> = listOf(video, note)): TopicDetailViewModel {
         repository.observedTopics.value = repository.observedTopics.value.ifEmpty { listOf(topic) }
-        repository.observedItems.value = listOf(video, note)
+        repository.observedItems.value = items
         return TopicDetailViewModel(
             topicId = 7,
             observeTopic = ObserveTopic(repository),
@@ -281,6 +365,8 @@ class TopicDetailTest {
             moveItems = MoveItems(repository, Clock { NOW }),
             deleteItems = DeleteItems(repository, Clock { NOW }),
             deleteTopic = DeleteTopic(repository),
+            observeTopicSummary = ObserveTopicSummary(repository),
+            summarizeTopic = SummarizeTopic(repository, summarizer, Clock { NOW }),
         )
     }
 

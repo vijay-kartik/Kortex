@@ -6,6 +6,7 @@ import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.mvi.MviViewModel
+import dev.kortex.myinfo.topics.domain.model.SummaryDigest
 import dev.kortex.myinfo.topics.domain.model.TopicItem
 import dev.kortex.myinfo.topics.domain.model.TopicSort
 import dev.kortex.myinfo.topics.domain.model.sortedFor
@@ -15,10 +16,13 @@ import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
+import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
 import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
 import dev.kortex.myinfo.topics.domain.usecase.SetTopicPinned
+import dev.kortex.myinfo.topics.domain.usecase.SummarizeResult
+import dev.kortex.myinfo.topics.domain.usecase.SummarizeTopic
 import dev.kortex.myinfo.topics.ui.common.TopicChoice
 import kotlinx.coroutines.launch
 
@@ -34,6 +38,8 @@ class TopicDetailViewModel @AssistedInject constructor(
     private val moveItems: MoveItems,
     private val deleteItems: DeleteItems,
     private val deleteTopic: DeleteTopic,
+    observeTopicSummary: ObserveTopicSummary,
+    private val summarizeTopic: SummarizeTopic,
 ) : MviViewModel<TopicDetailState, TopicDetailIntent, TopicDetailEffect>(TopicDetailState()) {
 
     @AssistedFactory
@@ -46,10 +52,17 @@ class TopicDetailViewModel @AssistedInject constructor(
     init {
         viewModelScope.launch {
             observeTopic(topicId).collect { detail ->
-                // Re-stamped with the feed, so date groups and ages never go stale under it.
-                if (detail == null) close() else setState { copy(detail = detail, nowMillis = clock.nowMillis()) }
+                // Re-stamped with the feed, so date groups and ages never go stale under it; the
+                // fingerprint is what tells a summary written before this change that it's out of date.
+                if (detail == null) {
+                    close()
+                } else {
+                    val fingerprint = SummaryDigest.of(detail).fingerprint
+                    setState { copy(detail = detail, nowMillis = clock.nowMillis(), currentFingerprint = fingerprint) }
+                }
             }
         }
+        observeTopicSummary(topicId).reduceInto { summary -> copy(summary = summary) }
         // Everywhere the selection could move to; this topic isn't one of them.
         observeTopics().reduceInto { overviews ->
             copy(
@@ -67,6 +80,7 @@ class TopicDetailViewModel @AssistedInject constructor(
             is TopicDetailIntent.SelectMode -> setState { copy(mode = intent.mode, nowMillis = clock.nowMillis()) }
             is TopicDetailIntent.OpenItem -> open(intent.item)
             is TopicDetailIntent.SetItemDone -> viewModelScope.launch { setItemDone(intent.item.id, intent.done) }
+            TopicDetailIntent.Summarize -> summarize()
 
             is TopicDetailIntent.StartSelection -> setState { copy(selected = selected + intent.itemId) }
             is TopicDetailIntent.ToggleSelection -> setState {
@@ -144,6 +158,26 @@ class TopicDetailViewModel @AssistedInject constructor(
         if (topicName == null) "$count ${itemNoun(count)} moved" else "$count ${itemNoun(count)} moved to $topicName"
 
     private fun itemNoun(count: Int) = if (count == 1) "item" else "items"
+
+    /**
+     * Asks the agent for a fresh summary of the topic as it is now. Only on request: a model call
+     * costs the user, so a change to the topic marks the summary out of date rather than
+     * re-running it behind their back.
+     */
+    private fun summarize() {
+        val state = currentState
+        val detail = state.detail ?: return
+        if (!state.canSummarize) return
+        setState { copy(summarizing = true, summaryError = null) }
+        viewModelScope.launch {
+            when (val result = summarizeTopic(detail)) {
+                // Shown at once; the stored copy arrives through the summary flow as well.
+                is SummarizeResult.Saved -> setState { copy(summarizing = false, summary = result.summary) }
+                SummarizeResult.NothingToSummarize -> setState { copy(summarizing = false) }
+                is SummarizeResult.Failed -> setState { copy(summarizing = false, summaryError = result.message) }
+            }
+        }
+    }
 
     /** Once, whether the delete finishes first or the topic's row disappears first. */
     private fun close() {

@@ -4,6 +4,7 @@ import dev.kortex.myinfo.topics.domain.model.NewItem
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.TopicSummary
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -50,4 +51,13 @@ interface TopicsRepository {
 
     /** Files the items kept go with them; links they pointed at stay in the Links library. */
     suspend fun deleteItems(itemIds: Collection<Long>, nowMillis: Long)
+
+    /** The last summary written for the topic, whether or not it is still current; null for none. */
+    fun observeSummary(topicId: Long): Flow<TopicSummary?>
+
+    /**
+     * Keeps [summary] as the topic's one summary, replacing any earlier one. Doesn't count as a
+     * change to the topic: the summary describes the topic, it isn't part of it.
+     */
+    suspend fun saveSummary(summary: TopicSummary)
 }

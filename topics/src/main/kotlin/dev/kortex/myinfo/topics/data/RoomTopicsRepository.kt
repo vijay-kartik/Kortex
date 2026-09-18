@@ -3,6 +3,7 @@ package dev.kortex.myinfo.topics.data
 import android.database.sqlite.SQLiteConstraintException
 import dev.kortex.myinfo.topics.data.local.TopicDao
 import dev.kortex.myinfo.topics.data.local.TopicItemEntity
+import dev.kortex.myinfo.topics.data.local.TopicSummaryEntity
 import dev.kortex.myinfo.topics.data.local.toColumn
 import dev.kortex.myinfo.topics.data.local.toDomain
 import dev.kortex.myinfo.topics.data.local.toEntity
@@ -10,6 +11,7 @@ import dev.kortex.myinfo.topics.domain.model.NewItem
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.TopicSummary
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import dev.kortex.myinfo.topics.domain.repository.TopicsRepository
@@ -80,6 +82,21 @@ class RoomTopicsRepository(
         val files = dao.filePathsOf(itemIds)
         dao.deleteItems(itemIds, nowMillis)
         fileVault.delete(files)
+    }
+
+    override fun observeSummary(topicId: Long): Flow<TopicSummary?> =
+        dao.observeSummary(topicId).map { row ->
+            row?.let { TopicSummary(it.topicId, it.text, it.generatedAtMillis, it.fingerprint) }
+        }
+
+    override suspend fun saveSummary(summary: TopicSummary) {
+        try {
+            dao.upsertSummary(
+                TopicSummaryEntity(summary.topicId, summary.text, summary.generatedAtMillis, summary.fingerprint),
+            )
+        } catch (e: SQLiteConstraintException) {
+            // The topic was deleted while its summary was being written; nothing to keep it for.
+        }
     }
 
     private fun Flow<List<TopicItemEntity>>.resolved(): Flow<List<TopicItem>> =

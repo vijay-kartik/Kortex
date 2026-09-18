@@ -288,6 +288,20 @@ private fun DetailFeed(
                 ActionButton("Share", primary = false, onClick = { onIntent(TopicDetailIntent.Share) }, modifier = Modifier.weight(1f))
             }
         }
+        if (state.showSummaryCard) {
+            item(key = "summary") {
+                SummaryCard(
+                    summary = state.summary,
+                    stale = state.summaryStale,
+                    summarizing = state.summarizing,
+                    error = state.summaryError,
+                    canSummarize = state.canSummarize,
+                    nowMillis = nowMillis,
+                    onSummarize = { onIntent(TopicDetailIntent.Summarize) },
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
         if (detail.items.isEmpty()) {
             item(key = "empty") { EmptyTopic(onAdd = { onIntent(TopicDetailIntent.Add) }) }
         } else {

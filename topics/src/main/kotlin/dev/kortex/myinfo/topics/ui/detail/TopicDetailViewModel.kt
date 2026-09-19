@@ -186,7 +186,10 @@ class TopicDetailViewModel @AssistedInject constructor(
         sendEffect(TopicDetailEffect.Close)
     }
 
-    /** Where tapping an item goes: a link to the browser, a kept file to whatever opens its type. */
+    /**
+     * What tapping an item does: a link opens in the browser, a kept file in whatever opens its
+     * type, and a note — which has nowhere to open — copies its text.
+     */
     private fun open(item: TopicItem) {
         when (item) {
             is TopicItem.Link -> sendEffect(TopicDetailEffect.OpenUrl(item.link.url))
@@ -195,7 +198,7 @@ class TopicDetailViewModel @AssistedInject constructor(
             // A bill opens its invoice when it has one; without one there is nothing to show yet.
             is TopicItem.Doc, is TopicItem.Image, is TopicItem.Bill ->
                 item.storedFile?.let { sendEffect(TopicDetailEffect.OpenFile(it)) }
-            is TopicItem.Note -> Unit
+            is TopicItem.Note -> sendEffect(TopicDetailEffect.CopyText(item.text))
         }
     }
 }

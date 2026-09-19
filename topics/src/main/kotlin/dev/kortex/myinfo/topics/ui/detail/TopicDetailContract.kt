@@ -123,6 +123,9 @@ sealed interface TopicDetailEffect {
     /** Hand a kept doc, image or invoice to whichever app opens that type. */
     data class OpenFile(val file: StoredFile) : TopicDetailEffect
     data class ShareText(val subject: String, val text: String) : TopicDetailEffect
+
+    /** Put [text] on the clipboard: tapping a note copies it. */
+    data class CopyText(val text: String) : TopicDetailEffect
     data class ShowMessage(val text: String) : TopicDetailEffect
 
     /** The topic is gone: deleted here, or elsewhere while open. */

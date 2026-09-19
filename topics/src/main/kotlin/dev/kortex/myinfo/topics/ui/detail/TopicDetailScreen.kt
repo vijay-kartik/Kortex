@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedContent
@@ -71,6 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -79,6 +81,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -156,6 +159,7 @@ private fun TopicDetailContent(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbars = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
     ObserveEffects(viewModel.effects) { effect ->
         when (effect) {
             is TopicDetailEffect.OpenUrl -> context.openUrl(effect.url)
@@ -163,6 +167,13 @@ private fun TopicDetailContent(
                 scope.launch { snackbars.showSnackbar("No app on this phone opens that file.") }
             }
             is TopicDetailEffect.ShareText -> context.shareText(effect.subject, effect.text)
+            is TopicDetailEffect.CopyText -> {
+                clipboard.setText(AnnotatedString(effect.text))
+                // Android 13 and later confirm a copy themselves; before that, say so here.
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                    scope.launch { snackbars.showSnackbar("Note copied") }
+                }
+            }
             // Launched, so a snackbar on screen doesn't hold up the effects behind it.
             is TopicDetailEffect.ShowMessage -> scope.launch { snackbars.showSnackbar(effect.text) }
             TopicDetailEffect.Close -> onClose()
@@ -377,6 +388,7 @@ private fun DetailFeed(
                         nowMillis = nowMillis,
                         onClick = if (item.opens()) ({ onIntent(TopicDetailIntent.OpenItem(item)) }) else null,
                         onSetDone = { done -> onIntent(TopicDetailIntent.SetItemDone(item, done)) },
+                        clickLabel = if (item is TopicItem.Note) "Copy note" else "Open item",
                         onLongPress = {
                             if (state.selecting) {
                                 onIntent(TopicDetailIntent.ToggleSelection(item.id))
@@ -791,8 +803,11 @@ private fun EmptyTopic(onAdd: () -> Unit) {
     }
 }
 
-/** Tapping opens a link in the browser or a kept file in whatever handles its type. */
-private fun TopicItem.opens(): Boolean = type.isLink || storedFile != null
+/**
+ * Tapping does something: opens a link in the browser or a kept file in whatever handles its
+ * type, or copies a note. A bill without an invoice has nothing to do on a tap.
+ */
+private fun TopicItem.opens(): Boolean = type.isLink || storedFile != null || this is TopicItem.Note
 
 /** "25 ITEMS · UPDATED 2H AGO". */
 private fun metaLine(detail: TopicDetail, nowMillis: Long): String {

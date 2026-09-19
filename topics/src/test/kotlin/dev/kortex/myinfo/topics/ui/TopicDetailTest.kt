@@ -98,13 +98,23 @@ class TopicDetailTest {
     }
 
     @Test
-    fun `tapping a link opens it, tapping a note does nothing`() = runTest {
+    fun `tapping a link opens it`() = runTest {
         val viewModel = viewModel()
 
-        viewModel.onIntent(TopicDetailIntent.OpenItem(note))
         viewModel.onIntent(TopicDetailIntent.OpenItem(video))
 
         assertEquals(TopicDetailEffect.OpenUrl("https://youtu.be/a"), viewModel.effects.first())
+    }
+
+    @Test
+    fun `tapping a note copies its text, and long-press still starts selection`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onIntent(TopicDetailIntent.OpenItem(note))
+        assertEquals(TopicDetailEffect.CopyText("Metro closes 00:30"), viewModel.effects.first())
+
+        viewModel.onIntent(TopicDetailIntent.StartSelection(note.id))
+        assertEquals(setOf(note.id), viewModel.state.value.selection)
     }
 
     @Test

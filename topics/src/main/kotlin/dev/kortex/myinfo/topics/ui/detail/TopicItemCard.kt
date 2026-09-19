@@ -73,6 +73,8 @@ internal fun TopicItemCard(
     onSetDone: (Boolean) -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
+    /** What a tap does, as TalkBack announces it: "Open item", or "Copy note" for a note. */
+    clickLabel: String = "Open item",
     /** Selection mode (Figma: Topics 1e): tapping picks out instead of opening. */
     selecting: Boolean = false,
     selected: Boolean = false,
@@ -115,7 +117,7 @@ internal fun TopicItemCard(
                     }
                 } else {
                     currentOnClick?.let { open ->
-                        onClick(label = "Open item") {
+                        onClick(label = clickLabel) {
                             open()
                             true
                         }

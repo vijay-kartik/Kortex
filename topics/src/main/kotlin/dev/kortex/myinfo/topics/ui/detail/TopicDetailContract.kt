@@ -123,8 +123,11 @@ sealed interface TopicDetailEffect {
     /** Hand a kept doc, image or invoice to whichever app opens that type. */
     data class OpenFile(val file: StoredFile) : TopicDetailEffect
 
-    /** Open a kept email where it lives — the mail app if it takes the address, else the browser. */
-    data class OpenEmail(val address: String) : TopicDetailEffect
+    /**
+     * Open a kept email where it lives: [appSearch] is a query the mail app can run to find it,
+     * [web] the address that opens the mail itself in a browser. Whichever works.
+     */
+    data class OpenEmail(val appSearch: String?, val web: String?) : TopicDetailEffect
     data class ShareText(val subject: String, val text: String) : TopicDetailEffect
 
     /** Put [text] on the clipboard: tapping a note copies it. */

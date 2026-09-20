@@ -14,7 +14,7 @@ import dev.kortex.myinfo.topics.domain.model.storedFile
 import dev.kortex.myinfo.topics.domain.port.Clock
 import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
-import dev.kortex.myinfo.topics.domain.usecase.EmailWebAddress
+import dev.kortex.myinfo.topics.domain.usecase.RouteToEmail
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
@@ -35,7 +35,7 @@ class TopicDetailViewModel @AssistedInject constructor(
     private val clock: Clock,
     private val setTopicPinned: SetTopicPinned,
     private val setItemDone: SetItemDone,
-    private val emailWebAddress: EmailWebAddress,
+    private val routeToEmail: RouteToEmail,
     private val setItemsPinned: SetItemsPinned,
     private val moveItems: MoveItems,
     private val deleteItems: DeleteItems,
@@ -202,7 +202,9 @@ class TopicDetailViewModel @AssistedInject constructor(
                 item.storedFile?.let { sendEffect(TopicDetailEffect.OpenFile(it)) }
             is TopicItem.Note -> sendEffect(TopicDetailEffect.CopyText(item.text))
             // The mail stayed in the mailbox; this goes back to it.
-            is TopicItem.Email -> emailWebAddress(item.email)?.let { sendEffect(TopicDetailEffect.OpenEmail(it)) }
+            is TopicItem.Email -> routeToEmail(item.email).takeUnless { it.nowhere }?.let {
+                sendEffect(TopicDetailEffect.OpenEmail(it.appSearch, it.web))
+            }
         }
     }
 }

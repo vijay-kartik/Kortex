@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Android 11+ package visibility: a kept email is opened by asking Gmail to search for it,
+         which means naming its package. Without this the launch can't resolve. -->
+    <queries>
+        <package android:name="com.google.android.gm" />
+    </queries>
+
     <application>
         <!-- Serves the docs, images and invoices a topic keeps, so tapping one opens it in
              whatever app handles that type. Read access is granted per intent, never broadly. -->

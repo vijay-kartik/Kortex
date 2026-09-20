@@ -35,7 +35,12 @@ class GmailEmailDirectory(
         return try {
             // Gmail ranks its own results; the ids come back newest first.
             val ids = api.listMessages(token, query, maxResults = limit)
-            EmailSearchResult.Found(ids.map { api.getMessage(token, it).toSavedEmail(account) })
+            // One read per result either way — Gmail has no bulk read — but a metadata read
+            // carries no body and no attachments, so the picker isn't waiting on whole mails.
+            // The extra headers ride in the same response and cost nothing.
+            EmailSearchResult.Found(
+                ids.map { api.getMessage(token, it, GmailApi.FORMAT_METADATA, PICKER_HEADERS).toSavedEmail(account) },
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: GmailApiException) {
@@ -76,6 +81,9 @@ class GmailEmailDirectory(
     private fun String.urlEncoded(): String = java.net.URLEncoder.encode(this, "UTF-8")
 
     private companion object {
+        /** What a row in the picker shows, plus the id that outlives Gmail's own. */
+        val PICKER_HEADERS = listOf("Subject", "From", "Message-ID")
+
         const val BASE = "https://mail.google.com/mail"
 
         /** Gmail resolves the signed-in account when no mailbox is named. */

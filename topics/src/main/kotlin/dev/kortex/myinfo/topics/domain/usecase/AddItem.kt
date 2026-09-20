@@ -25,6 +25,9 @@ class AddItem(
         is NewItem.Link -> WebAddress.parse(url)?.let { copy(url = it.toString(), title = title.trimToNull()) }
         is NewItem.Doc -> title.trim().ifEmpty { null }?.let { copy(title = it) }
         is NewItem.Image -> copy(caption = caption.trimToNull())
+        // The mailbox wrote these fields, not the user: there is nothing to tidy, and an email
+        // without an id would be one nothing could open.
+        is NewItem.Email -> takeIf { email.messageId.isNotBlank() }
         is NewItem.Bill -> title.trim().ifEmpty { null }?.let { copy(title = it) }
     }
 

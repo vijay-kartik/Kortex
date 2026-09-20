@@ -18,7 +18,8 @@ interface EmailDirectory {
     fun addressOf(email: SavedEmail): String?
 
     companion object {
-        const val SEARCH_LIMIT = 20
+        /** A pickable list, not a mailbox: enough to find the mail meant, few enough to be quick. */
+        const val SEARCH_LIMIT = 12
     }
 }
 

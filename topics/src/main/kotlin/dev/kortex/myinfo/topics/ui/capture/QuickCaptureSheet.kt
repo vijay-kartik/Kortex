@@ -475,15 +475,16 @@ private fun EmailPicker(state: QuickCaptureState, onIntent: (QuickCaptureIntent)
             modifier = Modifier.focusRequester(focusRequester),
         )
         Text(emailPickerStatus(state, query), style = HintStyle, color = if (state.emailError != null) Alarm else Muted)
+        val nowMillis = remember { System.currentTimeMillis() }
         state.emailResults.forEach { email ->
-            EmailResultRow(email, onPick = { onIntent(QuickCaptureIntent.PickEmail(email)) })
+            EmailResultRow(email, nowMillis, onPick = { onIntent(QuickCaptureIntent.PickEmail(email)) })
         }
     }
 }
 
-/** One email in the picker: what it's about, who sent it, and a line of it. */
+/** One email in the picker: what it's about, who sent it and when it arrived. */
 @Composable
-private fun EmailResultRow(email: SavedEmail, onPick: () -> Unit) {
+private fun EmailResultRow(email: SavedEmail, nowMillis: Long, onPick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -502,7 +503,7 @@ private fun EmailResultRow(email: SavedEmail, onPick: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            "from ${email.senderName}",
+            emailMeta(email, nowMillis),
             style = MetaStyle.copy(letterSpacing = 0.sp),
             color = Synapse,
             maxLines = 1,
@@ -515,6 +516,11 @@ private fun EmailResultRow(email: SavedEmail, onPick: () -> Unit) {
 }
 
 /** What the picker says above the results: what to do, what went wrong, or what it found. */
+/** "from Visa Centre · 14 MAR", or just the sender when the mail didn't say when it arrived. */
+private fun emailMeta(email: SavedEmail, nowMillis: Long): String =
+    listOfNotNull("from ${email.senderName}", email.sentAtMillis?.let { formatDate(it, nowMillis) })
+        .joinToString(" · ")
+
 private fun emailPickerStatus(state: QuickCaptureState, query: String): String = when {
     state.emailNotConnected -> "No mailbox is connected. Add your Google account in Settings first."
     state.emailError != null -> state.emailError
@@ -547,7 +553,7 @@ private fun PickedEmail(email: SavedEmail, onRemove: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "from ${email.senderName}",
+                emailMeta(email, remember { System.currentTimeMillis() }),
                 style = MetaStyle.copy(letterSpacing = 0.sp),
                 color = Muted,
                 maxLines = 1,

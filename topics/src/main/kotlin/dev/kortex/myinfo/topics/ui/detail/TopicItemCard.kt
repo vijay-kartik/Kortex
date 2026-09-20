@@ -203,7 +203,7 @@ private fun ItemBody(item: TopicItem) {
             Title(item.title, Modifier.weight(1f))
         }
         is TopicItem.Image -> item.caption?.let { Text(it, style = NoteStyle, color = InkSoft) }
-        is TopicItem.Email -> EmailBody(item.email)
+        is TopicItem.Email -> EmailBody(item.email, nowMillis)
         is TopicItem.Bill -> Row(verticalAlignment = Alignment.CenterVertically) {
             Title(item.title, Modifier.weight(1f))
             Text(
@@ -218,13 +218,14 @@ private fun ItemBody(item: TopicItem) {
 
 /** An email: its subject, and who sent it — the line that tells you which mail this is. */
 @Composable
-private fun EmailBody(email: SavedEmail) {
+private fun EmailBody(email: SavedEmail, nowMillis: Long) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         TypeBadge(ItemType.Email)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
             Title(email.subject.ifBlank { "(no subject)" })
             Text(
-                "from ${email.senderName}",
+                listOfNotNull("from ${email.senderName}", email.sentAtMillis?.let { formatDate(it, nowMillis) })
+                    .joinToString(" · "),
                 style = MetaStyle.copy(letterSpacing = 0.sp),
                 color = Muted,
                 maxLines = 1,

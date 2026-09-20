@@ -7,6 +7,7 @@ enum class SearchScope(val types: Set<ItemType>) {
     Links(setOf(ItemType.Link, ItemType.Article, ItemType.Video)),
     Files(setOf(ItemType.Doc, ItemType.Image)),
     Bills(setOf(ItemType.Bill)),
+    Emails(setOf(ItemType.Email)),
 }
 
 /** A piece of text with the query's occurrences marked, for the UI to pick out. */
@@ -116,6 +117,8 @@ private fun TopicItem.searchableText(): Pair<String, String?> = when (this) {
     // An image with no caption still turns up when its topic's name matches.
     is TopicItem.Image -> (caption ?: "") to null
     is TopicItem.Bill -> title to amount.currency
+    // Found by who sent it as much as by what it says.
+    is TopicItem.Email -> email.subject to "${email.from} ${email.snippet}"
 }
 
 /** Every occurrence of every term in [text], merged where they overlap, left to right. */

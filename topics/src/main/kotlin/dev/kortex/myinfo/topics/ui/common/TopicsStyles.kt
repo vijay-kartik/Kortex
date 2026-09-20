@@ -42,7 +42,7 @@ internal val RowShape = RoundedCornerShape(12.dp)
 
 /** How item types are listed wherever the user picks among them (Figma: Topics 1g). */
 internal val SectionOrder = listOf(
-    ItemType.Note, ItemType.Image, ItemType.Doc, ItemType.Link, ItemType.Article, ItemType.Video, ItemType.Bill,
+    ItemType.Note, ItemType.Image, ItemType.Doc, ItemType.Link, ItemType.Article, ItemType.Video, ItemType.Email, ItemType.Bill,
 )
 
 /** Three-letter code of an item type, as its badges show it. */
@@ -55,6 +55,7 @@ internal val ItemType.badge: String
         ItemType.Doc -> "DOC"
         ItemType.Image -> "IMG"
         ItemType.Bill -> "BIL"
+        ItemType.Email -> "EML"
     }
 
 /** What a screen reader calls a type, where the badge shows [badge]. */
@@ -67,6 +68,7 @@ internal val ItemType.spokenName: String
         ItemType.Doc -> "Document"
         ItemType.Image -> "Image"
         ItemType.Bill -> "Bill"
+        ItemType.Email -> "Email"
     }
 
 /** Money is amber everywhere; every other type wears the accent. */

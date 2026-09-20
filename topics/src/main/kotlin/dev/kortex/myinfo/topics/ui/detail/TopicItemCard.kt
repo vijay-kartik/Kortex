@@ -48,6 +48,7 @@ import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
 import dev.kortex.design.Void
 import dev.kortex.myinfo.topics.domain.model.ItemType
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.TopicItem
 import dev.kortex.myinfo.topics.domain.model.done
 import dev.kortex.myinfo.topics.ui.common.LocalThumbnail
@@ -202,6 +203,7 @@ private fun ItemBody(item: TopicItem) {
             Title(item.title, Modifier.weight(1f))
         }
         is TopicItem.Image -> item.caption?.let { Text(it, style = NoteStyle, color = InkSoft) }
+        is TopicItem.Email -> EmailBody(item.email)
         is TopicItem.Bill -> Row(verticalAlignment = Alignment.CenterVertically) {
             Title(item.title, Modifier.weight(1f))
             Text(
@@ -209,6 +211,24 @@ private fun ItemBody(item: TopicItem) {
                 style = MetaStyle.copy(fontSize = 12.sp, letterSpacing = 0.sp),
                 color = if (item.paid) InkSoft else Alarm,
                 modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+    }
+}
+
+/** An email: its subject, and who sent it — the line that tells you which mail this is. */
+@Composable
+private fun EmailBody(email: SavedEmail) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        TypeBadge(ItemType.Email)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+            Title(email.subject.ifBlank { "(no subject)" })
+            Text(
+                "from ${email.senderName}",
+                style = MetaStyle.copy(letterSpacing = 0.sp),
+                color = Muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -259,7 +279,7 @@ private fun media(item: TopicItem): Pair<String, String?>? = when (item) {
     is TopicItem.Link -> item.link.thumbnailPath?.let { it to null }
     is TopicItem.Article -> item.link.thumbnailPath?.let { it to null }
     is TopicItem.Image -> item.file.path to null
-    is TopicItem.Note, is TopicItem.Doc, is TopicItem.Bill -> null
+    is TopicItem.Note, is TopicItem.Doc, is TopicItem.Bill, is TopicItem.Email -> null
 }
 
 /** The type and what's worth knowing about it; whether it's done with is the chip's job. */
@@ -273,6 +293,7 @@ private fun typeLabel(item: TopicItem): String = when (item) {
     is TopicItem.Doc -> listOfNotNull("DOC", item.pageCount?.let { if (it == 1) "1 PAGE" else "$it PAGES" }).joinToString(" · ")
     is TopicItem.Image -> "IMAGE"
     is TopicItem.Bill -> if (item.file != null) "BILL · INVOICE" else "BILL"
+    is TopicItem.Email -> "EMAIL"
 }
 
 /** What being done means for this item, as the chip says it once and as an action. */

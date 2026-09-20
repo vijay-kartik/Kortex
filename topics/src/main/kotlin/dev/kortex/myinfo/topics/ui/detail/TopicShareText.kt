@@ -23,4 +23,5 @@ private fun TopicItem.shareLine(): String = when (this) {
     is TopicItem.Doc -> title
     is TopicItem.Image -> caption ?: "Image"
     is TopicItem.Bill -> "$title — ${formatMoney(amount)}${if (paid) "" else " (due)"}"
+    is TopicItem.Email -> "${email.subject} — from ${email.senderName}"
 }

@@ -38,6 +38,8 @@ data class CaptureDraft(
      */
     val title: String = "",
     val file: PickedFile? = null,
+    /** An email picked from the mailbox; it stands in for the text, as a file does. */
+    val email: SavedEmail? = null,
     /** Only read when [type] is [ItemType.Bill]. */
     val bill: BillFields? = null,
 )

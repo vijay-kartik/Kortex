@@ -3,6 +3,7 @@ package dev.kortex.myinfo.topics.data.local
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.Money
 import dev.kortex.myinfo.topics.domain.model.NewItem
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.Topic
@@ -43,6 +44,17 @@ internal fun NewItem.toEntity(topicId: Long, linkId: Long?, nowMillis: Long): To
         is NewItem.Link -> row.copy(linkId = requireNotNull(linkId) { "A link item needs its saved link" })
         is NewItem.Doc -> row.copy(title = title, filePath = file.path, mimeType = file.mimeType, pageCount = pageCount)
         is NewItem.Image -> row.copy(text = caption, filePath = file.path, mimeType = file.mimeType)
+        // The mail stays in the mailbox: this is only what it takes to show it and find it again.
+        is NewItem.Email -> row.copy(
+            title = email.subject,
+            text = email.snippet,
+            messageId = email.messageId,
+            threadId = email.threadId,
+            rfc822MessageId = email.rfc822MessageId,
+            fromAddress = email.from,
+            accountEmail = email.accountEmail,
+            sentAtMillis = email.sentAtMillis,
+        )
         is NewItem.Bill -> row.copy(
             title = title,
             amountMinor = amount.minorUnits,
@@ -71,6 +83,22 @@ internal fun TopicItemEntity.toDomain(links: Map<Long, SavedLink>): TopicItem? {
         ItemType.Video -> TopicItem.Video(id, topicId, addedAtMillis, link ?: return null, durationSeconds, watched = done, pinned = pinned)
         ItemType.Doc -> TopicItem.Doc(id, topicId, addedAtMillis, title ?: return null, file ?: return null, pageCount, pinned)
         ItemType.Image -> TopicItem.Image(id, topicId, addedAtMillis, file ?: return null, caption = text, pinned = pinned)
+        ItemType.Email -> TopicItem.Email(
+            id = id,
+            topicId = topicId,
+            addedAtMillis = addedAtMillis,
+            email = SavedEmail(
+                messageId = messageId ?: return null,
+                threadId = threadId,
+                subject = title.orEmpty(),
+                from = fromAddress.orEmpty(),
+                snippet = text.orEmpty(),
+                sentAtMillis = sentAtMillis,
+                rfc822MessageId = rfc822MessageId,
+                accountEmail = accountEmail,
+            ),
+            pinned = pinned,
+        )
         ItemType.Bill -> TopicItem.Bill(
             id = id,
             topicId = topicId,

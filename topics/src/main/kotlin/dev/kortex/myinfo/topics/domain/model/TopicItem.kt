@@ -77,6 +77,20 @@ sealed interface TopicItem {
         override val type get() = ItemType.Image
     }
 
+    /**
+     * A message in the user's mailbox. The topic keeps what it needs to show the mail and to
+     * find it again; the mail itself stays where it is.
+     */
+    data class Email(
+        override val id: Long,
+        override val topicId: Long,
+        override val addedAtMillis: Long,
+        val email: SavedEmail,
+        override val pinned: Boolean = false,
+    ) : TopicItem {
+        override val type get() = ItemType.Email
+    }
+
     data class Bill(
         override val id: Long,
         override val topicId: Long,
@@ -103,7 +117,7 @@ val TopicItem.done: Boolean?
         is TopicItem.Article -> read
         is TopicItem.Video -> watched
         is TopicItem.Bill -> paid
-        is TopicItem.Note, is TopicItem.Link, is TopicItem.Doc, is TopicItem.Image -> null
+        is TopicItem.Note, is TopicItem.Link, is TopicItem.Doc, is TopicItem.Image, is TopicItem.Email -> null
     }
 
 /** The file an item keeps in app storage, if any; a bill's is its invoice. */
@@ -112,7 +126,7 @@ val TopicItem.storedFile: StoredFile?
         is TopicItem.Doc -> file
         is TopicItem.Image -> file
         is TopicItem.Bill -> file
-        is TopicItem.Note, is TopicItem.Link, is TopicItem.Article, is TopicItem.Video -> null
+        is TopicItem.Note, is TopicItem.Link, is TopicItem.Article, is TopicItem.Video, is TopicItem.Email -> null
     }
 
 /** A link in the user's Links library, as a topic shows it. */
@@ -125,6 +139,30 @@ data class SavedLink(
     /** The link's tags in the Links library; they seed suggested topics. */
     val tags: List<String> = emptyList(),
 )
+
+/**
+ * An email a topic points at. [messageId] is the mail provider's own id, which the deep link
+ * uses; [rfc822MessageId] is the `Message-ID` header, which identifies the same mail even if
+ * the provider's id can't be used, so the mail can still be found by searching for it.
+ */
+data class SavedEmail(
+    val messageId: String,
+    val threadId: String?,
+    val subject: String,
+    /** The sender as the mail gives it: "Ada Lovelace <ada@example.com>" or just an address. */
+    val from: String,
+    val snippet: String,
+    val sentAtMillis: Long?,
+    val rfc822MessageId: String?,
+    /** The mailbox it was read from, so the link opens the right account. */
+    val accountEmail: String?,
+) {
+    /** "Ada Lovelace" from "Ada Lovelace <ada@example.com>"; the address when it has no name. */
+    val senderName: String
+        get() = from.substringBefore('<').trim().removeSurrounding("\"").ifBlank {
+            from.substringAfter('<').substringBefore('>').trim().ifBlank { from }
+        }
+}
 
 /** A file copied into app storage. */
 data class StoredFile(

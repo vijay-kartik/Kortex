@@ -63,6 +63,14 @@ data class TopicItemEntity(
     @ColumnInfo(defaultValue = "0") val done: Boolean = false,
     /** Kept at the top of the topic's feed, in every view mode. */
     @ColumnInfo(defaultValue = "0") val pinned: Boolean = false,
+    /** Email: the provider's message id, its thread, and the `Message-ID` header. */
+    val messageId: String? = null,
+    val threadId: String? = null,
+    val rfc822MessageId: String? = null,
+    /** Email: the sender line, the mailbox it was read from, and when it was sent. */
+    val fromAddress: String? = null,
+    val accountEmail: String? = null,
+    val sentAtMillis: Long? = null,
 )
 
 /**
@@ -83,7 +91,7 @@ data class TopicSummaryEntity(
     val fingerprint: String,
 )
 
-@Database(entities = [TopicEntity::class, TopicItemEntity::class, TopicSummaryEntity::class], version = 3, exportSchema = false)
+@Database(entities = [TopicEntity::class, TopicItemEntity::class, TopicSummaryEntity::class], version = 4, exportSchema = false)
 abstract class TopicsDatabase : RoomDatabase() {
     abstract fun topicDao(): TopicDao
 
@@ -107,6 +115,16 @@ abstract class TopicsDatabase : RoomDatabase() {
                         "PRIMARY KEY(`topicId`), " +
                         "FOREIGN KEY(`topicId`) REFERENCES `topics`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
                 )
+            }
+        }
+
+        /** Emails kept in a topic. Every column is nullable: no item saved so far is one. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf("messageId", "threadId", "rfc822MessageId", "fromAddress", "accountEmail").forEach { column ->
+                    db.execSQL("ALTER TABLE topic_items ADD COLUMN $column TEXT")
+                }
+                db.execSQL("ALTER TABLE topic_items ADD COLUMN sentAtMillis INTEGER")
             }
         }
     }

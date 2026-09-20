@@ -36,6 +36,10 @@ data class GmailMessage(
     val bodyHtml: String?,
     val attachments: List<GmailAttachment>,
     val labelIds: List<String>,
+    /** The `Message-ID` header: identifies this mail anywhere, not just in this mailbox. */
+    val rfc822MessageId: String = "",
+    /** When Gmail received it, in epoch milliseconds; null when it didn't say. */
+    val internalDateMillis: Long? = null,
 )
 
 data class GmailAttachment(
@@ -201,6 +205,9 @@ private fun parseMessage(json: JsonObject): GmailMessage {
         bodyHtml = if (textBody.isBlank()) htmlBody else null,
         attachments = attachments,
         labelIds = labelIds,
+        // Angle brackets are part of the header's syntax, not of the id itself.
+        rfc822MessageId = headerValue("Message-ID").trim().removeSurrounding("<", ">"),
+        internalDateMillis = json["internalDate"]?.jsonPrimitive?.content?.toLongOrNull(),
     )
 }
 

@@ -81,6 +81,9 @@ private fun TopicItem.digestLine(zone: ZoneId): String {
         is TopicItem.Video -> "Video, ${if (watched) "watched" else "not watched"}$pin: ${link.title.ifBlank { link.url }} (${link.url})"
         is TopicItem.Doc -> "Document$pin: $title" + (pageCount?.let { if (it == 1) " (1 page)" else " ($it pages)" } ?: "")
         is TopicItem.Image -> "Image$pin: ${caption ?: "no caption"}"
+        is TopicItem.Email -> "Email$pin: \"${email.subject}\" from ${email.from}" +
+            (email.sentAtMillis?.let { ", sent ${Instant.ofEpochMilli(it).atZone(zone).toLocalDate()}" } ?: "") +
+            (if (email.snippet.isBlank()) "" else " — ${email.snippet}")
         is TopicItem.Bill -> {
             val status = when {
                 paid -> "paid"

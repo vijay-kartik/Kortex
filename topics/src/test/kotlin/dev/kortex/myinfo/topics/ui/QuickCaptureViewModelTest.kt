@@ -1,5 +1,6 @@
 package dev.kortex.myinfo.topics.ui
 
+import dev.kortex.myinfo.topics.domain.FakeEmailDirectory
 import dev.kortex.myinfo.topics.domain.FakeFileVault
 import dev.kortex.myinfo.topics.domain.FakeLinkCatalog
 import dev.kortex.myinfo.topics.domain.FakeTopicsRepository
@@ -7,8 +8,10 @@ import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.LinkLookup
 import dev.kortex.myinfo.topics.domain.model.Money
 import dev.kortex.myinfo.topics.domain.model.NewItem
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.port.Clock
+import dev.kortex.myinfo.topics.domain.port.EmailSearchResult
 import dev.kortex.myinfo.topics.domain.usecase.AddItem
 import dev.kortex.myinfo.topics.domain.usecase.CaptureItem
 import dev.kortex.myinfo.topics.domain.usecase.CreateTopic
@@ -17,6 +20,7 @@ import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
+import dev.kortex.myinfo.topics.domain.usecase.SearchEmails
 import dev.kortex.myinfo.topics.ui.capture.CaptureError
 import dev.kortex.myinfo.topics.ui.capture.QuickCaptureEffect
 import dev.kortex.myinfo.topics.ui.capture.QuickCaptureIntent
@@ -45,6 +49,7 @@ class QuickCaptureViewModelTest {
     private val repository = FakeTopicsRepository()
     private val catalog = FakeLinkCatalog()
     private val vault = FakeFileVault()
+    private val mailbox = FakeEmailDirectory()
     private lateinit var viewModel: QuickCaptureViewModel
 
     @Before
@@ -187,6 +192,91 @@ class QuickCaptureViewModelTest {
         assertTrue(vault.deleted.isEmpty())
     }
 
+    // ── Emails ────────────────────────────────────────────────────
+
+    private val visaEmail = SavedEmail(
+        messageId = "18c2a3f",
+        threadId = "18c2a00",
+        subject = "Your visa appointment",
+        from = "Visa Centre <noreply@visa.example>",
+        snippet = "Confirmed for 14 March.",
+        sentAtMillis = 1_700_000_000_000,
+        rfc822MessageId = "abc@visa.example",
+        accountEmail = "me@example.com",
+    )
+
+    @Test
+    fun `the mailbox is searched once typing pauses, not per keystroke`() = runTest(dispatcher) {
+        mailbox.emails = listOf(visaEmail)
+        viewModel.onIntent(QuickCaptureIntent.StartPickingEmail)
+        assertTrue(viewModel.state.value.pickingEmail)
+
+        viewModel.onIntent(QuickCaptureIntent.EmailQueryChanged("vi"))
+        viewModel.onIntent(QuickCaptureIntent.EmailQueryChanged("visa"))
+        assertTrue(viewModel.state.value.emailSearching)
+        assertTrue(mailbox.queries.isEmpty())
+
+        advanceUntilIdle()
+
+        assertEquals(listOf("visa"), mailbox.queries)
+        assertEquals(listOf(visaEmail), viewModel.state.value.emailResults)
+        assertFalse(viewModel.state.value.emailSearching)
+    }
+
+    @Test
+    fun `picking an email closes the picker and makes the item an email`() = runTest(dispatcher) {
+        viewModel.onIntent(QuickCaptureIntent.StartPickingEmail)
+
+        viewModel.onIntent(QuickCaptureIntent.PickEmail(visaEmail))
+
+        val state = viewModel.state.value
+        assertFalse(state.pickingEmail)
+        assertTrue(state.emailMode)
+        assertEquals(ItemType.Email, state.type)
+        assertEquals(listOf(ItemType.Email), state.types)
+        assertTrue(state.canSave)
+    }
+
+    @Test
+    fun `a picked email is what gets saved`() = runTest(dispatcher) {
+        viewModel.onIntent(QuickCaptureIntent.PickEmail(visaEmail))
+        viewModel.onIntent(save())
+
+        assertEquals(QuickCaptureEffect.Saved(1, "Trip to Dubai"), viewModel.effects.first())
+        assertEquals(NewItem.Email(visaEmail), repository.items.single())
+    }
+
+    @Test
+    fun `removing the picked email gives the sheet back its text field`() = runTest(dispatcher) {
+        viewModel.onIntent(QuickCaptureIntent.PickEmail(visaEmail))
+
+        viewModel.onIntent(QuickCaptureIntent.RemoveEmail)
+
+        assertFalse(viewModel.state.value.emailMode)
+        assertFalse(viewModel.state.value.canSave)
+    }
+
+    @Test
+    fun `a mailbox that isn't connected says so instead of showing nothing`() = runTest(dispatcher) {
+        mailbox.result = EmailSearchResult.NotConnected
+
+        viewModel.onIntent(QuickCaptureIntent.EmailQueryChanged("visa"))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.emailNotConnected)
+        assertTrue(viewModel.state.value.emailResults.isEmpty())
+    }
+
+    @Test
+    fun `a mailbox that fails reports why`() = runTest(dispatcher) {
+        mailbox.result = EmailSearchResult.Failed("The Gmail sign-in has expired.")
+
+        viewModel.onIntent(QuickCaptureIntent.EmailQueryChanged("visa"))
+        advanceUntilIdle()
+
+        assertEquals("The Gmail sign-in has expired.", viewModel.state.value.emailError)
+    }
+
     // ── Bills ─────────────────────────────────────────────────────
 
     @Test
@@ -250,6 +340,7 @@ class QuickCaptureViewModelTest {
             detectItemType = detect,
             lookUpLink = LookUpLink(catalog),
             keepPickedFile = KeepPickedFile(vault),
+            searchEmails = SearchEmails(mailbox),
             discardPickedFile = DiscardPickedFile(vault),
             captureItem = CaptureItem(CreateTopic(repository, clock), AddItem(repository, clock), detect),
         )

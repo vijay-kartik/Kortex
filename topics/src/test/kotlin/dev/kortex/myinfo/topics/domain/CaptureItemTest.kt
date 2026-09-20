@@ -8,6 +8,7 @@ import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.Money
 import dev.kortex.myinfo.topics.domain.model.NewItem
 import dev.kortex.myinfo.topics.domain.model.PickedFile
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.port.Clock
@@ -126,6 +127,25 @@ class CaptureItemTest {
         assertEquals(CaptureResult.BillTitleBlank, capture(noTitle, CaptureTarget.Existing(4)))
         assertEquals(CaptureResult.BillAmountInvalid, capture(noAmount, CaptureTarget.Existing(4)))
         assertTrue(repository.items.isEmpty())
+    }
+
+    @Test
+    fun `a picked email is saved as an email, and is the only thing it could be`() = runTest {
+        val email = SavedEmail(
+            messageId = "18c2a3f",
+            threadId = "18c2a00",
+            subject = "Your visa appointment",
+            from = "Visa Centre <noreply@visa.example>",
+            snippet = "Your appointment is confirmed for 14 March.",
+            sentAtMillis = 1_700_000_000_000,
+            rfc822MessageId = "abc@visa.example",
+            accountEmail = "me@example.com",
+        )
+
+        assertEquals(listOf(ItemType.Email), captureTypes(detect(""), email = email))
+        assertEquals(ItemType.Email, defaultCaptureType(detect(""), email = email))
+        assertEquals(CaptureResult.Saved(4), capture(CaptureDraft(ItemType.Email, email = email), CaptureTarget.Existing(4)))
+        assertEquals(NewItem.Email(email), repository.items.single())
     }
 
     @Test

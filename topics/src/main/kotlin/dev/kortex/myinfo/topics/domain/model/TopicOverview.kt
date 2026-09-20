@@ -107,5 +107,5 @@ private fun TopicItem.previewPath(): String? = when (this) {
     is TopicItem.Video -> link.thumbnailPath
     is TopicItem.Link -> link.thumbnailPath
     is TopicItem.Article -> link.thumbnailPath
-    is TopicItem.Note, is TopicItem.Doc, is TopicItem.Bill -> null
+    is TopicItem.Note, is TopicItem.Doc, is TopicItem.Bill, is TopicItem.Email -> null
 }

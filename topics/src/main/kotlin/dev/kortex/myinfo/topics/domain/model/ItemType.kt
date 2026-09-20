@@ -8,7 +8,8 @@ enum class ItemType {
     Video,
     Doc,
     Image,
-    Bill;
+    Bill,
+    Email;
 
     /** Backed by a link in the user's Links library rather than stored in the topic itself. */
     val isLink: Boolean get() = this == Link || this == Article || this == Video

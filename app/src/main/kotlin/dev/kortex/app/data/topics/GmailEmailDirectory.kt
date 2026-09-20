@@ -67,6 +67,21 @@ class GmailEmailDirectory(
         return "$BASE/u/$mailbox/#search/rfc822msgid%3A${header.urlEncoded()}"
     }
 
+    /**
+     * Gmail's own search, narrowed to this one mail. `rfc822msgid:` matches the `Message-ID`
+     * header exactly, so it finds the mail and nothing else; without that header, the subject
+     * and sender together are the next best thing.
+     */
+    override fun searchQueryFor(email: SavedEmail): String? {
+        email.rfc822MessageId?.takeIf { it.isNotBlank() }?.let { return "rfc822msgid:$it" }
+        val subject = email.subject.takeIf { it.isNotBlank() }?.let { "subject:${it.quoted()}" }
+        val sender = email.senderAddress?.let { "from:$it" }
+        return listOfNotNull(subject, sender).takeIf { it.isNotEmpty() }?.joinToString(" ")
+    }
+
+    /** Gmail reads a quoted phrase as one term; the quotes in it would end that phrase early. */
+    private fun String.quoted(): String = "\"${replace("\"", "")}\""
+
     private fun GmailMessage.toSavedEmail(account: String) = SavedEmail(
         messageId = id,
         threadId = threadId,

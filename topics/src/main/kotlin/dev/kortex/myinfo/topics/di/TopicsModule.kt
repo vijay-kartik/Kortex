@@ -25,7 +25,6 @@ import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
 import dev.kortex.myinfo.topics.domain.usecase.DetectItemType
 import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
-import dev.kortex.myinfo.topics.domain.usecase.EmailWebAddress
 import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
@@ -34,6 +33,7 @@ import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSuggestions
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
+import dev.kortex.myinfo.topics.domain.usecase.RouteToEmail
 import dev.kortex.myinfo.topics.domain.usecase.SearchEmails
 import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
@@ -97,7 +97,7 @@ object TopicsModule {
     fun provideSearchEmails(directory: EmailDirectory) = SearchEmails(directory)
 
     @Provides
-    fun provideEmailWebAddress(directory: EmailDirectory) = EmailWebAddress(directory)
+    fun provideRouteToEmail(directory: EmailDirectory) = RouteToEmail(directory)
 
     @Provides
     fun provideSummarizeTopic(repository: TopicsRepository, summarizer: TopicSummarizer, clock: Clock) =

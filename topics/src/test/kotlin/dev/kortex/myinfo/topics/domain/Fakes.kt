@@ -167,4 +167,7 @@ class FakeEmailDirectory(var emails: List<SavedEmail> = emptyList()) : EmailDire
 
     override fun addressOf(email: SavedEmail): String? =
         email.messageId.takeIf { it.isNotBlank() }?.let { "https://mail.example.com/#all/$it" }
+
+    override fun searchQueryFor(email: SavedEmail): String? =
+        email.rfc822MessageId?.takeIf { it.isNotBlank() }?.let { "rfc822msgid:$it" }
 }

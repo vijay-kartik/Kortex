@@ -13,7 +13,18 @@ class SearchEmails(private val directory: EmailDirectory) {
         if (query.isBlank()) EmailSearchResult.Found(emptyList()) else directory.search(query.trim(), limit)
 }
 
-/** Where a kept email opens in the user's mail app; null when it can't be linked to. */
-class EmailWebAddress(private val directory: EmailDirectory) {
-    operator fun invoke(email: SavedEmail): String? = directory.addressOf(email)
+/**
+ * The ways back to a kept email, best first. [EmailRoute.appSearch] finds it inside the mail app,
+ * which is where the user reads their mail; [EmailRoute.web] opens the mail itself in a browser.
+ */
+class RouteToEmail(private val directory: EmailDirectory) {
+    operator fun invoke(email: SavedEmail) = EmailRoute(
+        appSearch = directory.searchQueryFor(email),
+        web = directory.addressOf(email),
+    )
+}
+
+data class EmailRoute(val appSearch: String?, val web: String?) {
+    /** Nothing kept about this email would lead back to it. */
+    val nowhere: Boolean get() = appSearch == null && web == null
 }

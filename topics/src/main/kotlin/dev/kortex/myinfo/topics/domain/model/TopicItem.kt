@@ -157,6 +157,12 @@ data class SavedEmail(
     /** The mailbox it was read from, so the link opens the right account. */
     val accountEmail: String?,
 ) {
+    /** "ada@example.com" from "Ada Lovelace <ada@example.com>"; null when there is no address. */
+    val senderAddress: String?
+        get() = from.substringAfter('<', "").substringBefore('>').trim().ifBlank {
+            from.trim().takeIf { '@' in it && ' ' !in it }
+        }
+
     /** "Ada Lovelace" from "Ada Lovelace <ada@example.com>"; the address when it has no name. */
     val senderName: String
         get() = from.substringBefore('<').trim().removeSurrounding("\"").ifBlank {

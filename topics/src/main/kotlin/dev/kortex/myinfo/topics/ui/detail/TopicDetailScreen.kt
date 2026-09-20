@@ -1,5 +1,6 @@
 package dev.kortex.myinfo.topics.ui.detail
 
+import android.app.SearchManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -166,7 +167,7 @@ private fun TopicDetailContent(
             is TopicDetailEffect.OpenFile -> if (!context.openFile(effect.file)) {
                 scope.launch { snackbars.showSnackbar("No app on this phone opens that file.") }
             }
-            is TopicDetailEffect.OpenEmail -> if (!context.openEmail(effect.address)) {
+            is TopicDetailEffect.OpenEmail -> if (!context.openEmail(effect.appSearch, effect.web)) {
                 scope.launch { snackbars.showSnackbar("Couldn't open your mail app.") }
             }
             is TopicDetailEffect.ShareText -> context.shareText(effect.subject, effect.text)
@@ -846,15 +847,40 @@ private fun Context.openFile(file: StoredFile): Boolean {
 }
 
 /**
- * Opens a kept email on the web, where it lands on the mail itself.
+ * Opens a kept email, preferring the mail app the user actually reads mail in.
  *
- * Not the Gmail app, deliberately: the message id sits in the address's fragment, which is
- * Gmail's own web routing. The app matches the domain but drops the fragment, so handing it
- * this address opens the inbox — further from the mail than the browser gets.
+ * The address can't lead the app to one message — its id sits in the fragment, which is Gmail's
+ * own web routing, and the app drops it — so the app is asked to *search* instead, with a query
+ * that matches the one mail. Failing that, the address opens the mail itself in a browser.
  *
  * @return false when nothing on the phone opened it.
  */
-private fun Context.openEmail(address: String): Boolean = openUrl(address)
+private fun Context.openEmail(appSearch: String?, web: String?): Boolean =
+    (appSearch != null && searchInMailApp(appSearch)) || (web != null && openUrl(web))
+
+/**
+ * Hands [query] to the mail app's own search, the way the system search does. Gmail's search
+ * takes its operators here, so a query naming one message lands on that message.
+ *
+ * @return false when the app isn't installed or won't take a search from outside.
+ */
+private fun Context.searchInMailApp(query: String): Boolean {
+    val search = Intent(Intent.ACTION_SEARCH)
+        .setPackage(GMAIL_PACKAGE)
+        .putExtra(SearchManager.QUERY, query)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    return try {
+        startActivity(search)
+        true
+    } catch (e: ActivityNotFoundException) {
+        false
+    } catch (e: SecurityException) {
+        // Its search activity exists but isn't open to other apps.
+        false
+    }
+}
+
+private const val GMAIL_PACKAGE = "com.google.android.gm"
 
 private fun Context.shareText(subject: String, text: String) {
     val send = Intent(Intent.ACTION_SEND)

@@ -12,10 +12,15 @@ interface EmailDirectory {
     suspend fun search(query: String, limit: Int = SEARCH_LIMIT): EmailSearchResult
 
     /**
-     * Where [email] can be opened — a web address the host knows how to hand to its mail app.
-     * Null when this email can't be linked to.
+     * Where [email] can be opened on the web. Null when this email can't be linked to.
      */
     fun addressOf(email: SavedEmail): String?
+
+    /**
+     * A search that finds [email] again in the mail app, in that app's own search syntax —
+     * narrow enough to land on the one mail. Null when nothing kept about it would find it.
+     */
+    fun searchQueryFor(email: SavedEmail): String?
 
     companion object {
         /** A pickable list, not a mailbox: enough to find the mail meant, few enough to be quick. */

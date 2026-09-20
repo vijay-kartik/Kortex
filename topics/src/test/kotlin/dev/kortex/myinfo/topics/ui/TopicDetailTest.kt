@@ -17,7 +17,7 @@ import dev.kortex.myinfo.topics.domain.model.TopicViewMode
 import dev.kortex.myinfo.topics.domain.port.Clock
 import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
-import dev.kortex.myinfo.topics.domain.usecase.EmailWebAddress
+import dev.kortex.myinfo.topics.domain.usecase.RouteToEmail
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
@@ -156,26 +156,46 @@ class TopicDetailTest {
     }
 
     @Test
-    fun `tapping an email leads back to it in the mail app`() = runTest {
-        val email = TopicItem.Email(
-            9, 7, addedAtMillis = 45,
-            email = SavedEmail(
-                messageId = "18c2a3f",
-                threadId = null,
-                subject = "Your visa appointment",
-                from = "Visa Centre <noreply@visa.example>",
-                snippet = "Confirmed for 14 March.",
-                sentAtMillis = null,
-                rfc822MessageId = null,
-                accountEmail = "me@example.com",
-            ),
-        )
+    fun `tapping an email offers the mail app a search for it, and the web as a fallback`() = runTest {
+        val email = emailItem(rfc822MessageId = "abc@visa.example")
         val viewModel = viewModel()
 
         viewModel.onIntent(TopicDetailIntent.OpenItem(email))
 
-        assertEquals(TopicDetailEffect.OpenEmail("https://mail.example.com/#all/18c2a3f"), viewModel.effects.first())
+        assertEquals(
+            TopicDetailEffect.OpenEmail(
+                appSearch = "rfc822msgid:abc@visa.example",
+                web = "https://mail.example.com/#all/18c2a3f",
+            ),
+            viewModel.effects.first(),
+        )
     }
+
+    @Test
+    fun `an email with no Message-ID still opens on the web`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onIntent(TopicDetailIntent.OpenItem(emailItem(rfc822MessageId = null)))
+
+        assertEquals(
+            TopicDetailEffect.OpenEmail(appSearch = null, web = "https://mail.example.com/#all/18c2a3f"),
+            viewModel.effects.first(),
+        )
+    }
+
+    private fun emailItem(rfc822MessageId: String?) = TopicItem.Email(
+        9, 7, addedAtMillis = 45,
+        email = SavedEmail(
+            messageId = "18c2a3f",
+            threadId = null,
+            subject = "Your visa appointment",
+            from = "Visa Centre <noreply@visa.example>",
+            snippet = "Confirmed for 14 March.",
+            sentAtMillis = null,
+            rfc822MessageId = rfc822MessageId,
+            accountEmail = "me@example.com",
+        ),
+    )
 
     @Test
     fun `an article can be ticked off and back`() = runTest {
@@ -397,7 +417,7 @@ class TopicDetailTest {
             clock = Clock { NOW },
             setTopicPinned = SetTopicPinned(repository),
             setItemDone = SetItemDone(repository, Clock { NOW }),
-            emailWebAddress = EmailWebAddress(mailbox),
+            routeToEmail = RouteToEmail(mailbox),
             setItemsPinned = SetItemsPinned(repository, Clock { NOW }),
             moveItems = MoveItems(repository, Clock { NOW }),
             deleteItems = DeleteItems(repository, Clock { NOW }),

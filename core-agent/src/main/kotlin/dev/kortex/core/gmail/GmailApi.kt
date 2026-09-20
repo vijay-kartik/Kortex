@@ -88,17 +88,24 @@ class GmailApi(
     }
 
     /**
-     * Fetch the full content of a single message.
+     * Fetch a single message.
+     *
+     * [format] is Gmail's: `full` carries the body and attachments, `metadata` only the headers
+     * named in [metadataHeaders], which is far less to send and to parse when a caller just
+     * wants to list messages.
      *
      * @throws GmailApiException on non-2xx responses.
      */
     suspend fun getMessage(
         accessToken: String,
         messageId: String,
+        format: String = FORMAT_FULL,
+        metadataHeaders: List<String> = emptyList(),
     ): GmailMessage {
         val response = client.get("$GMAIL_BASE/messages/$messageId") {
             header("Authorization", "Bearer $accessToken")
-            parameter("format", "full")
+            parameter("format", format)
+            metadataHeaders.forEach { parameter("metadataHeaders", it) }
         }
         val body = response.body<String>()
         if (!response.status.isSuccess()) {
@@ -132,6 +139,14 @@ class GmailApi(
             ?.jsonPrimitive?.content
             ?: throw GmailApiException(0, "No 'data' field in attachment response")
         return Base64.getUrlDecoder().decode(data)
+    }
+
+    companion object {
+        /** The whole message: body, parts and attachment metadata. */
+        const val FORMAT_FULL = "full"
+
+        /** Headers only — whichever ones the caller names — plus the id, labels and dates. */
+        const val FORMAT_METADATA = "metadata"
     }
 }
 

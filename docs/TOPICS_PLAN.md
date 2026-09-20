@@ -102,13 +102,18 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
    Quick capture gains "+ Email": search the mailbox from inside the sheet and pick one. Nothing
    is copied but what it takes to show the mail and find it again — Gmail's message and thread
    ids, the subject, sender, snippet, sent time, and the RFC822 `Message-ID` header. Tapping the
-   card opens the mail: `https://mail.google.com/mail/u/<account>/#all/<id>` handed to the Gmail
-   package first, falling back to the browser. `topics.db` is at version 4.
+   card opens the mail on the web: `https://mail.google.com/mail/u/<account>/#all/<id>`. `topics.db` is at version 4.
 
    **Why not share-from-Gmail:** Gmail on Android shares plain text, with no id in it, so a
    shared mail can't be pointed back at. Reading the mailbox directly is what makes the link
    durable. The `Message-ID` is kept as insurance: it identifies the mail anywhere, so it can
    still be found by search if the provider id ever fails.
+
+   **Why the browser and not the Gmail app** (tested on device): the Gmail app does claim
+   `mail.google.com` links, but the message id sits in the address's fragment, which is Gmail's
+   own web routing. The app matches the domain and drops the fragment, landing on the inbox.
+   The browser honours it and opens the mail. There is no public way to point the app at one
+   message, so aiming at it is strictly worse.
 
 10. **Polish** — partly done.
    - **Accessibility** ✅ — every tap target in Topics is at least 48dp

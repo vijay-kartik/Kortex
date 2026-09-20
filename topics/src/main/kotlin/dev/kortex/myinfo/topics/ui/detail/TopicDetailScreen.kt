@@ -827,7 +827,6 @@ private fun Context.openUrl(url: String): Boolean = try {
     false
 }
 
-private const val GMAIL_PACKAGE = "com.google.android.gm"
 
 /**
  * Hands a kept file to whichever app opens its type, with read access for that one launch.
@@ -847,23 +846,15 @@ private fun Context.openFile(file: StoredFile): Boolean {
 }
 
 /**
- * Opens a kept email. Gmail is asked first, so the mail lands in the app the user reads it in
- * rather than in a browser tab; if it won't take the address, any browser will.
+ * Opens a kept email on the web, where it lands on the mail itself.
+ *
+ * Not the Gmail app, deliberately: the message id sits in the address's fragment, which is
+ * Gmail's own web routing. The app matches the domain but drops the fragment, so handing it
+ * this address opens the inbox — further from the mail than the browser gets.
  *
  * @return false when nothing on the phone opened it.
  */
-private fun Context.openEmail(address: String): Boolean {
-    val uri = Uri.parse(address)
-    val inMailApp = Intent(Intent.ACTION_VIEW, uri)
-        .setPackage(GMAIL_PACKAGE)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    return try {
-        startActivity(inMailApp)
-        true
-    } catch (e: ActivityNotFoundException) {
-        openUrl(address)
-    }
-}
+private fun Context.openEmail(address: String): Boolean = openUrl(address)
 
 private fun Context.shareText(subject: String, text: String) {
     val send = Intent(Intent.ACTION_SEND)

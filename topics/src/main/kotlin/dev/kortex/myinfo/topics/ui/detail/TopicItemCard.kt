@@ -135,7 +135,7 @@ internal fun TopicItemCard(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ItemBody(item)
+            ItemBody(item, nowMillis)
             if (item is TopicItem.Bill) BillDates(item, nowMillis)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(typeLabel(item), style = MetaStyle, color = typeColor(item), modifier = Modifier.weight(1f))
@@ -192,7 +192,7 @@ private fun BillDates(bill: TopicItem.Bill, nowMillis: Long) {
 }
 
 @Composable
-private fun ItemBody(item: TopicItem) {
+private fun ItemBody(item: TopicItem, nowMillis: Long) {
     when (item) {
         is TopicItem.Note -> Text(item.text, style = NoteStyle, color = InkSoft)
         is TopicItem.Video -> Title(item.link.title)

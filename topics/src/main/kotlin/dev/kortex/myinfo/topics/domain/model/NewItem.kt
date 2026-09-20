@@ -30,6 +30,11 @@ sealed interface NewItem {
         override val type get() = ItemType.Image
     }
 
+    /** An email the user picked from their mailbox; nothing is copied but what it takes to show it. */
+    data class Email(val email: SavedEmail) : NewItem {
+        override val type get() = ItemType.Email
+    }
+
     data class Bill(
         val title: String,
         val amount: Money,

@@ -1,9 +1,11 @@
 package dev.kortex.myinfo.topics.ui
 
+import dev.kortex.myinfo.topics.domain.FakeEmailDirectory
 import dev.kortex.myinfo.topics.domain.FakeTopicSummarizer
 import dev.kortex.myinfo.topics.domain.FakeTopicsRepository
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.Money
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.SummaryDigest
@@ -15,6 +17,7 @@ import dev.kortex.myinfo.topics.domain.model.TopicViewMode
 import dev.kortex.myinfo.topics.domain.port.Clock
 import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
+import dev.kortex.myinfo.topics.domain.usecase.EmailWebAddress
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
@@ -23,13 +26,14 @@ import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
 import dev.kortex.myinfo.topics.domain.usecase.SetTopicPinned
 import dev.kortex.myinfo.topics.domain.usecase.SummarizeTopic
+import dev.kortex.myinfo.topics.ui.common.TopicChoice
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailEffect
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailIntent
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailState
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailViewModel
-import dev.kortex.myinfo.topics.ui.common.TopicChoice
 import dev.kortex.myinfo.topics.ui.detail.TypeFilter
 import dev.kortex.myinfo.topics.ui.detail.topicShareText
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -45,12 +49,12 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.io.IOException
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TopicDetailTest {
     private val repository = FakeTopicsRepository()
     private val summarizer = FakeTopicSummarizer(reply = "You're planning 3 days in Dubai.")
+    private val mailbox = FakeEmailDirectory()
     private val topic = Topic(7, "Trip to Dubai", purpose = "4 nights in March", pinned = false, sections = setOf(ItemType.Note, ItemType.Doc), createdAtMillis = 0, updatedAtMillis = 0)
     private val video = TopicItem.Video(1, 7, addedAtMillis = 30, link(1, "https://youtu.be/a", "Dubai in 3 days"), durationSeconds = null, watched = false)
     private val note = TopicItem.Note(2, 7, addedAtMillis = 20, text = "Metro closes 00:30")
@@ -149,6 +153,28 @@ class TopicDetailTest {
         viewModel.onIntent(TopicDetailIntent.OpenItem(doc))
 
         assertEquals(TopicDetailEffect.OpenFile(doc.file), viewModel.effects.first())
+    }
+
+    @Test
+    fun `tapping an email leads back to it in the mail app`() = runTest {
+        val email = TopicItem.Email(
+            9, 7, addedAtMillis = 45,
+            email = SavedEmail(
+                messageId = "18c2a3f",
+                threadId = null,
+                subject = "Your visa appointment",
+                from = "Visa Centre <noreply@visa.example>",
+                snippet = "Confirmed for 14 March.",
+                sentAtMillis = null,
+                rfc822MessageId = null,
+                accountEmail = "me@example.com",
+            ),
+        )
+        val viewModel = viewModel()
+
+        viewModel.onIntent(TopicDetailIntent.OpenItem(email))
+
+        assertEquals(TopicDetailEffect.OpenEmail("https://mail.example.com/#all/18c2a3f"), viewModel.effects.first())
     }
 
     @Test
@@ -371,6 +397,7 @@ class TopicDetailTest {
             clock = Clock { NOW },
             setTopicPinned = SetTopicPinned(repository),
             setItemDone = SetItemDone(repository, Clock { NOW }),
+            emailWebAddress = EmailWebAddress(mailbox),
             setItemsPinned = SetItemsPinned(repository, Clock { NOW }),
             moveItems = MoveItems(repository, Clock { NOW }),
             deleteItems = DeleteItems(repository, Clock { NOW }),

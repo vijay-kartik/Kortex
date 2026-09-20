@@ -96,6 +96,20 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
    with no write path having to remember to. Pinning the topic or its updated time don't.
    An out-of-date summary is shown dimmed with "Topic changed since" and a Refresh action; the
    model is only called when the user taps Summarise / Refresh / Try again, never on its own.
+11. **Emails (added after the Figma set)** — a topic can hold an email. `EmailDirectory` is a
+   domain port in `:topics`, bound in `:app` to `GmailEmailDirectory`, which reads the mailbox
+   connected in Settings over the same OAuth token and `GmailApi` the `gmail_search` tool uses.
+   Quick capture gains "+ Email": search the mailbox from inside the sheet and pick one. Nothing
+   is copied but what it takes to show the mail and find it again — Gmail's message and thread
+   ids, the subject, sender, snippet, sent time, and the RFC822 `Message-ID` header. Tapping the
+   card opens the mail: `https://mail.google.com/mail/u/<account>/#all/<id>` handed to the Gmail
+   package first, falling back to the browser. `topics.db` is at version 4.
+
+   **Why not share-from-Gmail:** Gmail on Android shares plain text, with no id in it, so a
+   shared mail can't be pointed back at. Reading the mailbox directly is what makes the link
+   durable. The `Message-ID` is kept as insurance: it identifies the mail anywhere, so it can
+   still be found by search if the provider id ever fails.
+
 10. **Polish** — partly done.
    - **Accessibility** ✅ — every tap target in Topics is at least 48dp
      (`minimumInteractiveComponentSize`, with padding trimmed where that would have grown the

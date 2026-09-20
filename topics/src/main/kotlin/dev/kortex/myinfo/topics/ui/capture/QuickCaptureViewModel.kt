@@ -15,6 +15,7 @@ import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.PickedFile
 import dev.kortex.myinfo.topics.domain.model.TopicSort
 import dev.kortex.myinfo.topics.domain.model.sortedFor
+import dev.kortex.myinfo.topics.domain.port.EmailSearchResult
 import dev.kortex.myinfo.topics.domain.usecase.CaptureItem
 import dev.kortex.myinfo.topics.domain.usecase.DetectItemType
 import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
@@ -22,6 +23,7 @@ import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.MoneyAmount
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
+import dev.kortex.myinfo.topics.domain.usecase.SearchEmails
 import dev.kortex.myinfo.topics.ui.common.TopicChoice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -36,6 +38,7 @@ class QuickCaptureViewModel @AssistedInject constructor(
     private val detectItemType: DetectItemType,
     private val lookUpLink: LookUpLink,
     private val keepPickedFile: KeepPickedFile,
+    private val searchEmails: SearchEmails,
     private val discardPickedFile: DiscardPickedFile,
     private val captureItem: CaptureItem,
 ) : MviViewModel<QuickCaptureState, QuickCaptureIntent, QuickCaptureEffect>(QuickCaptureState(selectedTopicId = initialTopicId)) {
@@ -46,6 +49,7 @@ class QuickCaptureViewModel @AssistedInject constructor(
     }
 
     private var lookupJob: Job? = null
+    private var emailSearchJob: Job? = null
 
     /** A kept file belongs to the topic once it is saved; until then this sheet has to clean it up. */
     private var savedFile: PickedFile? = null
@@ -66,6 +70,16 @@ class QuickCaptureViewModel @AssistedInject constructor(
             is QuickCaptureIntent.ChooseType -> setState { copy(chosenType = intent.type, error = null) }
             is QuickCaptureIntent.AttachFile -> attach(intent.uri)
             QuickCaptureIntent.RemoveFile -> removeFile()
+            QuickCaptureIntent.StartPickingEmail -> setState {
+                copy(pickingEmail = true, emailError = null, emailNotConnected = false)
+            }
+            QuickCaptureIntent.CancelPickingEmail -> setState { copy(pickingEmail = false) }
+            is QuickCaptureIntent.EmailQueryChanged -> onEmailQueryChanged(intent.query)
+            is QuickCaptureIntent.PickEmail -> setState {
+                // An email replaces whatever was typed: it is the whole item.
+                copy(email = intent.email, pickingEmail = false, chosenType = null, error = null)
+            }
+            QuickCaptureIntent.RemoveEmail -> setState { copy(email = null, chosenType = null, error = null) }
             QuickCaptureIntent.BillAmountEdited -> setState {
                 copy(error = error?.takeUnless { it == CaptureError.BillAmountInvalid || it == CaptureError.BillTitleBlank })
             }
@@ -134,6 +148,28 @@ class QuickCaptureViewModel @AssistedInject constructor(
         }
     }
 
+    /** Asks the mailbox once typing pauses, so a query isn't sent per keystroke. */
+    private fun onEmailQueryChanged(query: String) {
+        emailSearchJob?.cancel()
+        if (query.isBlank()) {
+            setState { copy(emailResults = emptyList(), emailSearching = false, emailError = null) }
+            return
+        }
+        setState { copy(emailSearching = true, emailError = null, emailNotConnected = false) }
+        emailSearchJob = viewModelScope.launch {
+            delay(EMAIL_DEBOUNCE_MS)
+            when (val result = searchEmails(query)) {
+                is EmailSearchResult.Found -> setState { copy(emailResults = result.emails, emailSearching = false) }
+                EmailSearchResult.NotConnected -> setState {
+                    copy(emailResults = emptyList(), emailSearching = false, emailNotConnected = true)
+                }
+                is EmailSearchResult.Failed -> setState {
+                    copy(emailResults = emptyList(), emailSearching = false, emailError = result.message)
+                }
+            }
+        }
+    }
+
     private fun removeFile() {
         val file = currentState.file ?: return
         setState { copy(file = null, chosenType = null, error = null) }
@@ -150,6 +186,7 @@ class QuickCaptureViewModel @AssistedInject constructor(
             text = intent.text,
             title = intent.title.trim(),
             file = state.file,
+            email = state.email,
             bill = if (state.type == ItemType.Bill) {
                 BillFields(
                     amount = intent.billAmount,
@@ -183,6 +220,9 @@ class QuickCaptureViewModel @AssistedInject constructor(
 
     companion object {
         private const val LOOKUP_DEBOUNCE_MS = 400L
+
+        /** A mailbox search is a network round-trip, so it waits a little longer. */
+        private const val EMAIL_DEBOUNCE_MS = 450L
 
         /** Offered next to the amount, on top of whatever this device's region uses. */
         val CommonCurrencies: List<String> = listOf("USD", "EUR", "GBP", "INR", "AED")

@@ -86,6 +86,7 @@ import dev.kortex.design.dashedBorder
 import dev.kortex.mvi.ObserveEffects
 import dev.kortex.mvi.ScopedViewModelStore
 import dev.kortex.myinfo.topics.domain.model.ItemType
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.ui.common.MetaStyle
 import dev.kortex.myinfo.topics.ui.common.RowTitleStyle
 import dev.kortex.myinfo.topics.ui.common.formatDate
@@ -224,6 +225,11 @@ internal fun QuickCaptureContent(
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    // The picker takes the sheet over while it's open: one thing to do at a time.
+    if (state.pickingEmail) {
+        EmailPicker(state, onIntent)
+        return
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -231,7 +237,10 @@ internal fun QuickCaptureContent(
             .padding(start = 18.dp, end = 18.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (state.fileMode) {
+        if (state.emailMode) {
+            Label("EMAIL", Modifier.padding(top = 8.dp))
+            state.email?.let { PickedEmail(it, onRemove = { onIntent(QuickCaptureIntent.RemoveEmail) }) }
+        } else if (state.fileMode) {
             Label("FILE", Modifier.padding(top = 8.dp))
             AttachedFile(state, onRemove = { onIntent(QuickCaptureIntent.RemoveFile) })
         } else {
@@ -242,7 +251,13 @@ internal fun QuickCaptureContent(
             }
         }
 
-        AttachRow(fileMode = state.fileMode, onPickDocument = onPickDocument, onPickImage = onPickImage)
+        AttachRow(
+            fileMode = state.fileMode,
+            emailMode = state.emailMode,
+            onPickDocument = onPickDocument,
+            onPickImage = onPickImage,
+            onPickEmail = { onIntent(QuickCaptureIntent.StartPickingEmail) },
+        )
 
         if (state.hasContent) {
             Row(
@@ -397,15 +412,159 @@ private fun AttachedFile(state: QuickCaptureState, onRemove: () -> Unit) {
     }
 }
 
-/** The two ways in from storage: any file as a doc, or a picture from the photo picker. */
+/** The ways in besides typing: a file, a photo from the picker, or an email from the mailbox. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AttachRow(fileMode: Boolean, onPickDocument: () -> Unit, onPickImage: () -> Unit) {
-    Row(
+private fun AttachRow(
+    fileMode: Boolean,
+    emailMode: Boolean,
+    onPickDocument: () -> Unit,
+    onPickImage: () -> Unit,
+    onPickEmail: () -> Unit,
+) {
+    FlowRow(
         modifier = Modifier.padding(top = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         AttachButton(if (fileMode) "Choose another" else "+ Attach file", onPickDocument)
         AttachButton(if (fileMode) "Another photo" else "+ Photo", onPickImage)
+        AttachButton(if (emailMode) "Another email" else "+ Email", onPickEmail)
+    }
+}
+
+/**
+ * Search the connected mailbox and pick one email (Figma: Topics 1d, extended). Typing asks the
+ * mailbox once it pauses; picking hands the email back to the sheet.
+ */
+@Composable
+private fun EmailPicker(state: QuickCaptureState, onIntent: (QuickCaptureIntent) -> Unit) {
+    var query by rememberSaveable { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 18.dp, end = 18.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+            Label("PICK AN EMAIL", Modifier.weight(1f))
+            Text(
+                "Cancel",
+                style = ChipTextStyle,
+                color = Muted,
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .clip(ChipShape)
+                    .clickable(role = Role.Button) { onIntent(QuickCaptureIntent.CancelPickingEmail) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
+        InputBox(
+            value = query,
+            onValueChange = {
+                query = it
+                onIntent(QuickCaptureIntent.EmailQueryChanged(it))
+            },
+            placeholder = "Sender, subject or words in the mail",
+            textStyle = RowTitleStyle,
+            textColor = Ink,
+            singleLine = true,
+            modifier = Modifier.focusRequester(focusRequester),
+        )
+        Text(emailPickerStatus(state, query), style = HintStyle, color = if (state.emailError != null) Alarm else Muted)
+        state.emailResults.forEach { email ->
+            EmailResultRow(email, onPick = { onIntent(QuickCaptureIntent.PickEmail(email)) })
+        }
+    }
+}
+
+/** One email in the picker: what it's about, who sent it, and a line of it. */
+@Composable
+private fun EmailResultRow(email: SavedEmail, onPick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(FieldShape)
+            .background(Well)
+            .border(1.dp, Edge, FieldShape)
+            .clickable(onClickLabel = "Keep this email", role = Role.Button, onClick = onPick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(
+            email.subject.ifBlank { "(no subject)" },
+            style = RowTitleStyle,
+            color = Ink,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            "from ${email.senderName}",
+            style = MetaStyle.copy(letterSpacing = 0.sp),
+            color = Synapse,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (email.snippet.isNotBlank()) {
+            Text(email.snippet, style = HintStyle, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** What the picker says above the results: what to do, what went wrong, or what it found. */
+private fun emailPickerStatus(state: QuickCaptureState, query: String): String = when {
+    state.emailNotConnected -> "No mailbox is connected. Add your Google account in Settings first."
+    state.emailError != null -> state.emailError
+    state.emailSearching -> "Searching your mail…"
+    query.isBlank() -> "Search your mail the way you would in Gmail — a sender, a subject, a word."
+    state.emailResults.isEmpty() -> "No mail matched \u201C$query\u201D."
+    state.emailResults.size == 1 -> "1 email"
+    else -> "${state.emailResults.size} emails"
+}
+
+/** The email the sheet is holding, and the way back out of it. */
+@Composable
+private fun PickedEmail(email: SavedEmail, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(FieldShape)
+            .background(Well)
+            .border(1.dp, Edge, FieldShape)
+            .padding(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                email.subject.ifBlank { "(no subject)" },
+                style = RowTitleStyle,
+                color = InkSoft,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "from ${email.senderName}",
+                style = MetaStyle.copy(letterSpacing = 0.sp),
+                color = Muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            "REMOVE",
+            style = MetaStyle,
+            color = Muted,
+            modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .semantics { contentDescription = "Remove email" }
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(role = Role.Button, onClick = onRemove)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+        )
     }
 }
 

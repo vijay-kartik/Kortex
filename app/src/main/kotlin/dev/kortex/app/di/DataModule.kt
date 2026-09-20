@@ -9,7 +9,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.data.local.AppDatabase
 import dev.kortex.app.data.local.ChatSessionDao
+import dev.kortex.app.data.auth.GmailAuthManager
 import dev.kortex.app.data.settings.SettingsStore
+import dev.kortex.app.data.topics.GmailEmailDirectory
 import dev.kortex.app.data.topics.LinksLinkCatalog
 import dev.kortex.app.data.topics.LlmTopicSummarizer
 import dev.kortex.core.llm.LlmProvider
@@ -18,6 +20,7 @@ import dev.kortex.core.observability.RoomAgentRunStore
 import dev.kortex.core.store.KortexDatabase
 import dev.kortex.links.data.LinksRepository
 import dev.kortex.links.tagging.PageMetadataFetcher
+import dev.kortex.myinfo.topics.domain.port.EmailDirectory
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import dev.kortex.myinfo.topics.domain.port.TopicSummarizer
 import javax.inject.Singleton
@@ -49,6 +52,12 @@ object DataModule {
     @Provides
     @Singleton
     fun provideLinkCatalog(links: LinksRepository, pages: PageMetadataFetcher): LinkCatalog = LinksLinkCatalog(links, pages)
+
+    /** Topics read the mailbox connected in Settings, with the same read-only token the agent uses. */
+    @Provides
+    @Singleton
+    fun provideEmailDirectory(@ApplicationContext context: Context, settings: SettingsStore): EmailDirectory =
+        GmailEmailDirectory(settings, GmailAuthManager(context))
 
     /** Topic summaries come from the model the user picked in Settings. */
     @Provides

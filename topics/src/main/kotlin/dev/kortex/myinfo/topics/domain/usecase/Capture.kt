@@ -8,6 +8,7 @@ import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.LinkLookup
 import dev.kortex.myinfo.topics.domain.model.NewItem
 import dev.kortex.myinfo.topics.domain.model.PickedFile
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicSaveResult
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
@@ -17,7 +18,9 @@ import dev.kortex.myinfo.topics.domain.port.LinkCatalog
  * a bill; typed text is a note or a bill; and an address is a link, in one of its three shapes.
  * Order matters: the sheet lists them this way.
  */
-fun captureTypes(detection: Detection, file: PickedFile? = null): List<ItemType> = when {
+fun captureTypes(detection: Detection, file: PickedFile? = null, email: SavedEmail? = null): List<ItemType> = when {
+    // A picked email is an email: there is nothing else it could sensibly be saved as.
+    email != null -> listOf(ItemType.Email)
     file != null && file.isImage -> listOf(ItemType.Image, ItemType.Bill, ItemType.Doc)
     file != null -> listOf(ItemType.Doc, ItemType.Bill)
     detection.url != null -> listOf(ItemType.Link, ItemType.Article, ItemType.Video, ItemType.Note)
@@ -25,7 +28,8 @@ fun captureTypes(detection: Detection, file: PickedFile? = null): List<ItemType>
 }
 
 /** The type quick capture starts on: what the file or the text looks like, else a plain link. */
-fun defaultCaptureType(detection: Detection, file: PickedFile? = null): ItemType = when {
+fun defaultCaptureType(detection: Detection, file: PickedFile? = null, email: SavedEmail? = null): ItemType = when {
+    email != null -> ItemType.Email
     file != null -> if (file.isImage) ItemType.Image else ItemType.Doc
     else -> detection.type.takeIf { it in captureTypes(detection) } ?: ItemType.Link
 }
@@ -46,7 +50,7 @@ class CaptureItem(
     private val detectItemType: DetectItemType,
 ) {
     suspend operator fun invoke(draft: CaptureDraft, target: CaptureTarget): CaptureResult {
-        val types = captureTypes(detectItemType(draft.text), draft.file)
+        val types = captureTypes(detectItemType(draft.text), draft.file, draft.email)
         if (draft.type !in types) return CaptureResult.Invalid
         val item = draft.toNewItem() ?: return draft.rejection()
 
@@ -78,6 +82,7 @@ class CaptureItem(
                 pageCount = file.pageCount,
             )
             ItemType.Image -> NewItem.Image(checkNotNull(file).file, caption = title.ifBlank { null })
+            ItemType.Email -> NewItem.Email(checkNotNull(email))
             ItemType.Bill -> {
                 val fields = bill ?: return null
                 val amount = MoneyAmount.parse(fields.amount, fields.currency) ?: return null

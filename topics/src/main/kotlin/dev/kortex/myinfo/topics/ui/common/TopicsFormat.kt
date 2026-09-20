@@ -57,6 +57,7 @@ internal fun ItemType.noun(count: Int): String {
         ItemType.Doc -> "doc"
         ItemType.Image -> "image"
         ItemType.Bill -> "bill"
+        ItemType.Email -> "email"
     }
     return if (count == 1) singular else "${singular}s"
 }

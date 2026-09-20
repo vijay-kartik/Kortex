@@ -12,6 +12,7 @@ import dev.kortex.myinfo.topics.data.files.TopicFileStore
 import dev.kortex.myinfo.topics.data.local.TopicDao
 import dev.kortex.myinfo.topics.data.local.TopicsDatabase
 import dev.kortex.myinfo.topics.domain.port.Clock
+import dev.kortex.myinfo.topics.domain.port.EmailDirectory
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import dev.kortex.myinfo.topics.domain.port.TopicSummarizer
@@ -24,6 +25,7 @@ import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
 import dev.kortex.myinfo.topics.domain.usecase.DetectItemType
 import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
+import dev.kortex.myinfo.topics.domain.usecase.EmailWebAddress
 import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
@@ -32,19 +34,20 @@ import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSuggestions
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
+import dev.kortex.myinfo.topics.domain.usecase.SearchEmails
 import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
 import dev.kortex.myinfo.topics.domain.usecase.SetTopicPinned
 import dev.kortex.myinfo.topics.domain.usecase.SummarizeTopic
 import dev.kortex.myinfo.topics.domain.usecase.UpdateTopic
+import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import javax.inject.Singleton
 
 /**
  * Topics storage and use cases. Domain and data classes carry no DI annotations; they are built
- * here. The host app must bind [LinkCatalog] and [TopicSummarizer].
+ * here. The host app must bind [LinkCatalog], [TopicSummarizer] and [EmailDirectory].
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -54,7 +57,7 @@ object TopicsModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TopicsDatabase =
         Room.databaseBuilder(context, TopicsDatabase::class.java, "topics.db")
-            .addMigrations(TopicsDatabase.MIGRATION_1_2, TopicsDatabase.MIGRATION_2_3)
+            .addMigrations(TopicsDatabase.MIGRATION_1_2, TopicsDatabase.MIGRATION_2_3, TopicsDatabase.MIGRATION_3_4)
             .build()
 
     @Provides
@@ -89,6 +92,12 @@ object TopicsModule {
 
     @Provides
     fun provideObserveTopicSummary(repository: TopicsRepository) = ObserveTopicSummary(repository)
+
+    @Provides
+    fun provideSearchEmails(directory: EmailDirectory) = SearchEmails(directory)
+
+    @Provides
+    fun provideEmailWebAddress(directory: EmailDirectory) = EmailWebAddress(directory)
 
     @Provides
     fun provideSummarizeTopic(repository: TopicsRepository, summarizer: TopicSummarizer, clock: Clock) =

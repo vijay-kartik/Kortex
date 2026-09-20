@@ -3,6 +3,7 @@ package dev.kortex.myinfo.topics.domain
 import dev.kortex.myinfo.topics.domain.model.LinkLookup
 import dev.kortex.myinfo.topics.domain.model.NewItem
 import dev.kortex.myinfo.topics.domain.model.PickedFile
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.SummaryDigest
@@ -10,6 +11,8 @@ import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
 import dev.kortex.myinfo.topics.domain.model.TopicSummary
+import dev.kortex.myinfo.topics.domain.port.EmailDirectory
+import dev.kortex.myinfo.topics.domain.port.EmailSearchResult
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import dev.kortex.myinfo.topics.domain.port.TopicSummarizer
@@ -143,4 +146,25 @@ class FakeTopicSummarizer(var reply: String = "You're planning a trip.") : Topic
         failure?.let { throw it }
         return reply
     }
+}
+
+/**
+ * A mailbox in a map: [emails] are searched by a plain substring of subject or sender, and
+ * [result] overrides the answer when a test wants a failure instead.
+ */
+class FakeEmailDirectory(var emails: List<SavedEmail> = emptyList()) : EmailDirectory {
+    var result: EmailSearchResult? = null
+    val queries = mutableListOf<String>()
+
+    override suspend fun search(query: String, limit: Int): EmailSearchResult {
+        queries += query
+        result?.let { return it }
+        val matches = emails.filter {
+            it.subject.contains(query, ignoreCase = true) || it.from.contains(query, ignoreCase = true)
+        }
+        return EmailSearchResult.Found(matches.take(limit))
+    }
+
+    override fun addressOf(email: SavedEmail): String? =
+        email.messageId.takeIf { it.isNotBlank() }?.let { "https://mail.example.com/#all/$it" }
 }

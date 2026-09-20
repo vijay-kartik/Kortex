@@ -3,6 +3,7 @@ package dev.kortex.myinfo.topics.ui.capture
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.LinkLookup
 import dev.kortex.myinfo.topics.domain.model.PickedFile
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.usecase.Detection
 import dev.kortex.myinfo.topics.domain.usecase.MoneyAmount
 import dev.kortex.myinfo.topics.domain.usecase.captureTypes
@@ -22,6 +23,16 @@ data class QuickCaptureState(
     val file: PickedFile? = null,
     /** A picked file is still being copied in. */
     val attaching: Boolean = false,
+    /** An email picked from the mailbox; it stands in for the pasted text, as a file does. */
+    val email: SavedEmail? = null,
+    /** The mailbox picker is open over the sheet. */
+    val pickingEmail: Boolean = false,
+    val emailResults: List<SavedEmail> = emptyList(),
+    val emailSearching: Boolean = false,
+    /** Set when the mailbox couldn't be read; null while all is well. */
+    val emailError: String? = null,
+    /** No mail account is connected, so there is nothing to search. */
+    val emailNotConnected: Boolean = false,
     /** The user's pick; ignored while it doesn't suit the text or the file. */
     val chosenType: ItemType? = null,
     /** For [Detection.url]; null until the lookup finishes. */
@@ -39,17 +50,20 @@ data class QuickCaptureState(
     val saving: Boolean = false,
     val error: CaptureError? = null,
 ) {
-    val types: List<ItemType> = captureTypes(detection, file)
-    val type: ItemType = chosenType?.takeIf { it in types } ?: defaultCaptureType(detection, file)
+    val types: List<ItemType> = captureTypes(detection, file, email)
+    val type: ItemType = chosenType?.takeIf { it in types } ?: defaultCaptureType(detection, file, email)
 
-    /** There is something to save: text typed, or a file attached. */
-    val hasContent: Boolean = file != null || !blank
+    /** There is something to save: text typed, a file attached, or an email picked. */
+    val hasContent: Boolean = file != null || email != null || !blank
 
     /** The type on screen is the one detected, not a change the user made. */
-    val typeIsDetected: Boolean = hasContent && type == defaultCaptureType(detection, file)
+    val typeIsDetected: Boolean = hasContent && type == defaultCaptureType(detection, file, email)
 
     /** A file stands in for the pasted text, so only one of the two is on screen at a time. */
     val fileMode: Boolean = file != null || attaching
+
+    /** So does an email. */
+    val emailMode: Boolean = email != null
 
     /** Bills are the only type with fields of their own (Figma: Topics 1d, bill). */
     val showBillFields: Boolean = type == ItemType.Bill
@@ -59,7 +73,8 @@ data class QuickCaptureState(
         ItemType.Link, ItemType.Article, ItemType.Video -> detection.url != null
         ItemType.Doc, ItemType.Image -> file != null
         ItemType.Bill -> file != null
-        ItemType.Note -> false
+        // An email is shown as itself; its subject isn't the user's to write.
+        ItemType.Note, ItemType.Email -> false
     }
 
     val canSave: Boolean = hasContent && !saving && !attaching && (creatingTopic || selectedTopicId != null)
@@ -83,6 +98,13 @@ sealed interface QuickCaptureIntent {
     /** A file came back from the picker, as its `content://` address. */
     data class AttachFile(val uri: String) : QuickCaptureIntent
     data object RemoveFile : QuickCaptureIntent
+
+    // ── Picking an email ──
+    data object StartPickingEmail : QuickCaptureIntent
+    data object CancelPickingEmail : QuickCaptureIntent
+    data class EmailQueryChanged(val query: String) : QuickCaptureIntent
+    data class PickEmail(val email: SavedEmail) : QuickCaptureIntent
+    data object RemoveEmail : QuickCaptureIntent
 
     /** The amount changed, so an error about the old one no longer applies. */
     data object BillAmountEdited : QuickCaptureIntent

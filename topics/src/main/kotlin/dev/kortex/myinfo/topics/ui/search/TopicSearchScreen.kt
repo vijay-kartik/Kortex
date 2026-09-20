@@ -420,6 +420,7 @@ private fun scopeLabel(scope: SearchScope): String = when (scope) {
     SearchScope.Links -> "LINKS"
     SearchScope.Files -> "FILES"
     SearchScope.Bills -> "BILLS"
+    SearchScope.Emails -> "EMAILS"
 }
 
 /** "12 ITEMS IN 3 TOPICS", or "3 TOPICS" when only names matched. */

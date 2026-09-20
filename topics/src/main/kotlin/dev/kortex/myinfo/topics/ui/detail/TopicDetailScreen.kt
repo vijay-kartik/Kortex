@@ -166,6 +166,9 @@ private fun TopicDetailContent(
             is TopicDetailEffect.OpenFile -> if (!context.openFile(effect.file)) {
                 scope.launch { snackbars.showSnackbar("No app on this phone opens that file.") }
             }
+            is TopicDetailEffect.OpenEmail -> if (!context.openEmail(effect.address)) {
+                scope.launch { snackbars.showSnackbar("Couldn't open your mail app.") }
+            }
             is TopicDetailEffect.ShareText -> context.shareText(effect.subject, effect.text)
             is TopicDetailEffect.CopyText -> {
                 clipboard.setText(AnnotatedString(effect.text))
@@ -807,7 +810,8 @@ private fun EmptyTopic(onAdd: () -> Unit) {
  * Tapping does something: opens a link in the browser or a kept file in whatever handles its
  * type, or copies a note. A bill without an invoice has nothing to do on a tap.
  */
-private fun TopicItem.opens(): Boolean = type.isLink || storedFile != null || this is TopicItem.Note
+private fun TopicItem.opens(): Boolean =
+    type.isLink || storedFile != null || this is TopicItem.Note || this is TopicItem.Email
 
 /** "25 ITEMS · UPDATED 2H AGO". */
 private fun metaLine(detail: TopicDetail, nowMillis: Long): String {
@@ -815,13 +819,15 @@ private fun metaLine(detail: TopicDetail, nowMillis: Long): String {
     return "$count ${if (count == 1) "ITEM" else "ITEMS"} · ${updatedLabel(detail.topic.updatedAtMillis, nowMillis)}"
 }
 
-private fun Context.openUrl(url: String) {
-    try {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    } catch (e: ActivityNotFoundException) {
-        // No browser; nothing sensible to open it with.
-    }
+/** @return false when the phone has no browser to open it with. */
+private fun Context.openUrl(url: String): Boolean = try {
+    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    true
+} catch (e: ActivityNotFoundException) {
+    false
 }
+
+private const val GMAIL_PACKAGE = "com.google.android.gm"
 
 /**
  * Hands a kept file to whichever app opens its type, with read access for that one launch.
@@ -837,6 +843,25 @@ private fun Context.openFile(file: StoredFile): Boolean {
         true
     } catch (e: ActivityNotFoundException) {
         false
+    }
+}
+
+/**
+ * Opens a kept email. Gmail is asked first, so the mail lands in the app the user reads it in
+ * rather than in a browser tab; if it won't take the address, any browser will.
+ *
+ * @return false when nothing on the phone opened it.
+ */
+private fun Context.openEmail(address: String): Boolean {
+    val uri = Uri.parse(address)
+    val inMailApp = Intent(Intent.ACTION_VIEW, uri)
+        .setPackage(GMAIL_PACKAGE)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    return try {
+        startActivity(inMailApp)
+        true
+    } catch (e: ActivityNotFoundException) {
+        openUrl(address)
     }
 }
 

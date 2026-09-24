@@ -7,24 +7,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -33,33 +23,20 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.kortex.design.Edge
 import dev.kortex.design.KortexTheme
 import dev.kortex.design.Muted
-import dev.kortex.design.Panel
 import dev.kortex.design.Synapse
-import dev.kortex.design.SynapseDim
 import dev.kortex.design.Void
 import dev.kortex.design.anim.StandardEasing
 import dev.kortex.mvi.ObserveEffects
@@ -68,10 +45,12 @@ import dev.kortex.myinfo.topics.domain.model.Money
 import dev.kortex.myinfo.topics.domain.model.Progress
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicOverview
-import dev.kortex.myinfo.topics.domain.model.TopicSort
 import dev.kortex.myinfo.topics.ui.common.BodyStyle
-import dev.kortex.myinfo.topics.ui.common.ChipStyle
 import dev.kortex.myinfo.topics.ui.common.MetaStyle
+import dev.kortex.myinfo.topics.ui.list.components.DeletedTopicRow
+import dev.kortex.myinfo.topics.ui.list.components.SearchPill
+import dev.kortex.myinfo.topics.ui.list.components.SortChips
+import dev.kortex.myinfo.topics.ui.list.components.TopicCard
 
 /** Connects [TopicsListScreen] to its ViewModel and hands navigation to the host. */
 @Composable
@@ -138,8 +117,6 @@ private fun TopicsList(
     val nowMillis = remember(state.topics) { System.currentTimeMillis() }
     val openId = state.openOptionsTopicId
     val optionsOpen = openId != null
-    val currentOptionsOpen by rememberUpdatedState(optionsOpen)
-    val currentOnIntent by rememberUpdatedState(onIntent)
     val tapOutside = remember { OpenCardBounds() }
 
     BackHandler(enabled = optionsOpen) { onIntent(TopicsListIntent.HideOptions) }
@@ -154,21 +131,7 @@ private fun TopicsList(
     Column(
         modifier
             .fillMaxSize()
-            .onGloballyPositioned { tapOutside.screen = it }
-            // Initial pass, so a tap outside the open card only closes the tray: it never presses
-            // what's under it or scrolls the list.
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    if (!currentOptionsOpen || tapOutside.contains(down.position)) return@awaitEachGesture
-                    down.consume()
-                    currentOnIntent(TopicsListIntent.HideOptions)
-                    do {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        event.changes.forEach { it.consume() }
-                    } while (event.changes.any { it.pressed })
-                }
-            },
+            .tapOutsideToClose(tapOutside, open = optionsOpen) { onIntent(TopicsListIntent.HideOptions) },
     ) {
         Column(Modifier.graphicsLayer { alpha = chromeAlpha }) {
             Text(
@@ -247,76 +210,6 @@ private fun TopicsList(
         }
     }
 }
-
-/** Opens search across every topic (Figma: Topics 1a, 1f). A pill, not a field: the screen it
- * opens owns the query and the keyboard. */
-@Composable
-private fun SearchPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(12.dp)
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(Panel)
-            .border(1.dp, Edge, shape)
-            .clickable(onClickLabel = "Search topics", role = Role.Button, onClick = onClick)
-            .heightIn(min = 48.dp)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        // Decoration: the words say what the pill does, so TalkBack skips the glyph.
-        Text("⌕", style = BodyStyle.copy(fontSize = 17.sp), color = Muted, modifier = Modifier.clearAndSetSemantics { })
-        Text("Search notes, links, files and bills", style = BodyStyle, color = Muted)
-    }
-}
-
-@Composable
-private fun SortChips(
-    selected: TopicSort,
-    pinnedCount: Int,
-    onSelect: (TopicSort) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SortChip("RECENT", selected == TopicSort.Recent) { onSelect(TopicSort.Recent) }
-        SortChip("PINNED $pinnedCount", selected == TopicSort.Pinned) { onSelect(TopicSort.Pinned) }
-        SortChip("A–Z", selected == TopicSort.Alphabetical) { onSelect(TopicSort.Alphabetical) }
-    }
-}
-
-@Composable
-private fun SortChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(8.dp)
-    Text(
-        label,
-        style = ChipStyle,
-        color = if (selected) Synapse else Muted,
-        modifier = Modifier
-            .minimumInteractiveComponentSize()
-            .clip(shape)
-            .background(if (selected) SynapseDim else Panel)
-            .border(1.dp, if (selected) Synapse else Edge, shape)
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-    )
-}
-
-/** Where the open card sits within the screen, so a tap anywhere else can close its tray. */
-private class OpenCardBounds {
-    var screen: LayoutCoordinates? = null
-    var card: LayoutCoordinates? = null
-
-    /** [position] is in [screen] coordinates. Only the card's visible part counts. */
-    fun contains(position: Offset): Boolean {
-        val screen = screen?.takeIf { it.isAttached } ?: return false
-        val card = card?.takeIf { it.isAttached } ?: return false
-        return screen.localBoundingBoxOf(card).contains(position)
-    }
-}
-
-private const val DIMMED_ALPHA = 0.35f
-private const val SWAP_MS = 200
 
 // ── Previews ──────────────────────────────────────────────────────
 

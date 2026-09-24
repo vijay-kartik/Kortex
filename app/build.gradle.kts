@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    id("com.google.gms.google-services")
 }
 
 // Read the OpenAI key from local.properties (gitignored) so secrets never enter VCS.
@@ -73,6 +74,8 @@ dependencies {
     implementation(project(":links"))
     implementation(project(":topics"))
     implementation(project(":design"))
+
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)

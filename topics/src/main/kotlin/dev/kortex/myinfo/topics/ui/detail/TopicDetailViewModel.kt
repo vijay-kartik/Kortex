@@ -14,7 +14,6 @@ import dev.kortex.myinfo.topics.domain.model.storedFile
 import dev.kortex.myinfo.topics.domain.port.Clock
 import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
-import dev.kortex.myinfo.topics.domain.usecase.RouteToEmail
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
@@ -35,7 +34,6 @@ class TopicDetailViewModel @AssistedInject constructor(
     private val clock: Clock,
     private val setTopicPinned: SetTopicPinned,
     private val setItemDone: SetItemDone,
-    private val routeToEmail: RouteToEmail,
     private val setItemsPinned: SetItemsPinned,
     private val moveItems: MoveItems,
     private val deleteItems: DeleteItems,
@@ -81,6 +79,7 @@ class TopicDetailViewModel @AssistedInject constructor(
             is TopicDetailIntent.SelectFilter -> setState { copy(filter = intent.type, selected = emptySet()) }
             is TopicDetailIntent.SelectMode -> setState { copy(mode = intent.mode, nowMillis = clock.nowMillis()) }
             is TopicDetailIntent.OpenItem -> open(intent.item)
+            TopicDetailIntent.CloseEmail -> setState { copy(reading = null) }
             is TopicDetailIntent.SetItemDone -> viewModelScope.launch { setItemDone(intent.item.id, intent.done) }
             TopicDetailIntent.Summarize -> summarize()
 
@@ -190,7 +189,8 @@ class TopicDetailViewModel @AssistedInject constructor(
 
     /**
      * What tapping an item does: a link opens in the browser, a kept file in whatever opens its
-     * type, and a note — which has nowhere to open — copies its text.
+     * type, an email in the reader over the feed, and a note — which has nowhere to open — copies
+     * its text.
      */
     private fun open(item: TopicItem) {
         when (item) {
@@ -201,10 +201,8 @@ class TopicDetailViewModel @AssistedInject constructor(
             is TopicItem.Doc, is TopicItem.Image, is TopicItem.Bill ->
                 item.storedFile?.let { sendEffect(TopicDetailEffect.OpenFile(it)) }
             is TopicItem.Note -> sendEffect(TopicDetailEffect.CopyText(item.text))
-            // The mail stayed in the mailbox; this goes back to it.
-            is TopicItem.Email -> routeToEmail(item.email).takeUnless { it.nowhere }?.let {
-                sendEffect(TopicDetailEffect.OpenEmail(it.appSearch, it.web))
-            }
+            // No mail app opens one message from outside, so it is read here, fetched from the mailbox.
+            is TopicItem.Email -> setState { copy(reading = item.email) }
         }
     }
 }

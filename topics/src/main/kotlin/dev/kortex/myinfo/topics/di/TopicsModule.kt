@@ -8,9 +8,11 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.myinfo.topics.data.RoomTopicsRepository
+import dev.kortex.myinfo.topics.data.files.EmailAttachmentCache
 import dev.kortex.myinfo.topics.data.files.TopicFileStore
 import dev.kortex.myinfo.topics.data.local.TopicDao
 import dev.kortex.myinfo.topics.data.local.TopicsDatabase
+import dev.kortex.myinfo.topics.domain.port.AttachmentCache
 import dev.kortex.myinfo.topics.domain.port.Clock
 import dev.kortex.myinfo.topics.domain.port.EmailDirectory
 import dev.kortex.myinfo.topics.domain.port.FileVault
@@ -25,6 +27,7 @@ import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
 import dev.kortex.myinfo.topics.domain.usecase.DetectItemType
 import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
+import dev.kortex.myinfo.topics.domain.usecase.FetchEmailAttachment
 import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
@@ -33,7 +36,7 @@ import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSuggestions
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
-import dev.kortex.myinfo.topics.domain.usecase.RouteToEmail
+import dev.kortex.myinfo.topics.domain.usecase.ReadEmail
 import dev.kortex.myinfo.topics.domain.usecase.SearchEmails
 import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
@@ -70,6 +73,10 @@ object TopicsModule {
 
     @Provides
     @Singleton
+    fun provideAttachmentCache(@ApplicationContext context: Context): AttachmentCache = EmailAttachmentCache(context)
+
+    @Provides
+    @Singleton
     fun provideRepository(dao: TopicDao, linkCatalog: LinkCatalog, fileVault: FileVault): TopicsRepository =
         RoomTopicsRepository(dao, linkCatalog, fileVault)
 
@@ -97,7 +104,10 @@ object TopicsModule {
     fun provideSearchEmails(directory: EmailDirectory) = SearchEmails(directory)
 
     @Provides
-    fun provideRouteToEmail(directory: EmailDirectory) = RouteToEmail(directory)
+    fun provideReadEmail(directory: EmailDirectory) = ReadEmail(directory)
+
+    @Provides
+    fun provideFetchEmailAttachment(directory: EmailDirectory, cache: AttachmentCache) = FetchEmailAttachment(directory, cache)
 
     @Provides
     fun provideSummarizeTopic(repository: TopicsRepository, summarizer: TopicSummarizer, clock: Clock) =

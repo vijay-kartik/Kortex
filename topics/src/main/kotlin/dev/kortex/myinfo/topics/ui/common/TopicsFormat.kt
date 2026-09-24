@@ -68,6 +68,17 @@ internal fun formatDate(atMillis: Long, nowMillis: Long, locale: Locale = Locale
     return SimpleDateFormat(if (far) "d MMM yyyy" else "d MMM", locale).format(Date(atMillis)).uppercase(locale)
 }
 
+/** "14 Mar 2025, 09:41": when an email was sent, in full, as its header reads. */
+internal fun formatDateTime(atMillis: Long, locale: Locale = Locale.getDefault()): String =
+    SimpleDateFormat("d MMM yyyy, HH:mm", locale).format(Date(atMillis))
+
+/** "840 B", "12 KB", "3.4 MB": a file's size, as an attachment row gives it. */
+internal fun formatSize(bytes: Long): String = when {
+    bytes < 1_024 -> "$bytes B"
+    bytes < 1_024 * 1_024 -> "${bytes / 1_024} KB"
+    else -> "%.1f MB".format(bytes / (1_024.0 * 1_024.0))
+}
+
 /** "DUE IN 3 DAYS", "DUE TOMORROW", "DUE TODAY", "3 DAYS OVERDUE" — how a bill's date reads. */
 internal fun dueLabel(dueAtMillis: Long, nowMillis: Long): String {
     // Whole days apart on the calendar, so "tomorrow" doesn't depend on the time of day.

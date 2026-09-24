@@ -11,7 +11,12 @@ import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
 import dev.kortex.myinfo.topics.domain.model.TopicSummary
+import dev.kortex.myinfo.topics.domain.port.AttachmentCache
+import dev.kortex.myinfo.topics.domain.port.AttachmentDownload
+import dev.kortex.myinfo.topics.domain.port.EmailAttachment
 import dev.kortex.myinfo.topics.domain.port.EmailDirectory
+import dev.kortex.myinfo.topics.domain.port.EmailMessage
+import dev.kortex.myinfo.topics.domain.port.EmailReadResult
 import dev.kortex.myinfo.topics.domain.port.EmailSearchResult
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
@@ -150,7 +155,8 @@ class FakeTopicSummarizer(var reply: String = "You're planning a trip.") : Topic
 
 /**
  * A mailbox in a map: [emails] are searched by a plain substring of subject or sender, and
- * [result] overrides the answer when a test wants a failure instead.
+ * [result] overrides the answer when a test wants a failure instead. Reading a kept email answers
+ * [readResult] when set, and otherwise gives it a body from its snippet.
  */
 class FakeEmailDirectory(var emails: List<SavedEmail> = emptyList()) : EmailDirectory {
     var result: EmailSearchResult? = null
@@ -165,9 +171,42 @@ class FakeEmailDirectory(var emails: List<SavedEmail> = emptyList()) : EmailDire
         return EmailSearchResult.Found(matches.take(limit))
     }
 
-    override fun addressOf(email: SavedEmail): String? =
-        email.messageId.takeIf { it.isNotBlank() }?.let { "https://mail.example.com/#all/$it" }
+    var readResult: EmailReadResult? = null
+    val reads = mutableListOf<SavedEmail>()
+    var downloadResult: AttachmentDownload = AttachmentDownload.Downloaded(byteArrayOf(1, 2, 3))
+    val downloads = mutableListOf<EmailAttachment>()
 
-    override fun searchQueryFor(email: SavedEmail): String? =
-        email.rfc822MessageId?.takeIf { it.isNotBlank() }?.let { "rfc822msgid:$it" }
+    override suspend fun download(email: SavedEmail, attachment: EmailAttachment): AttachmentDownload {
+        downloads += attachment
+        return downloadResult
+    }
+
+    override suspend fun read(email: SavedEmail): EmailReadResult {
+        reads += email
+        readResult?.let { return it }
+        return EmailReadResult.Read(
+            EmailMessage(
+                subject = email.subject,
+                from = email.from,
+                to = email.accountEmail.orEmpty(),
+                cc = "",
+                sentAtMillis = email.sentAtMillis,
+                bodyText = email.snippet,
+                bodyHtml = null,
+                attachments = emptyList(),
+            ),
+        )
+    }
+}
+
+/** Keeps what it is given in a map; [failing] makes every write fail. */
+class FakeAttachmentCache : AttachmentCache {
+    var failing = false
+    val written = mutableMapOf<String, ByteArray>()
+
+    override suspend fun put(name: String, mimeType: String, bytes: ByteArray): StoredFile? {
+        if (failing) return null
+        written[name] = bytes
+        return StoredFile("/cache/email-attachments/$name", mimeType)
+    }
 }

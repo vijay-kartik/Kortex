@@ -32,7 +32,9 @@ data class GmailMessage(
     val cc: String,
     val date: String,
     val snippet: String,
+    /** The `text/plain` part; blank when the mail has none. */
     val bodyText: String,
+    /** The `text/html` part, whether or not there is a plain-text one; null when the mail has none. */
     val bodyHtml: String?,
     val attachments: List<GmailAttachment>,
     val labelIds: List<String>,
@@ -40,6 +42,8 @@ data class GmailMessage(
     val rfc822MessageId: String = "",
     /** When Gmail received it, in epoch milliseconds; null when it didn't say. */
     val internalDateMillis: Long? = null,
+    /** Images the HTML body shows through `cid:` references, rather than from the web. */
+    val inlineImages: List<GmailInlineImage> = emptyList(),
 )
 
 data class GmailAttachment(
@@ -47,6 +51,18 @@ data class GmailAttachment(
     val filename: String,
     val mimeType: String,
     val size: Int,
+)
+
+/**
+ * An image carried in the mail for its HTML to show, named there as `cid:<contentId>`. Small ones
+ * come inline as [data]; larger ones are fetched by [attachmentId] with [GmailApi.getAttachment].
+ */
+data class GmailInlineImage(
+    /** The part's `Content-ID`, without its angle brackets. */
+    val contentId: String,
+    val mimeType: String,
+    val attachmentId: String?,
+    val data: ByteArray?,
 )
 
 /**
@@ -169,12 +185,27 @@ private fun parseMessage(json: JsonObject): GmailMessage {
     // Recursive walk to collect body text parts and attachment metadata.
     val bodyParts = mutableListOf<Pair<String, String>>() // mimeType → decoded text
     val attachments = mutableListOf<GmailAttachment>()
+    val inlineImages = mutableListOf<GmailInlineImage>()
 
     fun walkParts(part: JsonObject) {
         val mimeType = part["mimeType"]?.jsonPrimitive?.content ?: ""
         val filename = part["filename"]?.jsonPrimitive?.content ?: ""
         val body = part["body"]?.jsonObject
         val parts = part["parts"]?.jsonArray
+
+        // An image the HTML shows by its Content-ID. Noted on the side: whether it is also listed
+        // as an attachment below is unchanged.
+        val contentId = part["headers"]?.jsonArray?.firstOrNull {
+            it.jsonObject["name"]?.jsonPrimitive?.content.equals("Content-ID", ignoreCase = true)
+        }?.jsonObject?.get("value")?.jsonPrimitive?.content?.trim()?.removeSurrounding("<", ">")
+        if (!contentId.isNullOrBlank() && mimeType.startsWith("image/") && body != null) {
+            inlineImages += GmailInlineImage(
+                contentId = contentId,
+                mimeType = mimeType,
+                attachmentId = body["attachmentId"]?.jsonPrimitive?.content,
+                data = body["data"]?.jsonPrimitive?.content?.let { Base64.getUrlDecoder().decode(it) },
+            )
+        }
 
         when {
             // Container type — recurse into children.
@@ -217,12 +248,13 @@ private fun parseMessage(json: JsonObject): GmailMessage {
         date = headerValue("Date"),
         snippet = snippet,
         bodyText = textBody,
-        bodyHtml = if (textBody.isBlank()) htmlBody else null,
+        bodyHtml = htmlBody,
         attachments = attachments,
         labelIds = labelIds,
         // Angle brackets are part of the header's syntax, not of the id itself.
         rfc822MessageId = headerValue("Message-ID").trim().removeSurrounding("<", ">"),
         internalDateMillis = json["internalDate"]?.jsonPrimitive?.content?.toLongOrNull(),
+        inlineImages = inlineImages,
     )
 }
 

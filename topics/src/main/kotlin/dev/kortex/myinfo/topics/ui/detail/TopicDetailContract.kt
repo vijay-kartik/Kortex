@@ -2,6 +2,7 @@ package dev.kortex.myinfo.topics.ui.detail
 
 import dev.kortex.myinfo.topics.domain.model.FeedSection
 import dev.kortex.myinfo.topics.domain.model.ItemType
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
 import dev.kortex.myinfo.topics.domain.model.TopicFeed
@@ -39,6 +40,8 @@ data class TopicDetailState(
     val summarizing: Boolean = false,
     /** Why the last attempt failed, until the next one starts. */
     val summaryError: String? = null,
+    /** The email open in the reader over the feed. */
+    val reading: SavedEmail? = null,
 ) {
     /** The card shows once there is something to summarise, or a summary to show. */
     val showSummaryCard: Boolean = detail != null && (detail.items.isNotEmpty() || summary != null)
@@ -83,6 +86,9 @@ sealed interface TopicDetailIntent {
     data class SelectMode(val mode: TopicViewMode) : TopicDetailIntent
     data class OpenItem(val item: TopicItem) : TopicDetailIntent
 
+    /** Back out of the email reader to the feed. */
+    data object CloseEmail : TopicDetailIntent
+
     /** Tick an article read, a video watched or a bill paid — or untick it. */
     data class SetItemDone(val item: TopicItem, val done: Boolean) : TopicDetailIntent
 
@@ -123,11 +129,6 @@ sealed interface TopicDetailEffect {
     /** Hand a kept doc, image or invoice to whichever app opens that type. */
     data class OpenFile(val file: StoredFile) : TopicDetailEffect
 
-    /**
-     * Open a kept email where it lives: [appSearch] is a query the mail app can run to find it,
-     * [web] the address that opens the mail itself in a browser. Whichever works.
-     */
-    data class OpenEmail(val appSearch: String?, val web: String?) : TopicDetailEffect
     data class ShareText(val subject: String, val text: String) : TopicDetailEffect
 
     /** Put [text] on the clipboard: tapping a note copies it. */

@@ -1,6 +1,5 @@
 package dev.kortex.myinfo.topics.ui
 
-import dev.kortex.myinfo.topics.domain.FakeEmailDirectory
 import dev.kortex.myinfo.topics.domain.FakeTopicSummarizer
 import dev.kortex.myinfo.topics.domain.FakeTopicsRepository
 import dev.kortex.myinfo.topics.domain.model.ItemType
@@ -17,7 +16,6 @@ import dev.kortex.myinfo.topics.domain.model.TopicViewMode
 import dev.kortex.myinfo.topics.domain.port.Clock
 import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
-import dev.kortex.myinfo.topics.domain.usecase.RouteToEmail
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
@@ -54,7 +52,6 @@ import org.junit.Test
 class TopicDetailTest {
     private val repository = FakeTopicsRepository()
     private val summarizer = FakeTopicSummarizer(reply = "You're planning 3 days in Dubai.")
-    private val mailbox = FakeEmailDirectory()
     private val topic = Topic(7, "Trip to Dubai", purpose = "4 nights in March", pinned = false, sections = setOf(ItemType.Note, ItemType.Doc), createdAtMillis = 0, updatedAtMillis = 0)
     private val video = TopicItem.Video(1, 7, addedAtMillis = 30, link(1, "https://youtu.be/a", "Dubai in 3 days"), durationSeconds = null, watched = false)
     private val note = TopicItem.Note(2, 7, addedAtMillis = 20, text = "Metro closes 00:30")
@@ -156,31 +153,24 @@ class TopicDetailTest {
     }
 
     @Test
-    fun `tapping an email offers the mail app a search for it, and the web as a fallback`() = runTest {
+    fun `tapping an email opens it in the reader, and back returns to the feed`() = runTest {
         val email = emailItem(rfc822MessageId = "abc@visa.example")
         val viewModel = viewModel()
 
         viewModel.onIntent(TopicDetailIntent.OpenItem(email))
+        assertEquals(email.email, viewModel.state.value.reading)
 
-        assertEquals(
-            TopicDetailEffect.OpenEmail(
-                appSearch = "rfc822msgid:abc@visa.example",
-                web = "https://mail.example.com/#all/18c2a3f",
-            ),
-            viewModel.effects.first(),
-        )
+        viewModel.onIntent(TopicDetailIntent.CloseEmail)
+        assertNull(viewModel.state.value.reading)
     }
 
     @Test
-    fun `an email with no Message-ID still opens on the web`() = runTest {
+    fun `tapping an email hands nothing to another app`() = runTest {
         val viewModel = viewModel()
 
         viewModel.onIntent(TopicDetailIntent.OpenItem(emailItem(rfc822MessageId = null)))
 
-        assertEquals(
-            TopicDetailEffect.OpenEmail(appSearch = null, web = "https://mail.example.com/#all/18c2a3f"),
-            viewModel.effects.first(),
-        )
+        assertNull(withTimeoutOrNull(100) { viewModel.effects.first() })
     }
 
     private fun emailItem(rfc822MessageId: String?) = TopicItem.Email(
@@ -417,7 +407,6 @@ class TopicDetailTest {
             clock = Clock { NOW },
             setTopicPinned = SetTopicPinned(repository),
             setItemDone = SetItemDone(repository, Clock { NOW }),
-            routeToEmail = RouteToEmail(mailbox),
             setItemsPinned = SetItemsPinned(repository, Clock { NOW }),
             moveItems = MoveItems(repository, Clock { NOW }),
             deleteItems = DeleteItems(repository, Clock { NOW }),

@@ -1,4 +1,4 @@
-package dev.kortex.links.ui
+package dev.kortex.design
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
@@ -50,21 +50,13 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
-import dev.kortex.design.R
-import dev.kortex.design.Edge
 import dev.kortex.design.anim.EmphasizedAccelerate
 import dev.kortex.design.anim.EmphasizedDecelerate
-import dev.kortex.design.Grotesk
-import dev.kortex.design.Ink
-import dev.kortex.design.Mono
-import dev.kortex.design.Muted
-import dev.kortex.design.Panel
 import dev.kortex.design.anim.StandardEasing
-import dev.kortex.design.Synapse
 import kotlin.math.roundToInt
 
 /**
- * Count line + search pill. Focusing the pill expands it to full width (Figma: Search anim / Spec):
+ * [meta] line + search pill, shared by the Links and Topics tabs so both search the same way. Focusing the pill expands it to full width (Figma: Search anim / Spec):
  *
  * 1. 0–150ms, emphasized-accelerate: pill's left edge travels left, border warms to Synapse 60%,
  *    the count line drops 18dp and dims as it tucks under the field, the list drops 12dp.
@@ -76,14 +68,14 @@ import kotlin.math.roundToInt
  * the query, so reopening puts the cursor after it.
  */
 @Composable
-internal fun LinksSearchHeader(
-    linkCount: Int,
-    tagCount: Int,
+fun SearchHeader(
+    meta: String,
     query: String,
     onQueryChange: (String) -> Unit,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    hint: String = "Search",
 ) {
     val progress = remember { Animatable(if (expanded) 1f else 0f) }
     LaunchedEffect(expanded) {
@@ -117,8 +109,8 @@ internal fun LinksSearchHeader(
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
     // The resting pill hugs its text; it only ever grows from this width.
-    val restWidth = remember(query, textStyle, density) {
-        val textWidth = textMeasurer.measure(query.ifEmpty { HINT }, textStyle, maxLines = 1).size.width
+    val restWidth = remember(query, hint, textStyle, density) {
+        val textWidth = textMeasurer.measure(query.ifEmpty { hint }, textStyle, maxLines = 1).size.width
         with(density) { (PILL_CHROME_WIDTH + textWidth.toDp() + 1.dp).coerceAtMost(PILL_REST_MAX_WIDTH) }
     }
 
@@ -129,7 +121,7 @@ internal fun LinksSearchHeader(
             .height(HEADER_HEIGHT + motion.listShift),
     ) {
         Text(
-            "${countLabel(linkCount, "LINK")} · ${countLabel(tagCount, "TAG")}",
+            meta,
             style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 1.sp),
             color = Muted,
             modifier = Modifier
@@ -139,6 +131,7 @@ internal fun LinksSearchHeader(
         SearchPill(
             query = query,
             onQueryChange = onQueryChange,
+            hint = hint,
             motion = motion,
             expanded = expanded,
             onFocused = { onExpandedChange(true) },
@@ -164,6 +157,7 @@ internal fun LinksSearchHeader(
 private fun SearchPill(
     query: String,
     onQueryChange: (String) -> Unit,
+    hint: String,
     motion: SearchMotion,
     expanded: Boolean,
     onFocused: () -> Unit,
@@ -203,7 +197,7 @@ private fun SearchPill(
                 Box(Modifier.weight(1f)) {
                     if (query.isEmpty()) {
                         Text(
-                            HINT,
+                            hint,
                             style = textStyle,
                             color = Muted,
                             maxLines = 1,
@@ -256,9 +250,9 @@ private class SearchMotion(progress: Float) {
 
 private fun mix(start: Float, stop: Float, fraction: Float) = start + (stop - start) * fraction
 
-private fun countLabel(count: Int, noun: String) = "$count ${if (count == 1) noun else noun + "S"}"
+/** "1 LINK", "3 LINKS": [noun] is the singular, in capitals. */
+fun countLabel(count: Int, noun: String) = "$count ${if (count == 1) noun else noun + "S"}"
 
-private const val HINT = "Search"
 private const val EXPAND_MS = 400
 private const val HANDOFF_MS = 150
 private const val HANDOFF = 0.5f

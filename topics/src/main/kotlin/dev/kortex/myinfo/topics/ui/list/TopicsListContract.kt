@@ -49,14 +49,10 @@ sealed interface TopicsListIntent {
     data class Delete(val topicId: Long) : TopicsListIntent
     data object UndoDelete : TopicsListIntent
     data object CreateTopic : TopicsListIntent
-    data object Search : TopicsListIntent
     data class AcceptSuggestion(val suggestion: TopicSuggestion) : TopicsListIntent
 }
 
 sealed interface TopicsListEffect {
     data class OpenTopic(val topicId: Long) : TopicsListEffect
     data object OpenNewTopic : TopicsListEffect
-
-    /** Search across every topic (Figma: Topics 1f); full-screen, so the host shows it. */
-    data object OpenSearch : TopicsListEffect
 }

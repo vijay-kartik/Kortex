@@ -45,7 +45,6 @@ import dev.kortex.links.ui.LinksScreen
 import dev.kortex.myinfo.topics.ui.TopicsScreen
 import dev.kortex.myinfo.topics.ui.create.NewTopicRoute
 import dev.kortex.myinfo.topics.ui.detail.TopicDetailRoute
-import dev.kortex.myinfo.topics.ui.search.TopicSearchRoute
 
 /**
  * Stateful entry to the home UI. Owns [RootState]; every screen it shows gets
@@ -81,11 +80,6 @@ fun RootScreen(
                 is Overlay.Topic -> key(overlay.topicId) {
                     TopicDetailRoute(topicId = overlay.topicId, onClose = state::closeOverlay)
                 }
-                // Opening a result replaces search with that topic, so back from it lands on the list.
-                Overlay.TopicSearch -> TopicSearchRoute(
-                    onOpenTopic = state::openTopic,
-                    onClose = state::closeOverlay,
-                )
             }
         },
         tabContent = { tab ->
@@ -104,7 +98,6 @@ fun RootScreen(
                 KortexTab.Topics -> TopicsScreen(
                     onCreateTopic = state::openNewTopic,
                     onOpenTopic = state::openTopic,
-                    onSearch = state::openTopicSearch,
                 )
             }
         },
@@ -156,7 +149,7 @@ fun RootContent(
 
 /**
  * How one screen gives way to the next. The Topics screens push in from the end and fall back the
- * same way, and one Topics screen replacing another (a search result opening its topic) crossfades.
+ * same way, and one Topics screen replacing another (a new topic opening once saved) crossfades.
  * Every other overlay keeps switching instantly, as it always has.
  */
 private fun AnimatedContentTransitionScope<Overlay>.overlayTransition(): ContentTransform {
@@ -180,10 +173,10 @@ private fun AnimatedContentTransitionScope<Overlay>.overlayTransition(): Content
     }
 }
 
-/** The full-screen Topics screens: the new-topic form, a topic's feed, and search. */
+/** The full-screen Topics screens: the new-topic form and a topic's feed. */
 private val Overlay.isTopics: Boolean
     get() = when (this) {
-        Overlay.NewTopic, Overlay.TopicSearch, is Overlay.Topic -> true
+        Overlay.NewTopic, is Overlay.Topic -> true
         else -> false
     }
 

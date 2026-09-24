@@ -72,7 +72,9 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
    lead in every mode. Long-press picks an item out; the top bar becomes a count with "all" and the
    bottom bar offers Move (a sheet of the other topics), Pin/Unpin and Delete (confirmed). Items
    gained a `pinned` column — `topics.db` is at version 2, migrated in place.
-8. **Search across topics (1f)** ✅ — a search pill on the list opens `Overlay.TopicSearch`.
+8. **Search across topics (1f)** ✅ — the list's search pill expands in place, as on the Links tab
+   (the shared `SearchHeader` in `:design`); while it holds a query, scope chips and results take
+   the place of the sort chips and topic cards, and the count line shows the result summary.
    `SearchCorpus.search` matches every word of the query, ignoring case, over note text, link
    titles and addresses, doc and bill titles, image captions and currency codes — plus topic
    names, which surface a topic even when none of its items match. Scope chips (Everything /

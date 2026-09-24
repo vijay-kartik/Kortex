@@ -188,11 +188,8 @@ class TopicsListViewModelTest {
     }
 
     @Test
-    fun `the search pill and the add button hand off to the host`() = runTest(dispatcher) {
+    fun `the add button hands off to the host`() = runTest(dispatcher) {
         val viewModel = loadedViewModel()
-
-        viewModel.onIntent(TopicsListIntent.Search)
-        assertEquals(TopicsListEffect.OpenSearch, viewModel.effects.first())
 
         viewModel.onIntent(TopicsListIntent.CreateTopic)
         assertEquals(TopicsListEffect.OpenNewTopic, viewModel.effects.first())

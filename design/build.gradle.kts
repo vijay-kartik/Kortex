@@ -31,4 +31,6 @@ dependencies {
     api(platform(libs.compose.bom))
     api(libs.compose.ui)
     api(libs.compose.material3)
+    // BackHandler, for the search header collapsing on back.
+    implementation(libs.androidx.activity.compose)
 }

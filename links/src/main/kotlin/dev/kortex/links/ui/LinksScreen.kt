@@ -108,6 +108,8 @@ import dev.kortex.design.Alarm
 import dev.kortex.design.Edge
 import dev.kortex.design.Grotesk
 import dev.kortex.design.R
+import dev.kortex.design.SearchHeader
+import dev.kortex.design.countLabel
 import dev.kortex.design.Ink
 import dev.kortex.design.KortexTheme
 import dev.kortex.design.Muted
@@ -323,9 +325,8 @@ fun LinksWithSearchScreen(
                 .padding(start = 16.dp, end = 16.dp, top = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            LinksSearchHeader(
-                linkCount = state.linkCount,
-                tagCount = state.tags.size,
+            SearchHeader(
+                meta = "${countLabel(state.linkCount, "LINK")} · ${countLabel(state.tags.size, "TAG")}",
                 query = query,
                 onQueryChange = onQueryChange,
                 expanded = searchExpanded,

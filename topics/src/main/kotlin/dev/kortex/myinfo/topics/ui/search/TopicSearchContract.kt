@@ -4,7 +4,7 @@ import dev.kortex.myinfo.topics.domain.model.SearchResults
 import dev.kortex.myinfo.topics.domain.model.SearchScope
 
 /**
- * Search across every topic (Figma: Topics 1f). The query lives in the screen's field; the
+ * Search across every topic (Figma: Topics 1f). The query lives in the Topics list's search field; the
  * ViewModel hears each change, waits for typing to pause and re-runs the search.
  */
 data class TopicSearchState(

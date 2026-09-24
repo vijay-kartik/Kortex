@@ -2,6 +2,7 @@ package dev.kortex.myinfo.topics.ui.list
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -11,7 +12,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,17 +28,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.design.KortexTheme
+import dev.kortex.design.SearchHeader
+import dev.kortex.design.countLabel
 import dev.kortex.design.Muted
 import dev.kortex.design.Synapse
 import dev.kortex.design.Void
@@ -46,36 +55,53 @@ import dev.kortex.myinfo.topics.domain.model.Progress
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicOverview
 import dev.kortex.myinfo.topics.ui.common.BodyStyle
-import dev.kortex.myinfo.topics.ui.common.MetaStyle
 import dev.kortex.myinfo.topics.ui.list.components.DeletedTopicRow
-import dev.kortex.myinfo.topics.ui.list.components.SearchPill
 import dev.kortex.myinfo.topics.ui.list.components.SortChips
 import dev.kortex.myinfo.topics.ui.list.components.TopicCard
+import dev.kortex.myinfo.topics.ui.search.TopicSearchEffect
+import dev.kortex.myinfo.topics.ui.search.TopicSearchIntent
+import dev.kortex.myinfo.topics.ui.search.TopicSearchResults
+import dev.kortex.myinfo.topics.ui.search.TopicSearchState
+import dev.kortex.myinfo.topics.ui.search.TopicSearchViewModel
+import dev.kortex.myinfo.topics.ui.search.searchSummary
 
 /** Connects [TopicsListScreen] to its ViewModel and hands navigation to the host. */
 @Composable
 fun TopicsListRoute(
     onOpenTopic: (Long) -> Unit,
     onCreateTopic: () -> Unit,
-    onSearch: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: TopicsListViewModel = hiltViewModel(),
+    searchViewModel: TopicSearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val search by searchViewModel.state.collectAsStateWithLifecycle()
     ObserveEffects(viewModel.effects) { effect ->
         when (effect) {
             is TopicsListEffect.OpenTopic -> onOpenTopic(effect.topicId)
             TopicsListEffect.OpenNewTopic -> onCreateTopic()
-            TopicsListEffect.OpenSearch -> onSearch()
         }
     }
-    TopicsListScreen(state = state, onIntent = viewModel::onIntent, modifier = modifier)
+    ObserveEffects(searchViewModel.effects) { effect ->
+        when (effect) {
+            is TopicSearchEffect.OpenTopic -> onOpenTopic(effect.topicId)
+        }
+    }
+    TopicsListScreen(
+        state = state,
+        search = search,
+        onIntent = viewModel::onIntent,
+        onSearchIntent = searchViewModel::onIntent,
+        modifier = modifier,
+    )
 }
 
 @Composable
 fun TopicsListScreen(
     state: TopicsListState,
+    search: TopicSearchState,
     onIntent: (TopicsListIntent) -> Unit,
+    onSearchIntent: (TopicSearchIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when {
@@ -102,24 +128,47 @@ fun TopicsListScreen(
                 }
             },
         ) { innerPadding ->
-            TopicsList(state, onIntent, Modifier.padding(innerPadding))
+            TopicsList(
+                state = state,
+                search = search,
+                onIntent = onIntent,
+                onSearchIntent = onSearchIntent,
+                modifier = Modifier
+                    .padding(innerPadding)
+                    // The nav bar is already padded by the parent, so the keyboard only adds what's above it.
+                    .consumeWindowInsets(WindowInsets.navigationBars)
+                    .imePadding(),
+            )
         }
     }
 }
 
+/**
+ * The search field works as on the Links tab: it expands in place, and while it holds a query the
+ * scope chips and results across every topic stand in for the sort chips and topic cards.
+ */
 @Composable
 private fun TopicsList(
     state: TopicsListState,
+    search: TopicSearchState,
     onIntent: (TopicsListIntent) -> Unit,
+    onSearchIntent: (TopicSearchIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Ages only need minute precision; refresh them whenever the list itself changes.
     val nowMillis = remember(state.topics) { System.currentTimeMillis() }
-    val openId = state.openOptionsTopicId
-    val optionsOpen = openId != null
+    val optionsOpen = state.openOptionsTopicId != null
     val tapOutside = remember { OpenCardBounds() }
 
-    BackHandler(enabled = optionsOpen) { onIntent(TopicsListIntent.HideOptions) }
+    // The field reads local state so typing never waits on the debounced search. It starts from the
+    // search's query, which outlives this screen while a topic opened from the results is shown.
+    var query by rememberSaveable { mutableStateOf(search.query) }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    val showResults = query.isNotBlank()
+    // A restored query whose search didn't survive: run it again.
+    LaunchedEffect(Unit) {
+        if (showResults && search.query != query) onSearchIntent(TopicSearchIntent.QueryChanged(query))
+    }
 
     // The pressed card dims everything else, as on the Links tab.
     val chromeAlpha by animateFloatAsState(
@@ -133,27 +182,55 @@ private fun TopicsList(
             .fillMaxSize()
             .tapOutsideToClose(tapOutside, open = optionsOpen) { onIntent(TopicsListIntent.HideOptions) },
     ) {
-        Column(Modifier.graphicsLayer { alpha = chromeAlpha }) {
-            Text(
-                "${state.topicCount} ${if (state.topicCount == 1) "TOPIC" else "TOPICS"} · " +
-                    "${state.itemCount} ${if (state.itemCount == 1) "ITEM" else "ITEMS"}",
-                style = MetaStyle.copy(letterSpacing = 1.2.sp),
-                color = Muted,
-                modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp),
-            )
-            // The sort chips stand in 48dp slots, 10dp taller than they look above and below, so
-            // the padding around them is 10dp less than the gaps it leaves.
-            SearchPill(
-                onClick = { onIntent(TopicsListIntent.Search) },
-                modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 2.dp),
-            )
-            SortChips(
-                selected = state.sort,
-                pinnedCount = state.pinnedCount,
-                onSelect = { onIntent(TopicsListIntent.SelectSort(it)) },
-                modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 4.dp),
-            )
+        SearchHeader(
+            meta = if (showResults) {
+                searchSummary(search)
+            } else {
+                "${countLabel(state.topicCount, "TOPIC")} · ${countLabel(state.itemCount, "ITEM")}"
+            },
+            query = query,
+            onQueryChange = {
+                query = it
+                onSearchIntent(TopicSearchIntent.QueryChanged(it))
+            },
+            expanded = searchExpanded,
+            onExpandedChange = { searchExpanded = it },
+            modifier = Modifier
+                .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 6.dp)
+                .graphicsLayer { alpha = chromeAlpha },
+        )
+        // Registered after the header's, so back closes the tray before it collapses search.
+        BackHandler(enabled = optionsOpen) { onIntent(TopicsListIntent.HideOptions) }
+        Crossfade(targetState = showResults, modifier = Modifier.weight(1f), label = "list or results") { results ->
+            if (results) {
+                TopicSearchResults(state = search, onIntent = onSearchIntent, modifier = Modifier.fillMaxSize())
+            } else {
+                TopicCards(state, nowMillis, chromeAlpha, tapOutside, onIntent)
+            }
         }
+    }
+}
+
+@Composable
+private fun TopicCards(
+    state: TopicsListState,
+    nowMillis: Long,
+    chromeAlpha: Float,
+    tapOutside: OpenCardBounds,
+    onIntent: (TopicsListIntent) -> Unit,
+) {
+    val openId = state.openOptionsTopicId
+    val optionsOpen = openId != null
+    Column(Modifier.fillMaxSize()) {
+        // The sort chips stand in 48dp slots, 10dp taller than they look above and below.
+        SortChips(
+            selected = state.sort,
+            pinnedCount = state.pinnedCount,
+            onSelect = { onIntent(TopicsListIntent.SelectSort(it)) },
+            modifier = Modifier
+                .padding(start = 18.dp, end = 18.dp, bottom = 4.dp)
+                .graphicsLayer { alpha = chromeAlpha },
+        )
         LazyColumn(
             modifier = Modifier.weight(1f),
             // Extra bottom room so the FAB never covers the last card.
@@ -246,6 +323,11 @@ private fun TopicsListPreview() {
         ),
     )
     KortexTheme {
-        TopicsListScreen(state = TopicsListState(loading = false, topics = topics), onIntent = {})
+        TopicsListScreen(
+            state = TopicsListState(loading = false, topics = topics),
+            search = TopicSearchState(),
+            onIntent = {},
+            onSearchIntent = {},
+        )
     }
 }

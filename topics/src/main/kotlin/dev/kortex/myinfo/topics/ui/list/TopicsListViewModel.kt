@@ -60,7 +60,6 @@ class TopicsListViewModel @Inject constructor(
                 setState { copy(pendingDeletion = null) }
             }
             TopicsListIntent.CreateTopic -> sendEffect(TopicsListEffect.OpenNewTopic)
-            TopicsListIntent.Search -> sendEffect(TopicsListEffect.OpenSearch)
             is TopicsListIntent.AcceptSuggestion -> accept(intent.suggestion)
         }
     }

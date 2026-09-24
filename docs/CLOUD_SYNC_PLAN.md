@@ -108,19 +108,44 @@ asks whether to merge the local data into it or wipe it first.
 ```
 // Firestore
 match /users/{uid}/{document=**} { allow read, write: if request.auth != null && request.auth.uid == uid; }
-// Storage
-match /users/{uid}/{allPaths=**} { allow read, write: if request.auth != null && request.auth.uid == uid
-                                   && request.resource.size < 64 * 1024 * 1024; }
+// Storage — read and write are split because request.resource is null on a read,
+// so a combined rule carrying the size check would reject every download.
+match /users/{uid}/{allPaths=**} {
+  allow read:  if request.auth != null && request.auth.uid == uid;
+  allow write: if request.auth != null && request.auth.uid == uid
+               && request.resource.size < 64 * 1024 * 1024;
+}
 ```
 
-## What you set up in the Firebase console (Claude can't do this)
+These live in `firebase/firestore.rules` and `firebase/storage.rules`, and are deployed with
+`firebase deploy --only firestore:rules,storage`.
 
-1. Create a Firebase project and add the Android app `dev.kortex.app`.
-2. Register the debug SHA-1 (`./gradlew :app:signingReport`), plus the release SHA-1 later.
-3. Enable **Authentication › Google**, and copy the **Web client ID** into `local.properties` as
-   `FIREBASE_WEB_CLIENT_ID=…`.
-4. Create **Firestore** (production mode) and **Storage**, then paste the rules above.
-5. Download `google-services.json` into `app/`, and add it to `.gitignore`.
+## Firebase project setup
+
+Project **`kortex-a24b7`** (project number `201049504537`). Most of this is done through the
+`firebase` CLI from the repo root — `.firebaserc` pins the project, and `firebase.json` points at
+the rules in `firebase/`.
+
+Done:
+
+- [x] Firebase project, with the Android app `dev.kortex.app` registered.
+- [x] Debug SHA-1 and SHA-256 registered (`firebase apps:android:sha:list <appId>` to check). The
+      **release** SHA-1 still has to be added before the first signed build.
+- [x] **Firestore** created (Native mode, Standard edition, `asia-south1`), with the rules above
+      deployed from `firebase/firestore.rules`.
+- [x] `google-services.json` in `app/`, gitignored.
+- [x] **Authentication › Google** enabled, `google-services.json` refreshed (it now carries the
+      `oauth_client` entry), and the **web** client id put in `local.properties` as
+      `FIREBASE_WEB_CLIENT_ID`, reachable from code as `BuildConfig.FIREBASE_WEB_CLIENT_ID`.
+      Credential Manager's `setServerClientId()` wants that web id, never the Android one.
+
+Still to do in the console (no CLI equivalent):
+
+1. **Storage › Get started** — create the default bucket, in **`asia-south1`** to match Firestore.
+   Then `firebase deploy --only storage` pushes `firebase/storage.rules`.
+
+Don't let the CLI provision Firestore or Storage implicitly: `firebase deploy` will silently create
+a missing default database in `nam5`, and both locations are permanent.
 
 ## Phases
 

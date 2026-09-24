@@ -7,3 +7,10 @@ local.properties
 captures/
 .cxx/
 .worktrees/
+
+# Firebase — download from the console (see docs/CLOUD_SYNC_PLAN.md)
+app/google-services.json
+.firebase/
+firebase-debug.log
+/.agents/skills/
+/.claude/skills/

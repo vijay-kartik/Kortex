@@ -6,11 +6,13 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.kortex.app.BuildConfig
 import dev.kortex.app.data.auth.GmailAuthManager
 import dev.kortex.app.data.auth.McpOAuthManager
 import dev.kortex.app.data.security.AppLockStore
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.app.domain.security.AppLock
+import dev.kortex.sync.CloudAccount
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,12 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSettingsStore(@ApplicationContext context: Context): SettingsStore = SettingsStore(context)
+
+    /** The signed-in Google account; Kortex can't be used without one. */
+    @Provides
+    @Singleton
+    fun provideCloudAccount(@ApplicationContext context: Context): CloudAccount =
+        CloudAccount(context, BuildConfig.FIREBASE_WEB_CLIENT_ID)
 
     /** Biometric app lock: one lock state shared by every activity. */
     @Provides

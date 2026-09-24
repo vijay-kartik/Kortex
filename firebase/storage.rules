@@ -1,0 +1,14 @@
+rules_version = '2';
+
+// Topic item files: users/{uid}/topic-files/{itemUid}{ext}.
+// Read and write are split because request.resource is null on a read, so a
+// combined rule with a size check would reject every download.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/{allPaths=**} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && request.resource.size < 64 * 1024 * 1024;
+    }
+  }
+}

@@ -38,6 +38,13 @@ android {
             "DEEPSEEK_API_KEY",
             "\"${localProps.getProperty("DEEPSEEK_API_KEY", "")}\"",
         )
+        // Firebase Auth's *web* client id, which Credential Manager wants as its
+        // serverClientId. Copy it from Authentication > Google > Web SDK configuration.
+        buildConfigField(
+            "String",
+            "FIREBASE_WEB_CLIENT_ID",
+            "\"${localProps.getProperty("FIREBASE_WEB_CLIENT_ID", "")}\"",
+        )
     }
 
     buildFeatures {
@@ -74,6 +81,7 @@ dependencies {
     implementation(project(":links"))
     implementation(project(":topics"))
     implementation(project(":design"))
+    implementation(project(":sync"))
 
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
 
@@ -95,6 +103,7 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.process)
 

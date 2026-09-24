@@ -1,0 +1,504 @@
+package dev.kortex.app.ui.onboarding
+
+import androidx.annotation.DrawableRes
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.kortex.app.R
+import dev.kortex.app.ui.security.findFragmentActivity
+import dev.kortex.design.Amber
+import dev.kortex.design.Edge
+import dev.kortex.design.Ink
+import dev.kortex.design.KortexMark
+import dev.kortex.design.Muted
+import dev.kortex.design.Panel
+import dev.kortex.design.Synapse
+import dev.kortex.design.SynapseDim
+import dev.kortex.design.Void
+import dev.kortex.design.anim.EmphasizedAccelerate
+import dev.kortex.design.anim.EmphasizedDecelerate
+import dev.kortex.design.drawKortexMark
+import dev.kortex.sync.CloudUser
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import dev.kortex.design.R as DesignR
+
+// Welcome intro, from the moment the splash is released. The mark fires in place, glides into the
+// header while it settles, and the copy follows it in.
+private const val HANDOFF_TIMEOUT_MS = 800L
+private const val FIRE_MS = 560
+private const val TRAVEL_DELAY_MS = 260L
+private const val TRAVEL_MS = 720
+private const val REVEAL_DELAY_MS = 560L
+private const val REVEAL_MS = 900
+
+// Staggered entrances: item i starts at i × STEP of the reveal and takes SPAN of it.
+private const val STAGGER_STEP = 0.11f
+private const val STAGGER_SPAN = 0.5f
+
+private val MarkSlot = 72.dp
+private val TopGap = 96.dp
+
+/**
+ * First launch and signed-out onboarding: Welcome (sign in with Google) → All set.
+ * [splashHandoff] is non-null only when this launch should take over the splash icon.
+ */
+@Composable
+fun OnboardingFlow(
+    splashHandoff: (() -> SplashHandoff?)?,
+    onFinished: () -> Unit,
+    vm: OnboardingViewModel = hiltViewModel(),
+) {
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    val activity = LocalContext.current.findFragmentActivity()
+
+    AnimatedContent(
+        targetState = ui.step,
+        transitionSpec = { sharedAxisX() },
+        modifier = Modifier.fillMaxSize().background(Void),
+        label = "onboarding-step",
+    ) { step ->
+        when (step) {
+            OnboardingStep.Welcome -> WelcomeScreen(
+                signingIn = ui.signingIn,
+                error = ui.error,
+                splashHandoff = splashHandoff,
+                onSignIn = { activity?.let(vm::signIn) },
+            )
+            OnboardingStep.AllSet -> AllSetScreen(user = ui.user, onStart = onFinished)
+        }
+    }
+}
+
+/** Material shared-axis X: a short slide in the direction of travel, faded through. */
+private fun AnimatedContentTransitionScope<OnboardingStep>.sharedAxisX(): ContentTransform {
+    val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+    val shift = { width: Int -> (width * 0.08f).toInt() * direction }
+    return (fadeIn(tween(210, delayMillis = 90, easing = EmphasizedDecelerate)) +
+        slideInHorizontally(tween(300, easing = EmphasizedDecelerate)) { shift(it) }) togetherWith
+        (fadeOut(tween(90, easing = EmphasizedAccelerate)) +
+            slideOutHorizontally(tween(300, easing = EmphasizedAccelerate)) { -shift(it) })
+}
+
+// ── Welcome ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun WelcomeScreen(
+    signingIn: Boolean,
+    error: String?,
+    splashHandoff: (() -> SplashHandoff?)?,
+    onSignIn: () -> Unit,
+) {
+    val intro = splashHandoff != null
+    val fire = remember { Animatable(if (intro) 0f else 1f) }
+    val travel = remember { Animatable(if (intro) 0f else 1f) }
+    val reveal = remember { Animatable(if (intro) 0f else 1f) }
+    // All in window pixels: where the splash icon was, where the mark ends up, and where this screen sits.
+    var from by remember { mutableStateOf<Rect?>(null) }
+    var slot by remember { mutableStateOf<Rect?>(null) }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val landed by remember { derivedStateOf { travel.value >= 1f } }
+
+    if (splashHandoff != null) {
+        LaunchedEffect(Unit) {
+            val handoff = withTimeoutOrNull(HANDOFF_TIMEOUT_MS) {
+                snapshotFlow { splashHandoff() }.filterNotNull().first()
+            }
+            snapshotFlow { slot }.filterNotNull().first()
+            from = handoff?.iconBounds
+            // No splash to take over: the mark simply sits in the header and the copy still rises in.
+            if (from == null) travel.snapTo(1f)
+            // Let the overlay draw the mark over the splash icon before the splash goes.
+            repeat(2) { withFrameNanos { } }
+            handoff?.release()
+            coroutineScope {
+                launch { fire.animateTo(1f, tween(FIRE_MS, easing = LinearEasing)) }
+                launch {
+                    delay(TRAVEL_DELAY_MS)
+                    travel.animateTo(1f, tween(TRAVEL_MS, easing = EmphasizedDecelerate))
+                }
+                launch {
+                    delay(REVEAL_DELAY_MS)
+                    reveal.animateTo(1f, tween(REVEAL_MS, easing = LinearEasing))
+                }
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow() }) {
+        Column(
+            modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(TopGap))
+            Box(
+                Modifier.size(MarkSlot).onGloballyPositioned { slot = it.boundsInWindow() },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (landed) KortexMark(Modifier.requiredSize(MarkSlot * 1.5f))
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "Welcome to Kortex",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Ink,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.staggered({ reveal.value }, 0).semantics { heading() },
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Save links, build topics and ask your agent — all in one place.",
+                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                color = Muted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.staggered({ reveal.value }, 1),
+            )
+            Spacer(Modifier.height(48.dp))
+            Benefit(
+                icon = DesignR.drawable.ic_cloud,
+                title = "Back up your library",
+                body = "Links and topics are saved to your Google account, so a reinstall or new phone loses nothing.",
+                modifier = Modifier.staggered({ reveal.value }, 2),
+            )
+            Spacer(Modifier.height(20.dp))
+            Benefit(
+                icon = DesignR.drawable.ic_shield,
+                title = "Private by default",
+                body = "Chats, settings and API keys never leave this phone.",
+                modifier = Modifier.staggered({ reveal.value }, 3),
+            )
+            Spacer(Modifier.weight(1f))
+            Column(
+                Modifier.fillMaxWidth().staggered({ reveal.value }, 4, rise = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                ErrorLine(error)
+                PillButton(onClick = onSignIn, container = Ink, enabled = !signingIn) {
+                    GoogleButtonContent(signingIn)
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+
+        // The travelling mark: from the splash icon to the header slot, then it hands over to the slot.
+        if (!landed) {
+            Canvas(Modifier.fillMaxSize()) {
+                val start = from ?: return@Canvas
+                val target = slot ?: return@Canvas
+                // The slot is the icon's visible 72 units; the mark's full 108-unit viewport is 1.5× that.
+                val end = target.inflate(target.width / 4f)
+                drawKortexMark(lerp(start, end, travel.value).translate(-origin), fire = fire.value)
+            }
+        }
+    }
+}
+
+/** Keeps the last message while it animates out, so the line doesn't blank mid-collapse. */
+@Composable
+private fun ErrorLine(error: String?) {
+    var shown by remember { mutableStateOf("") }
+    if (error != null) shown = error
+    AnimatedVisibility(
+        visible = error != null,
+        enter = expandVertically(tween(260, easing = EmphasizedDecelerate)) + fadeIn(tween(200, delayMillis = 60)),
+        exit = shrinkVertically(tween(200, easing = EmphasizedAccelerate)) + fadeOut(tween(120)),
+    ) {
+        Text(
+            shown,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = Amber,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        )
+    }
+}
+
+@Composable
+private fun GoogleButtonContent(signingIn: Boolean) {
+    AnimatedContent(
+        targetState = signingIn,
+        transitionSpec = { fadeIn(tween(180, delayMillis = 60)) togetherWith fadeOut(tween(120)) },
+        label = "google-button",
+    ) { busy ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (busy) {
+                CircularProgressIndicator(Modifier.size(18.dp), color = Void, strokeWidth = 2.dp)
+            } else {
+                Image(painterResource(R.drawable.ic_google_g), contentDescription = null, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                if (busy) "Signing in…" else "Continue with Google",
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
+                color = Void,
+            )
+        }
+    }
+}
+
+@Composable
+private fun Benefit(@DrawableRes icon: Int, title: String, body: String, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Box(Modifier.size(36.dp).background(SynapseDim, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(painterResource(icon), contentDescription = null, tint = Synapse, modifier = Modifier.size(18.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = Ink)
+            Text(body, style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp), color = Muted)
+        }
+    }
+}
+
+// ── All set ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun AllSetScreen(user: CloudUser?, onStart: () -> Unit) {
+    val badge = remember { Animatable(0f) }
+    val check = remember { Animatable(0f) }
+    val reveal = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        launch {
+            delay(120)
+            badge.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessLow))
+        }
+        launch {
+            delay(320)
+            check.animateTo(1f, tween(380, easing = EmphasizedDecelerate))
+        }
+        launch {
+            delay(260)
+            reveal.animateTo(1f, tween(800, easing = LinearEasing))
+        }
+    }
+    val firstName = user?.name?.substringBefore(' ')?.takeIf { it.isNotBlank() }
+
+    Column(
+        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(TopGap))
+        CheckBadge(scale = { badge.value }, drawn = { check.value })
+        Spacer(Modifier.height(24.dp))
+        Text(
+            if (firstName != null) "You’re all set, $firstName" else "You’re all set",
+            style = MaterialTheme.typography.headlineSmall,
+            color = Ink,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.staggered({ reveal.value }, 0).semantics { heading() },
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "You’re signed in with Google.",
+            style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+            color = Muted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.staggered({ reveal.value }, 1),
+        )
+        Spacer(Modifier.height(32.dp))
+        AccountCard(user, Modifier.staggered({ reveal.value }, 2))
+        Spacer(Modifier.weight(1f))
+        PillButton(
+            onClick = onStart,
+            container = SynapseDim,
+            modifier = Modifier.staggered({ reveal.value }, 3, rise = 24.dp),
+        ) {
+            Text(
+                "Start using Kortex",
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
+                color = Synapse,
+            )
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** A circle that springs in, then a check that draws itself. */
+@Composable
+private fun CheckBadge(scale: () -> Float, drawn: () -> Float) {
+    Box(
+        Modifier
+            .size(MarkSlot)
+            .graphicsLayer {
+                val s = scale()
+                scaleX = 0.5f + 0.5f * s
+                scaleY = 0.5f + 0.5f * s
+                alpha = s.coerceIn(0f, 1f)
+            }
+            .background(SynapseDim, CircleShape),
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            // Material check in a 24-unit box, drawn at 36dp in the middle of the 72dp badge.
+            val unit = 1.5.dp.toPx()
+            val inset = 18.dp.toPx()
+            fun p(x: Float, y: Float) = Offset(inset + x * unit, inset + y * unit)
+            val path = Path().apply {
+                moveTo(p(4f, 12f).x, p(4f, 12f).y)
+                lineTo(p(9f, 17f).x, p(9f, 17f).y)
+                lineTo(p(20f, 6f).x, p(20f, 6f).y)
+            }
+            val measure = PathMeasure().apply { setPath(path, false) }
+            val partial = Path()
+            measure.getSegment(0f, measure.length * drawn(), partial, true)
+            drawPath(
+                partial,
+                color = Synapse,
+                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AccountCard(user: CloudUser?, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(12.dp)
+    val label = user?.name ?: user?.email ?: "Google account"
+    Row(
+        modifier
+            .fillMaxWidth()
+            .background(Panel, shape)
+            .border(1.dp, Edge, shape)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(Modifier.size(36.dp).background(SynapseDim, CircleShape), contentAlignment = Alignment.Center) {
+            Text(label.first().uppercase(), color = Synapse, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.titleSmall, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val email = user?.email
+            if (email != null && email != label) {
+                Text(email, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+// ── Shared pieces ───────────────────────────────────────────────────────
+
+/** Full-width 48dp pill that dips slightly while pressed. */
+@Composable
+private fun PillButton(
+    onClick: () -> Unit,
+    container: Color,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "press",
+    )
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = CircleShape,
+        color = container,
+        interactionSource = interaction,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
+    }
+}
+
+/** Fades and rises item [index] in as [progress] runs 0→1; read in the draw phase only. */
+private fun Modifier.staggered(progress: () -> Float, index: Int, rise: Dp = 16.dp) = graphicsLayer {
+    val start = index * STAGGER_STEP
+    val p = EmphasizedDecelerate.transform(((progress() - start) / STAGGER_SPAN).coerceIn(0f, 1f))
+    alpha = p
+    translationY = (1f - p) * rise.toPx()
+}

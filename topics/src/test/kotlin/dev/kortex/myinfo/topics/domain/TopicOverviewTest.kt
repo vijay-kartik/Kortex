@@ -107,7 +107,7 @@ class TopicOverviewTest {
         name: String = "Trip to Dubai",
         pinned: Boolean = false,
         updatedAt: Long = 0,
-        sections: Set<ItemType> = ItemType.DefaultSections,
+        sections: Set<ItemType> = emptySet(),
     ) = Topic(id, name, purpose = null, pinned, sections, createdAtMillis = 0, updatedAtMillis = updatedAt)
 
     private fun overview(id: Long, name: String, pinned: Boolean, updatedAt: Long) =

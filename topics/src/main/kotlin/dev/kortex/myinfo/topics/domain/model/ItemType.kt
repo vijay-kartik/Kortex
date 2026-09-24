@@ -13,9 +13,4 @@ enum class ItemType {
 
     /** Backed by a link in the user's Links library rather than stored in the topic itself. */
     val isLink: Boolean get() = this == Link || this == Article || this == Video
-
-    companion object {
-        /** Preselected sections for a new topic (Figma: Topics 1g). */
-        val DefaultSections: Set<ItemType> = setOf(Note, Image, Doc)
-    }
 }

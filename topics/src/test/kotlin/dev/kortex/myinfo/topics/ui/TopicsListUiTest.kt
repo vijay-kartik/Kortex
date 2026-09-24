@@ -75,7 +75,7 @@ class TopicsListUiTest {
     }
 
     private fun overview(id: Long, pinned: Boolean = false, items: Int = 0) = TopicOverview(
-        topic = Topic(id, "Topic $id", purpose = null, pinned, ItemType.DefaultSections, createdAtMillis = 0, updatedAtMillis = 0),
+        topic = Topic(id, "Topic $id", purpose = null, pinned, emptySet(), createdAtMillis = 0, updatedAtMillis = 0),
         itemCount = items,
         counts = if (items == 0) emptyMap() else mapOf(ItemType.Note to items),
         previews = emptyList(),

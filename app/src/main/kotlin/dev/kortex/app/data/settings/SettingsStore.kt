@@ -3,7 +3,6 @@ package dev.kortex.app.data.settings
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -58,16 +57,6 @@ class SettingsStore(private val context: Context) {
         val KEY_GMAIL_ACCOUNT = stringPreferencesKey("gmail_account_email")
         val KEY_OAUTH_STATES = stringPreferencesKey("mcp_oauth_states")
         val KEY_PENDING_AUTH = stringPreferencesKey("mcp_pending_auth")
-        val KEY_MYINFO_ONBOARDING_SEEN = booleanPreferencesKey("myinfo_onboarding_seen")
-    }
-
-    /** False only until the user has opened Links from the My Info onboarding once. */
-    val myInfoOnboardingSeen: Flow<Boolean> = context.mcpDataStore.data.map { prefs ->
-        prefs[KEY_MYINFO_ONBOARDING_SEEN] ?: false
-    }
-
-    suspend fun setMyInfoOnboardingSeen() {
-        context.mcpDataStore.edit { prefs -> prefs[KEY_MYINFO_ONBOARDING_SEEN] = true }
     }
 
     /** User-entered OpenAI key; overrides the build's local.properties key when set. */

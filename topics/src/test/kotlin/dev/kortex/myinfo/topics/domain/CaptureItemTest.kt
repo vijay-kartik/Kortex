@@ -153,7 +153,7 @@ class CaptureItemTest {
         val result = capture(CaptureDraft(ItemType.Note, text = "Metro closes 00:30"), CaptureTarget.New("Trip to Dubai"))
 
         assertEquals(CaptureResult.Saved(1), result)
-        assertEquals(TopicDraft(name = "Trip to Dubai", sections = ItemType.DefaultSections + ItemType.Note), repository.topics.single())
+        assertEquals(TopicDraft(name = "Trip to Dubai"), repository.topics.single())
     }
 
     @Test

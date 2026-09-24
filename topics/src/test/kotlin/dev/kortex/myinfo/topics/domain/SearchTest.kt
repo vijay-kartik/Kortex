@@ -1,6 +1,5 @@
 package dev.kortex.myinfo.topics.domain
 
-import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.Money
 import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.model.SearchCorpus
@@ -137,5 +136,5 @@ class SearchTest {
     }
 
     private fun topic(id: Long, name: String, updatedAt: Long) =
-        Topic(id, name, purpose = null, pinned = false, sections = ItemType.DefaultSections, createdAtMillis = 0, updatedAtMillis = updatedAt)
+        Topic(id, name, purpose = null, pinned = false, sections = emptySet(), createdAtMillis = 0, updatedAtMillis = updatedAt)
 }

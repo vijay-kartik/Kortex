@@ -60,7 +60,6 @@ import dev.kortex.app.ui.screens.home.TabCategory
 fun CategoryTabBar(
     selected: KortexTab,
     expanded: TabCategory,
-    onboarding: Boolean,
     onCategorySelected: (TabCategory) -> Unit,
     onTabSelected: (KortexTab) -> Unit,
     modifier: Modifier = Modifier,
@@ -68,9 +67,8 @@ fun CategoryTabBar(
     val agentTabs = remember { KortexTab.of(TabCategory.Agent) }
     val myInfoTabs = remember { KortexTab.of(TabCategory.MyInfo) }
     val agentExpanded = expanded == TabCategory.Agent
-    // My Info shows as a category chip while it is collapsed — that is, whenever Agent is open,
-    // and during onboarding, when it has not yet been unfolded into Links for the first time.
-    val myInfoAsChip = agentExpanded || onboarding
+    // My Info shows as a category chip while it is collapsed, that is, whenever Agent is open.
+    val myInfoAsChip = agentExpanded
 
     val progress = remember { Animatable(if (agentExpanded) 1f else 0f) }
     val chipCrossfade = remember { Animatable(if (myInfoAsChip) 1f else 0f) }
@@ -125,7 +123,7 @@ fun CategoryTabBar(
             CategoryChip(
                 label = TabCategory.MyInfo.label,
                 badge = null,
-                selected = onboarding,
+                selected = false,
                 enabled = myInfoAsChip,
                 onClick = { onCategorySelected(TabCategory.MyInfo) },
             )

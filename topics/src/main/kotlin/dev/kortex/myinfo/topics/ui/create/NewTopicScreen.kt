@@ -9,8 +9,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
@@ -73,18 +71,14 @@ import dev.kortex.design.KortexTheme
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
 import dev.kortex.design.Synapse
-import dev.kortex.design.SynapseDim
 import dev.kortex.design.Void
 import dev.kortex.mvi.ObserveEffects
 import dev.kortex.mvi.ScopedViewModelStore
-import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.ui.common.BodyStyle
 import dev.kortex.myinfo.topics.ui.common.ChipStyle
 import dev.kortex.myinfo.topics.ui.common.MetaStyle
 import dev.kortex.myinfo.topics.ui.common.PrimaryButton
 import dev.kortex.myinfo.topics.ui.common.RowTitleStyle
-import dev.kortex.myinfo.topics.ui.common.SectionOrder
-import dev.kortex.myinfo.topics.ui.common.noun
 
 /**
  * Full-screen new-topic form. [onCreated] gets the new topic's id; [onClose] discards the form.
@@ -174,7 +168,6 @@ fun NewTopicScreen(
         ) {
             NameField(name, onNameChange, state.nameError)
             PurposeField(purpose, onPurposeChange)
-            SectionPicker(state.sections, onToggle = { onIntent(NewTopicIntent.ToggleSection(it)) })
             PinRow(state.pinned, onPinnedChange = { onIntent(NewTopicIntent.SetPinned(it)) })
         }
     }
@@ -306,42 +299,6 @@ private fun PurposeField(purpose: String, onPurposeChange: (String) -> Unit) {
             },
         )
     }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SectionPicker(sections: Set<ItemType>, onToggle: (ItemType) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        FieldLabel("SECTIONS TO SHOW")
-        // No vertical spacing: each chip stands in a 48dp slot, which is gap enough.
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SectionOrder.forEach { type ->
-                SectionChip(type, selected = type in sections, onClick = { onToggle(type) })
-            }
-        }
-        Text("Hidden sections appear automatically when you add that kind of item.", style = HintStyle, color = Muted)
-    }
-}
-
-@Composable
-private fun SectionChip(type: ItemType, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(8.dp)
-    val label = type.noun(2).uppercase()
-    // A checkbox to TalkBack — "Notes, checkbox, checked" — rather than the caps and the tick.
-    val spoken = type.noun(2).replaceFirstChar { it.titlecase() }
-    Text(
-        if (selected) "$label ✓" else label,
-        style = MetaStyle.copy(letterSpacing = 0.sp),
-        color = if (selected) Synapse else Muted,
-        modifier = Modifier
-            .minimumInteractiveComponentSize()
-            .semantics { contentDescription = spoken }
-            .clip(shape)
-            .background(if (selected) SynapseDim else Panel)
-            .border(1.dp, if (selected) Synapse else Edge, shape)
-            .toggleable(value = selected, role = Role.Checkbox, onValueChange = { onClick() })
-            .padding(horizontal = 13.dp, vertical = 9.dp),
-    )
 }
 
 @Composable

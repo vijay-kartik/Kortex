@@ -64,7 +64,7 @@ class TopicSuggestionsTest {
         val result = accept(TopicSuggestion("Dubai", links = listOf(newest, oldest), kind = ItemType.Link))
 
         assertEquals(TopicSaveResult.Saved(1), result)
-        assertEquals(TopicDraft(name = "Dubai", sections = ItemType.DefaultSections + ItemType.Link), repository.topics.single())
+        assertEquals(TopicDraft(name = "Dubai"), repository.topics.single())
         assertEquals(
             listOf(
                 NewItem.Link("https://example.com/old", "Link 1", ItemType.Link),

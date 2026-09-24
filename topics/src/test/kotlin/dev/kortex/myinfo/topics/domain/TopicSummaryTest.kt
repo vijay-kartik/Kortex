@@ -1,6 +1,5 @@
 package dev.kortex.myinfo.topics.domain
 
-import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.Money
 import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.model.StoredFile
@@ -22,7 +21,7 @@ import java.time.ZoneId
 
 class TopicSummaryTest {
     private val utc = ZoneId.of("UTC")
-    private val topic = Topic(1, "Trip to Dubai", purpose = "4 nights in March", pinned = false, sections = ItemType.DefaultSections, createdAtMillis = 0, updatedAtMillis = 0)
+    private val topic = Topic(1, "Trip to Dubai", purpose = "4 nights in March", pinned = false, sections = emptySet(), createdAtMillis = 0, updatedAtMillis = 0)
 
     private val note = TopicItem.Note(1, 1, addedAtMillis = 10, text = "Metro closes 00:30")
     private val article = TopicItem.Article(

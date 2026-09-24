@@ -45,6 +45,9 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
    detail screen (phase 4).
 3. **New topic (1g left)** ✅ — `NewTopicViewModel` (MVI) + `Overlay.NewTopic`; name (blank / taken
    errors), purpose, sections, pin. Creating returns to the list until phase 4 can open the topic.
+   **Sections picker removed later:** 1g preselected Notes, Images and Docs, which was the
+   sample topic's choice rather than a sensible default, and a topic's chips come from what it
+   holds anyway. New topics now start with no sections; ones made before keep theirs.
 4. **Topic detail feed (1b)** ✅ — `TopicDetailViewModel` (assisted topic id) + `Overlay.Topic`;
    header, "+ Add" / Share, type chips with counts (chosen sections included), feed cards for every
    type (links open in the browser), ⋯ menu (pin, delete with confirm), empty-topic state (1g).
@@ -135,7 +138,7 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
      (`minimumInteractiveComponentSize`, with padding trimmed where that would have grown the
      visible gaps). Picks report their state: filter, view-mode, scope and sort chips are
      selectable tabs in a `selectableGroup`; type, currency and topic chips are radio buttons;
-     done chips, section chips, "paid" and the pin row are real toggles (`toggleable`), not
+     done chips, "paid" and the pin row are real toggles (`toggleable`), not
      `clickable` with a role. Glyph buttons (‹ ⋯ ✕ ⌕) and type badges are read by name. Topic
      titles, feed groups, search groups and card titles are headings. The selection count, the
      search result count and the summary's status are live regions.
@@ -147,3 +150,10 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
      navigation); `:app` gains a unit-test setup, covering `LlmTopicSummarizer`'s prompt and
      output cleaning.
    - **Deferred:** previews per state, and Room migration tests (which need schema export).
+
+## My Info intro (removed)
+
+The Links-era first-run screen (Figma: Links › Tabs / 1 First run, 84:2) said Links was My
+Info's only feature, with a "Soon" card and an "Open Links" button. With Topics built, My Info
+opens straight onto its tabs, as 1a draws it; Links and Topics each introduce themselves with
+their own empty states.

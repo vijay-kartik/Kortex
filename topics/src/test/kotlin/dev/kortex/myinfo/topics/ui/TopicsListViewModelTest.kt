@@ -215,7 +215,7 @@ class TopicsListViewModelTest {
     }
 
     private fun topic(id: Long, name: String) =
-        Topic(id, name, purpose = null, pinned = false, sections = ItemType.DefaultSections, createdAtMillis = 0, updatedAtMillis = 0)
+        Topic(id, name, purpose = null, pinned = false, sections = emptySet(), createdAtMillis = 0, updatedAtMillis = 0)
 
     private companion object {
         const val NOW = 1_700_000_000_000L

@@ -439,7 +439,7 @@ private val RowShape = RoundedCornerShape(12.dp)
 @Preview
 @Composable
 private fun TopicSearchPreview() {
-    val topic = Topic(1, "Trip to Dubai", purpose = null, pinned = false, ItemType.DefaultSections, 0, 0)
+    val topic = Topic(1, "Trip to Dubai", purpose = null, pinned = false, emptySet(), 0, 0)
     val note = TopicItem.Note(1, 1, 0, "Metro red line closes 00:30 in Dubai")
     val results = SearchResults(
         query = "dubai",

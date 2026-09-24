@@ -333,7 +333,7 @@ private const val SWAP_MS = 200
 private fun TopicsListPreview() {
     val now = System.currentTimeMillis()
     fun topic(id: Long, name: String, pinned: Boolean = false, hoursAgo: Long) =
-        Topic(id, name, purpose = null, pinned, ItemType.DefaultSections, createdAtMillis = 0, updatedAtMillis = now - hoursAgo * 3_600_000)
+        Topic(id, name, purpose = null, pinned, emptySet(), createdAtMillis = 0, updatedAtMillis = now - hoursAgo * 3_600_000)
     val topics = listOf(
         TopicOverview(
             topic(1, "Trip to Dubai", pinned = true, hoursAgo = 2),

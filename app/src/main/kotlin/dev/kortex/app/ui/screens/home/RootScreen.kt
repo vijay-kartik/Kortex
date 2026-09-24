@@ -22,14 +22,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.app.ui.appbar.KortexAppBar
 import dev.kortex.app.ui.screens.chat.ChatRequest
 import dev.kortex.app.ui.screens.chat.ChatScreen
@@ -51,7 +48,7 @@ import dev.kortex.myinfo.topics.ui.detail.TopicDetailRoute
 import dev.kortex.myinfo.topics.ui.search.TopicSearchRoute
 
 /**
- * Stateful entry to the home UI. Owns [RootState] and onboarding; every screen it shows gets
+ * Stateful entry to the home UI. Owns [RootState]; every screen it shows gets
  * its own ViewModel, and everything it draws goes through [RootContent] as slots.
  */
 @Composable
@@ -60,8 +57,6 @@ fun RootScreen(
     onEntryRequestHandled: () -> Unit = {},
 ) {
     val state = rememberRootState()
-    val homeVm: HomeViewModel = hiltViewModel()
-    val onboardingSeen by homeVm.onboardingSeen.collectAsStateWithLifecycle()
 
     EntryRequestEffect(entryRequest, state, onEntryRequestHandled)
 
@@ -70,11 +65,6 @@ fun RootScreen(
 
     RootContent(
         state = state,
-        onboarding = !onboardingSeen && state.expanded == TabCategory.MyInfo,
-        onOnboardingDone = {
-            homeVm.markOnboardingSeen()
-            state.openTab(KortexTab.Links)
-        },
         tabActions = { tab ->
             if (tab == KortexTab.Chat) ChatShareAction()
         },
@@ -122,15 +112,13 @@ fun RootScreen(
 }
 
 /**
- * Stateless home shell: app bar, category tabs, onboarding and the switch between the tabbed
+ * Stateless home shell: app bar, category tabs and the switch between the tabbed
  * UI and a full-screen [Overlay]. Screen bodies come from [overlayContent] and [tabContent];
  * [tabActions] adds app-bar actions for the selected tab.
  */
 @Composable
 fun RootContent(
     state: RootState,
-    onboarding: Boolean,
-    onOnboardingDone: () -> Unit,
     tabActions: @Composable (KortexTab) -> Unit,
     overlayContent: @Composable (Overlay) -> Unit,
     tabContent: @Composable (KortexTab) -> Unit,
@@ -149,7 +137,6 @@ fun RootContent(
                         KortexAppBar(
                             selected = state.selected,
                             expanded = state.expanded,
-                            onboarding = onboarding,
                             actions = { tabActions(state.selected) },
                             onMcpSettingsClick = state::openSettings,
                             onCategorySelected = state::openCategory,
@@ -159,11 +146,7 @@ fun RootContent(
                 },
             ) { innerPadding ->
                 Box(Modifier.padding(innerPadding)) {
-                    if (onboarding) {
-                        MyInfoOnboarding(onOpenLinks = onOnboardingDone)
-                    } else {
-                        tabContent(state.selected)
-                    }
+                    tabContent(state.selected)
                 }
             }
             else -> overlayContent(overlay)
@@ -251,23 +234,6 @@ private fun RootContentChatPreview() {
     KortexTheme {
         RootContent(
             state = remember { RootState(selected = KortexTab.Chat) },
-            onboarding = false,
-            onOnboardingDone = {},
-            tabActions = {},
-            overlayContent = { PreviewSlot(it.toString()) },
-            tabContent = { PreviewSlot(it.label) },
-        )
-    }
-}
-
-@Preview
-@Composable
-private fun RootContentOnboardingPreview() {
-    KortexTheme {
-        RootContent(
-            state = remember { RootState(selected = KortexTab.Links) },
-            onboarding = true,
-            onOnboardingDone = {},
             tabActions = {},
             overlayContent = { PreviewSlot(it.toString()) },
             tabContent = { PreviewSlot(it.label) },

@@ -347,5 +347,5 @@ class QuickCaptureViewModelTest {
     }
 
     private fun topic(id: Long, name: String, updatedAt: Long) =
-        Topic(id, name, purpose = null, pinned = false, sections = ItemType.DefaultSections, createdAtMillis = 0, updatedAtMillis = updatedAt)
+        Topic(id, name, purpose = null, pinned = false, sections = emptySet(), createdAtMillis = 0, updatedAtMillis = updatedAt)
 }

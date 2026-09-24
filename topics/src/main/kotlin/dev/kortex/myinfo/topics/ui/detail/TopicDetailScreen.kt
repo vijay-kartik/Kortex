@@ -871,7 +871,7 @@ private fun Context.shareText(subject: String, text: String) {
 @Composable
 private fun TopicDetailPreview() {
     val now = System.currentTimeMillis()
-    val topic = Topic(1, "Trip to Dubai", purpose = null, pinned = true, ItemType.DefaultSections, 0, now - 2 * 3_600_000)
+    val topic = Topic(1, "Trip to Dubai", purpose = null, pinned = true, emptySet(), 0, now - 2 * 3_600_000)
     val items = listOf(
         TopicItem.Video(
             1, 1, now - 2 * 3_600_000,
@@ -895,7 +895,7 @@ private fun TopicDetailPreview() {
 @Composable
 private fun TopicDetailSelectingPreview() {
     val now = System.currentTimeMillis()
-    val topic = Topic(1, "Trip to Dubai", purpose = null, pinned = false, ItemType.DefaultSections, 0, now)
+    val topic = Topic(1, "Trip to Dubai", purpose = null, pinned = false, emptySet(), 0, now)
     val items = listOf(
         TopicItem.Note(1, 1, now - 3_600_000, "Metro red line closes 00:30."),
         TopicItem.Note(2, 1, now - 2 * 86_400_000, "Pack adapters — type G sockets."),

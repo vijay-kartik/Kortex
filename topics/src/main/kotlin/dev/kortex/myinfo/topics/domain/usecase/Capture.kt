@@ -56,7 +56,7 @@ class CaptureItem(
 
         val topicId = when (target) {
             is CaptureTarget.Existing -> target.topicId
-            is CaptureTarget.New -> when (val created = createTopic(TopicDraft(name = target.name, sections = ItemType.DefaultSections + draft.type))) {
+            is CaptureTarget.New -> when (val created = createTopic(TopicDraft(name = target.name))) {
                 is TopicSaveResult.Saved -> created.topicId
                 TopicSaveResult.BlankName -> return CaptureResult.NewTopicNameBlank
                 TopicSaveResult.NameTaken -> return CaptureResult.NewTopicNameTaken

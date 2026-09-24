@@ -16,9 +16,6 @@ class NewTopicViewModel @Inject constructor(
 
     override fun handleIntent(intent: NewTopicIntent) {
         when (intent) {
-            is NewTopicIntent.ToggleSection -> setState {
-                copy(sections = if (intent.type in sections) sections - intent.type else sections + intent.type)
-            }
             is NewTopicIntent.SetPinned -> setState { copy(pinned = intent.pinned) }
             NewTopicIntent.NameEdited -> if (currentState.nameError != null) setState { copy(nameError = null) }
             is NewTopicIntent.Submit -> submit(intent.name, intent.purpose)
@@ -28,7 +25,7 @@ class NewTopicViewModel @Inject constructor(
     private fun submit(name: String, purpose: String) {
         if (currentState.saving) return
         setState { copy(saving = true, nameError = null) }
-        val draft = currentState.let { TopicDraft(name = name, purpose = purpose, sections = it.sections, pinned = it.pinned) }
+        val draft = currentState.let { TopicDraft(name = name, purpose = purpose, pinned = it.pinned) }
         viewModelScope.launch {
             when (val result = createTopic(draft)) {
                 // Stays saving: the form is on its way out, and a second tap mustn't save twice.

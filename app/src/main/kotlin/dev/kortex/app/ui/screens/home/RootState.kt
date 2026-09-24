@@ -29,8 +29,8 @@ sealed interface Overlay {
 }
 
 /**
- * Tab and overlay state for [RootScreen]. The tab rules live here so the tab bar, onboarding
- * and entry requests all move between tabs the same way.
+ * Tab and overlay state for [RootScreen]. The tab rules live here so the tab bar and entry
+ * requests move between tabs the same way.
  */
 @Stable
 class RootState(

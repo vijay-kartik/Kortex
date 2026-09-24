@@ -56,7 +56,7 @@ class AcceptTopicSuggestion(
     private val detectItemType: DetectItemType,
 ) {
     suspend operator fun invoke(suggestion: TopicSuggestion): TopicSaveResult {
-        val draft = TopicDraft(name = suggestion.name, sections = ItemType.DefaultSections + suggestion.kind)
+        val draft = TopicDraft(name = suggestion.name)
         val result = createTopic(draft)
         if (result is TopicSaveResult.Saved) {
             // Oldest first, so the newest link ends up on top of the topic's feed.

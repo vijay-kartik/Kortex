@@ -1,7 +1,6 @@
 package dev.kortex.myinfo.topics.ui
 
 import dev.kortex.myinfo.topics.domain.FakeTopicsRepository
-import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.port.Clock
 import dev.kortex.myinfo.topics.domain.usecase.CreateTopic
@@ -40,9 +39,7 @@ class NewTopicViewModelTest {
     }
 
     @Test
-    fun `saves the chosen sections and pin`() = runTest {
-        viewModel.onIntent(NewTopicIntent.ToggleSection(ItemType.Image))
-        viewModel.onIntent(NewTopicIntent.ToggleSection(ItemType.Bill))
+    fun `saves the name, purpose and pin, with no sections of its own`() = runTest {
         viewModel.onIntent(NewTopicIntent.SetPinned(true))
         viewModel.onIntent(NewTopicIntent.Submit(name = " An incident to remember ", purpose = "For the insurance claim"))
 
@@ -51,7 +48,6 @@ class NewTopicViewModelTest {
             TopicDraft(
                 name = "An incident to remember",
                 purpose = "For the insurance claim",
-                sections = setOf(ItemType.Note, ItemType.Doc, ItemType.Bill),
                 pinned = true,
             ),
             repository.topics.single(),

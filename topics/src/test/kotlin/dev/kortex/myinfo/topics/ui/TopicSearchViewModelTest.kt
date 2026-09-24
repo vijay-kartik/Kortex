@@ -1,7 +1,6 @@
 package dev.kortex.myinfo.topics.ui
 
 import dev.kortex.myinfo.topics.domain.FakeTopicsRepository
-import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.SearchScope
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicItem
@@ -131,5 +130,5 @@ class TopicSearchViewModelTest {
     }
 
     private fun topic(id: Long, name: String) =
-        Topic(id, name, purpose = null, pinned = false, sections = ItemType.DefaultSections, createdAtMillis = 0, updatedAtMillis = 0)
+        Topic(id, name, purpose = null, pinned = false, sections = emptySet(), createdAtMillis = 0, updatedAtMillis = 0)
 }

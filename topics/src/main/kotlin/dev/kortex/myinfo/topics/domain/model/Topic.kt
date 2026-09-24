@@ -6,7 +6,10 @@ data class Topic(
     /** "Why you're keeping it": optional, and given to the agent when it summarises the topic. */
     val purpose: String?,
     val pinned: Boolean,
-    /** Sections the user chose to show. Types outside this set still show once the topic holds one. */
+    /**
+     * Sections shown even while empty. Topics are no longer given any — their sections come from
+     * what they hold — but ones made before keep the sections chosen for them then.
+     */
     val sections: Set<ItemType>,
     val createdAtMillis: Long,
     /** Last time the topic or its items changed. Pinning doesn't count. */
@@ -17,7 +20,7 @@ data class Topic(
 data class TopicDraft(
     val name: String,
     val purpose: String? = null,
-    val sections: Set<ItemType> = ItemType.DefaultSections,
+    val sections: Set<ItemType> = emptySet(),
     val pinned: Boolean = false,
 )
 

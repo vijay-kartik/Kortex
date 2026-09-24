@@ -28,7 +28,6 @@ import dev.kortex.design.R
 fun KortexAppBar(
     selected: KortexTab,
     expanded: TabCategory,
-    onboarding: Boolean,
     /** Screen-specific actions, shown before the settings action. */
     actions: @Composable () -> Unit,
     onMcpSettingsClick: () -> Unit,
@@ -54,7 +53,6 @@ fun KortexAppBar(
     CategoryTabBar(
         selected = selected,
         expanded = expanded,
-        onboarding = onboarding,
         onCategorySelected = onCategorySelected,
         onTabSelected = onTabSelected,
     )

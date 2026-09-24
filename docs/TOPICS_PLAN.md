@@ -102,21 +102,33 @@ Figma: `Kortex` › page **Topics** (node 134:2), frames 1a–1g. Topics is a se
    Quick capture gains "+ Email": search the mailbox from inside the sheet and pick one. Nothing
    is copied but what it takes to show the mail and find it again — Gmail's message and thread
    ids, the subject, sender, snippet, sent time, and the RFC822 `Message-ID` header. Tapping the
-   tapping the card asks Gmail to *search* for the mail — `rfc822msgid:<Message-ID>`, which
-   matches one message — via `ACTION_SEARCH`, and falls back to
-   `https://mail.google.com/mail/u/<account>/#all/<id>` in a browser. `topics.db` is at version 4.
+   card opens it in an in-app reader (`ui/email`): what the topic kept shows at once, and
+   `EmailDirectory.read` fetches the rest — recipients, body, attachment names — from the mailbox.
+   An HTML body is shown in a WebView, as the sender laid it out, whenever the mail has one — even
+   alongside a plain-text part (`GmailApi` now keeps both). Images the mail carries (`cid:`
+   references, collected by `GmailApi` as `inlineImages`) are fetched and inlined as data URIs,
+   up to 8 MB a mail, and drop out of the attachment list; remote images load from the web as
+   they do in Gmail — which, as there, lets a sender's tracking pixel see the mail was opened.
+   The WebView runs no scripts and has no file access. Mail with only plain text is shown as
+   selectable text. Attachments are listed with their sizes; tapping one downloads it
+   (`FetchEmailAttachment`: `EmailDirectory.download` into `AttachmentCache`, which is
+   `cache/email-attachments`, cleared after a day and served by the topics FileProvider) and
+   opens it in whichever app handles its type, the way a kept doc opens. "Open Gmail"
+   launches Gmail to its inbox. An email kept from another account than the one connected, or one
+   deleted from the mailbox, says so rather than failing. `topics.db` is at version 4.
 
    **Why not share-from-Gmail:** Gmail on Android shares plain text, with no id in it, so a
    shared mail can't be pointed back at. Reading the mailbox directly is what makes the link
    durable. The `Message-ID` is kept as insurance: it identifies the mail anywhere, so it can
    still be found by search if the provider id ever fails.
 
-   **Why a search rather than a link into the app** (tested on device): the Gmail app claims
-   `mail.google.com` links, but the message id sits in the address's fragment, which is Gmail's
-   own web routing — the app drops it and lands on the inbox. No public address points the app
-   at one message. A search does: Gmail's search takes its own operators, and `rfc822msgid:`
-   matches exactly one mail, which is why that header is kept. The browser stays as the
-   fallback, since the fragment does work there.
+   **Why a reader rather than opening Gmail** (tested on device, Gmail 2026.09): nothing public
+   opens one message in the Gmail app. `mail.google.com` links resolve to the browser, and the
+   app drops the fragment that names the message even when it takes them. `ACTION_SEARCH`
+   reaches Gmail but it finishes at once ("Missing account extra") — the extra is Gmail's own
+   parcelable account, which no other app can build. The Assistant's `SEARCH_ACTION` needs
+   `READ_GMAIL`, a signature permission, and `VIEW_MESSAGE_DEEPLINK` is undocumented. Reading
+   the mail in the app needs none of them, and works without Gmail installed.
 
 10. **Polish** — partly done.
    - **Accessibility** ✅ — every tap target in Topics is at least 48dp

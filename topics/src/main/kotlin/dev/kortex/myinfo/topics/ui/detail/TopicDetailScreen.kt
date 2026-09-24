@@ -1,6 +1,5 @@
 package dev.kortex.myinfo.topics.ui.detail
 
-import android.app.SearchManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -15,7 +14,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
@@ -108,11 +109,10 @@ import dev.kortex.design.anim.StandardEasing
 import dev.kortex.design.dashedBorder
 import dev.kortex.mvi.ObserveEffects
 import dev.kortex.mvi.ScopedViewModelStore
-import dev.kortex.myinfo.topics.data.files.TopicFiles
 import dev.kortex.myinfo.topics.domain.model.FeedGroup
 import dev.kortex.myinfo.topics.domain.model.ItemType
+import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.SavedLink
-import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.TimePeriod
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
@@ -128,7 +128,9 @@ import dev.kortex.myinfo.topics.ui.common.MetaStyle
 import dev.kortex.myinfo.topics.ui.common.TopicChoice
 import dev.kortex.myinfo.topics.ui.common.TrayLabelStyle
 import dev.kortex.myinfo.topics.ui.common.noun
+import dev.kortex.myinfo.topics.ui.common.openFile
 import dev.kortex.myinfo.topics.ui.common.updatedLabel
+import dev.kortex.myinfo.topics.ui.email.EmailReaderRoute
 import kotlinx.coroutines.launch
 
 /**
@@ -167,9 +169,6 @@ private fun TopicDetailContent(
             is TopicDetailEffect.OpenFile -> if (!context.openFile(effect.file)) {
                 scope.launch { snackbars.showSnackbar("No app on this phone opens that file.") }
             }
-            is TopicDetailEffect.OpenEmail -> if (!context.openEmail(effect.appSearch, effect.web)) {
-                scope.launch { snackbars.showSnackbar("Couldn't open your mail app.") }
-            }
             is TopicDetailEffect.ShareText -> context.shareText(effect.subject, effect.text)
             is TopicDetailEffect.CopyText -> {
                 clipboard.setText(AnnotatedString(effect.text))
@@ -183,7 +182,10 @@ private fun TopicDetailContent(
             TopicDetailEffect.Close -> onClose()
         }
     }
-    TopicDetailScreen(state = state, onIntent = viewModel::onIntent, onBack = onClose, snackbars = snackbars, modifier = modifier)
+    Box(modifier.fillMaxSize()) {
+        TopicDetailScreen(state = state, onIntent = viewModel::onIntent, onBack = onClose, snackbars = snackbars)
+        EmailReaderLayer(state.reading, onClose = { viewModel.onIntent(TopicDetailIntent.CloseEmail) })
+    }
 
     val topicId = state.detail?.topic?.id
     if (state.capturing && topicId != null) {
@@ -194,6 +196,32 @@ private fun TopicDetailContent(
         )
     }
 }
+
+/**
+ * The email reader, pushed over the feed the way the Topics screens push in, and holding the last
+ * email while it slides away so it doesn't blank out on the way.
+ */
+@Composable
+private fun EmailReaderLayer(email: SavedEmail?, onClose: () -> Unit) {
+    var shown by remember { mutableStateOf(email) }
+    SideEffect { if (email != null) shown = email }
+    AnimatedVisibility(
+        visible = email != null,
+        enter = slideInHorizontally(tween(READER_ENTER_MS, easing = EmphasizedDecelerate)) { it / READER_SLIDE_FRACTION } +
+            fadeIn(tween(READER_ENTER_MS, easing = EmphasizedDecelerate)),
+        exit = slideOutHorizontally(tween(READER_EXIT_MS, easing = StandardEasing)) { it / READER_SLIDE_FRACTION } +
+            fadeOut(tween(READER_EXIT_MS, easing = StandardEasing)),
+        label = "email reader",
+    ) {
+        (email ?: shown)?.let { EmailReaderRoute(it, onClose = onClose) }
+    }
+}
+
+private const val READER_ENTER_MS = 300
+private const val READER_EXIT_MS = 200
+
+/** A nudge rather than a full-width slide, like the other Topics screens. */
+private const val READER_SLIDE_FRACTION = 8
 
 @Composable
 fun TopicDetailScreen(
@@ -828,59 +856,6 @@ private fun Context.openUrl(url: String): Boolean = try {
     false
 }
 
-
-/**
- * Hands a kept file to whichever app opens its type, with read access for that one launch.
- * @return false when nothing on the phone will take it, so the caller can say so.
- */
-private fun Context.openFile(file: StoredFile): Boolean {
-    val uri = TopicFiles.contentUri(this, file.path) ?: return false
-    val view = Intent(Intent.ACTION_VIEW)
-        .setDataAndType(uri, file.mimeType)
-        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-    return try {
-        startActivity(view)
-        true
-    } catch (e: ActivityNotFoundException) {
-        false
-    }
-}
-
-/**
- * Opens a kept email, preferring the mail app the user actually reads mail in.
- *
- * The address can't lead the app to one message — its id sits in the fragment, which is Gmail's
- * own web routing, and the app drops it — so the app is asked to *search* instead, with a query
- * that matches the one mail. Failing that, the address opens the mail itself in a browser.
- *
- * @return false when nothing on the phone opened it.
- */
-private fun Context.openEmail(appSearch: String?, web: String?): Boolean =
-    (appSearch != null && searchInMailApp(appSearch)) || (web != null && openUrl(web))
-
-/**
- * Hands [query] to the mail app's own search, the way the system search does. Gmail's search
- * takes its operators here, so a query naming one message lands on that message.
- *
- * @return false when the app isn't installed or won't take a search from outside.
- */
-private fun Context.searchInMailApp(query: String): Boolean {
-    val search = Intent(Intent.ACTION_SEARCH)
-        .setPackage(GMAIL_PACKAGE)
-        .putExtra(SearchManager.QUERY, query)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    return try {
-        startActivity(search)
-        true
-    } catch (e: ActivityNotFoundException) {
-        false
-    } catch (e: SecurityException) {
-        // Its search activity exists but isn't open to other apps.
-        false
-    }
-}
-
-private const val GMAIL_PACKAGE = "com.google.android.gm"
 
 private fun Context.shareText(subject: String, text: String) {
     val send = Intent(Intent.ACTION_SEND)

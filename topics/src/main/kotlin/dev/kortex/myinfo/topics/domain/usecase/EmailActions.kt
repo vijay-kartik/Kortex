@@ -1,7 +1,12 @@
 package dev.kortex.myinfo.topics.domain.usecase
 
 import dev.kortex.myinfo.topics.domain.model.SavedEmail
+import dev.kortex.myinfo.topics.domain.model.StoredFile
+import dev.kortex.myinfo.topics.domain.port.AttachmentCache
+import dev.kortex.myinfo.topics.domain.port.AttachmentDownload
+import dev.kortex.myinfo.topics.domain.port.EmailAttachment
 import dev.kortex.myinfo.topics.domain.port.EmailDirectory
+import dev.kortex.myinfo.topics.domain.port.EmailReadResult
 import dev.kortex.myinfo.topics.domain.port.EmailSearchResult
 
 /**
@@ -14,17 +19,34 @@ class SearchEmails(private val directory: EmailDirectory) {
 }
 
 /**
- * The ways back to a kept email, best first. [EmailRoute.appSearch] finds it inside the mail app,
- * which is where the user reads their mail; [EmailRoute.web] opens the mail itself in a browser.
+ * A kept email, read in full from the mailbox so it can be shown in the app. The mail apps give
+ * no way to open one message from outside, so this is how a kept email is opened.
  */
-class RouteToEmail(private val directory: EmailDirectory) {
-    operator fun invoke(email: SavedEmail) = EmailRoute(
-        appSearch = directory.searchQueryFor(email),
-        web = directory.addressOf(email),
-    )
+class ReadEmail(private val directory: EmailDirectory) {
+    suspend operator fun invoke(email: SavedEmail): EmailReadResult = directory.read(email)
 }
 
-data class EmailRoute(val appSearch: String?, val web: String?) {
-    /** Nothing kept about this email would lead back to it. */
-    val nowhere: Boolean get() = appSearch == null && web == null
+/**
+ * One of a kept email's attachments, downloaded from the mailbox and put where another app can
+ * open it.
+ */
+class FetchEmailAttachment(
+    private val directory: EmailDirectory,
+    private val cache: AttachmentCache,
+) {
+    suspend operator fun invoke(email: SavedEmail, attachment: EmailAttachment): FetchedAttachment =
+        when (val download = directory.download(email, attachment)) {
+            is AttachmentDownload.Failed -> FetchedAttachment.Failed(download.message)
+            is AttachmentDownload.Downloaded ->
+                cache.put(attachment.name, attachment.mimeType, download.bytes)
+                    ?.let { FetchedAttachment.Ready(it) }
+                    ?: FetchedAttachment.Failed("Couldn't save ${attachment.name} on this phone.")
+        }
+}
+
+sealed interface FetchedAttachment {
+    data class Ready(val file: StoredFile) : FetchedAttachment
+
+    /** [message] is fit to show. */
+    data class Failed(val message: String) : FetchedAttachment
 }

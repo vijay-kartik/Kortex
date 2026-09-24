@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Only the topics' own file store is served; nothing else in app storage is reachable. -->
+<!-- Only the topics' own file store and the email attachments being opened are served; nothing
+     else in app storage is reachable. -->
 <paths>
     <files-path
         name="topic-files"
         path="topic-files/" />
+    <cache-path
+        name="email-attachments"
+        path="email-attachments/" />
 </paths>

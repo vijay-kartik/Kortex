@@ -3,21 +3,28 @@ package dev.kortex.app
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.fragment.app.FragmentActivity
 import dev.kortex.design.KortexTheme
 import dev.kortex.app.ui.screens.home.EntryRequest
 import dev.kortex.app.ui.screens.home.RootScreen
+import dev.kortex.app.domain.security.AppLock
+import dev.kortex.app.ui.security.AppLockGate
+import dev.kortex.app.ui.security.applyAppLockWindowPolicy
 import dev.kortex.links.ui.linkDomain
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+// FragmentActivity: the app-lock BiometricPrompt attaches to a FragmentManager.
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
+
+    @Inject lateinit var appLock: AppLock
 
     /** Latest request from a notification, shortcut or share; RootScreen clears it once handled. */
     private var entryRequest by mutableStateOf<EntryRequest?>(null)
@@ -35,12 +42,16 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
+        applyAppLockWindowPolicy(appLock)
         setContent {
             KortexTheme {
-                RootScreen(
-                    entryRequest = entryRequest,
-                    onEntryRequestHandled = { entryRequest = null },
-                )
+                // Every entry point (launcher, notification, shortcut, share) lands behind the lock.
+                AppLockGate(appLock) {
+                    RootScreen(
+                        entryRequest = entryRequest,
+                        onEntryRequestHandled = { entryRequest = null },
+                    )
+                }
             }
         }
     }

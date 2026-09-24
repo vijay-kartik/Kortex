@@ -44,6 +44,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -80,6 +83,7 @@ import android.widget.Toast
 import androidx.compose.ui.graphics.Color.Companion.Green
 import dev.kortex.design.Alarm
 import dev.kortex.design.Edge
+import dev.kortex.design.Ink
 import dev.kortex.design.Mono
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
@@ -103,9 +107,17 @@ fun SettingsScreen(
     vm: SettingsViewModel = hiltViewModel(),
 ) {
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val appLock by vm.appLockSettings.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = {
+            SnackbarHost(snackbar) {
+                Snackbar(it, containerColor = Ink, contentColor = Void, shape = RoundedCornerShape(10.dp))
+            }
+        },
         topBar = {
             androidx.compose.material3.TopAppBar(
                 title = { Text("Tools & Settings") },
@@ -125,10 +137,26 @@ fun SettingsScreen(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-
+            // ── Privacy & security ───────────────────────────────────
+            item { SectionLabel("PRIVACY & SECURITY") }
+            item {
+                AppLockSection(
+                    settings = appLock,
+                    onEnabledChange = vm::setAppLockEnabled,
+                    onLockAfterChange = vm::setLockAfter,
+                    onHideInRecentsChange = vm::setHideInRecents,
+                    onAuthInProgress = vm::setAuthInProgress,
+                    onMessage = { message ->
+                        scope.launch {
+                            snackbar.currentSnackbarData?.dismiss()
+                            snackbar.showSnackbar(message)
+                        }
+                    },
+                )
+            }
 
             // ── LLM Provider ───────────────────────────────────────────
-            item { SectionLabel("LLM PROVIDER") }
+            item { SectionLabel("LLM PROVIDER", Modifier.padding(top = 16.dp)) }
             item {
                 ModelSelector(
                     activeProvider = ui.activeProvider,

@@ -9,6 +9,9 @@ import dev.kortex.core.tool.ToolRegistry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.app.data.auth.McpOAuthManager
 import dev.kortex.app.di.McpAuthFailures
+import dev.kortex.app.domain.security.AppLock
+import dev.kortex.app.domain.security.AppLockSettings
+import dev.kortex.app.domain.security.LockAfter
 import dev.kortex.core.llm.EmbeddingProvider
 import dev.kortex.core.llm.LlmProvider
 import javax.inject.Inject
@@ -95,6 +98,7 @@ class SettingsViewModel @Inject constructor(
     private val embedder: EmbeddingProvider,
     private val llm: LlmProvider,
     private val mcpOAuthManager: McpOAuthManager,
+    private val appLock: AppLock,
     @McpAuthFailures private val mcpAuthFailures: MutableStateFlow<Set<String>>,
 ) : ViewModel() {
 
@@ -242,6 +246,20 @@ class SettingsViewModel @Inject constructor(
     }
 
     // ── public actions ──────────────────────────────────────────────────
+
+    val appLockSettings: StateFlow<AppLockSettings> = appLock.settings
+
+    /** Only after a successful biometric check in the screen. */
+    fun setAppLockEnabled(enabled: Boolean) = appLock.setEnabled(enabled)
+
+    fun setLockAfter(lockAfter: LockAfter) = appLock.setLockAfter(lockAfter)
+
+    fun setHideInRecents(hide: Boolean) = appLock.setHideInRecents(hide)
+
+    /** Keeps the PIN screen (older Android) from counting as leaving the app mid-check. */
+    fun setAuthInProgress(inProgress: Boolean) {
+        appLock.authInProgress = inProgress
+    }
 
     fun toggleTool(toolName: String, enabled: Boolean) {
         viewModelScope.launch {

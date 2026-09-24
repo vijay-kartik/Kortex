@@ -8,7 +8,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.data.auth.GmailAuthManager
 import dev.kortex.app.data.auth.McpOAuthManager
+import dev.kortex.app.data.security.AppLockStore
 import dev.kortex.app.data.settings.SettingsStore
+import dev.kortex.app.domain.security.AppLock
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +37,11 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSettingsStore(@ApplicationContext context: Context): SettingsStore = SettingsStore(context)
+
+    /** Biometric app lock: one lock state shared by every activity. */
+    @Provides
+    @Singleton
+    fun provideAppLock(@ApplicationContext context: Context): AppLock = AppLock(AppLockStore(context))
 
     // Gmail OAuth2 token management (uses device's Google accounts).
     @Provides

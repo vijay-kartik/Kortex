@@ -93,6 +93,11 @@ dependencies {
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.process)
+
+    // App lock: BiometricPrompt needs a FragmentActivity; fragment pinned past biometric's old transitive one.
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment.ktx)
 
     implementation(libs.datastore.preferences)
     implementation(libs.security.crypto)

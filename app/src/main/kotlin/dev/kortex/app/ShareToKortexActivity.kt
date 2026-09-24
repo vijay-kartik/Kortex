@@ -8,12 +8,15 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.fragment.app.FragmentActivity
 import dagger.Lazy
 import dagger.hilt.android.AndroidEntryPoint
+import dev.kortex.app.domain.security.AppLock
 import dev.kortex.app.domain.share.ShareAgentRunner
+import dev.kortex.app.ui.security.AppLockGate
+import dev.kortex.app.ui.security.applyAppLockWindowPolicy
 import dev.kortex.design.KortexTheme
 import dev.kortex.core.state.Attachment
 import dev.kortex.app.ui.screens.share.ShareComposer
@@ -27,7 +30,9 @@ import kotlinx.coroutines.withContext
  * instruction, hits send, and [ShareAgentRunner] takes it from there in the background.
  */
 @AndroidEntryPoint
-class ShareToKortexActivity : ComponentActivity() {
+class ShareToKortexActivity : FragmentActivity() {
+
+    @Inject lateinit var appLock: AppLock
 
     // Lazy: an invalid share intent finishes before the agent stack is needed.
     @Inject lateinit var shareAgentRunner: Lazy<ShareAgentRunner>
@@ -58,21 +63,24 @@ class ShareToKortexActivity : ComponentActivity() {
 
         val runner = shareAgentRunner.get()
 
+        applyAppLockWindowPolicy(appLock)
         setContent {
             KortexTheme {
-                ShareComposer(
-                    loadAttachment = { readAttachment(uri) },
-                    onSend = { text, attachment ->
-                        runner.submit(text, attachment)
-                        Toast.makeText(
-                            this,
-                            "Kortex is on it — you'll get a notification.",
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                        finish()
-                    },
-                    onDismiss = { finish() },
-                )
+                AppLockGate(appLock) {
+                    ShareComposer(
+                        loadAttachment = { readAttachment(uri) },
+                        onSend = { text, attachment ->
+                            runner.submit(text, attachment)
+                            Toast.makeText(
+                                this,
+                                "Kortex is on it — you'll get a notification.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            finish()
+                        },
+                        onDismiss = { finish() },
+                    )
+                }
             }
         }
     }

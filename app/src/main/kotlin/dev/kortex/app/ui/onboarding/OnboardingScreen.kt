@@ -122,11 +122,13 @@ private val TopGap = 96.dp
 
 /**
  * First launch and signed-out onboarding: Welcome (sign in with Google) → All set.
- * [splashHandoff] is non-null only when this launch should take over the splash icon.
+ * [splashHandoff] is non-null only when this launch should take over the splash icon; [signedOut]
+ * greets someone who just logged out (Figma: Login & Logout 09).
  */
 @Composable
 fun OnboardingFlow(
     splashHandoff: (() -> SplashHandoff?)?,
+    signedOut: Boolean,
     onFinished: () -> Unit,
     vm: OnboardingViewModel = hiltViewModel(),
 ) {
@@ -141,6 +143,7 @@ fun OnboardingFlow(
     ) { step ->
         when (step) {
             OnboardingStep.Welcome -> WelcomeScreen(
+                signedOut = signedOut,
                 signingIn = ui.signingIn,
                 error = ui.error,
                 splashHandoff = splashHandoff,
@@ -165,6 +168,7 @@ private fun AnimatedContentTransitionScope<OnboardingStep>.sharedAxisX(): Conten
 
 @Composable
 private fun WelcomeScreen(
+    signedOut: Boolean,
     signingIn: Boolean,
     error: String?,
     splashHandoff: (() -> SplashHandoff?)?,
@@ -220,7 +224,7 @@ private fun WelcomeScreen(
             }
             Spacer(Modifier.height(24.dp))
             Text(
-                "Welcome to Kortex",
+                if (signedOut) "You’re signed out" else "Welcome to Kortex",
                 style = MaterialTheme.typography.headlineSmall,
                 color = Ink,
                 textAlign = TextAlign.Center,
@@ -228,7 +232,11 @@ private fun WelcomeScreen(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Save links, build topics and ask your agent — all in one place.",
+                if (signedOut) {
+                    "Sign in to keep using Kortex. Your links and topics are still on this phone."
+                } else {
+                    "Save links, build topics and ask your agent — all in one place."
+                },
                 style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
                 color = Muted,
                 textAlign = TextAlign.Center,

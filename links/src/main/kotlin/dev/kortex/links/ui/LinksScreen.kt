@@ -19,6 +19,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -69,6 +71,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -108,8 +111,10 @@ import dev.kortex.design.Alarm
 import dev.kortex.design.Edge
 import dev.kortex.design.Grotesk
 import dev.kortex.design.R
-import dev.kortex.design.SearchHeader
+import dev.kortex.design.MetaLine
+import dev.kortex.design.TopBarSearch
 import dev.kortex.design.countLabel
+import dev.kortex.design.resultsLabel
 import dev.kortex.design.Ink
 import dev.kortex.design.KortexTheme
 import dev.kortex.design.Muted
@@ -117,6 +122,7 @@ import dev.kortex.design.Panel
 import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
 import dev.kortex.design.Void
+import dev.kortex.design.anim.EmphasizedAccelerate
 import dev.kortex.design.anim.EmphasizedDecelerate
 import dev.kortex.design.anim.StandardEasing
 import dev.kortex.design.dashedBorder
@@ -127,14 +133,23 @@ import dev.kortex.links.data.TagLinkCount
 import kotlinx.coroutines.delay
 
 
-@Preview
+/**
+ * The Links tab. Its search field lives in the home top bar; [search] brings the query here and
+ * tells the screen when the field is open.
+ */
 @Composable
-fun LinksScreen(modifier: Modifier = Modifier, onCreateLink: () -> Unit = {}, viewModel: LinksViewModel = hiltViewModel()) {
+fun LinksScreen(
+    search: TopBarSearch,
+    modifier: Modifier = Modifier,
+    onCreateLink: () -> Unit = {},
+    viewModel: LinksViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.linksScreenUiState.collectAsStateWithLifecycle()
-    // The field reads local state so typing never waits on the filtered list round-trip.
-    var query by rememberSaveable { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+    LaunchedEffect(search) {
+        snapshotFlow { search.query }.collect(viewModel::onQueryChange)
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -142,12 +157,21 @@ fun LinksScreen(modifier: Modifier = Modifier, onCreateLink: () -> Unit = {}, vi
         // add the status bar height again above the header (and the nav bar below the list).
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onCreateLink,
-                containerColor = Synapse,
-                contentColor = Void,
+            // Out of the way while searching, when the keyboard would lift it over the results.
+            AnimatedVisibility(
+                visible = !search.expanded,
+                enter = scaleIn(tween(FAB_IN_MS, delayMillis = FAB_IN_DELAY_MS, easing = EmphasizedDecelerate)) +
+                    fadeIn(tween(FAB_IN_MS, delayMillis = FAB_IN_DELAY_MS)),
+                exit = scaleOut(tween(FAB_OUT_MS, easing = EmphasizedAccelerate), targetScale = 0.8f) +
+                    fadeOut(tween(FAB_OUT_MS)),
             ) {
-                Icon(Icons.Default.Add, contentDescription = "New Link")
+                FloatingActionButton(
+                    onClick = onCreateLink,
+                    containerColor = Synapse,
+                    contentColor = Void,
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "New Link")
+                }
             }
         }
     ) { innerPadding ->
@@ -165,11 +189,7 @@ fun LinksScreen(modifier: Modifier = Modifier, onCreateLink: () -> Unit = {}, vi
                 LinksScreenUiState.EmptyLinksUiState -> EmptyLinksScreen()
                 is LinksScreenUiState.LinksUiState -> LinksWithSearchScreen(
                     state = state,
-                    query = query,
-                    onQueryChange = {
-                        query = it
-                        viewModel.onQueryChange(it)
-                    },
+                    query = search.query,
                     onTagToggle = viewModel::toggleTag,
                     // The card's copy animation is the confirmation; Android 13+ adds its own on top.
                     onLinkClick = { link -> clipboard.setText(AnnotatedString(link.url)) },
@@ -226,8 +246,8 @@ fun EmptyLinksScreen() {
 @Composable
 fun LinksWithSearchScreen(
     state: LinksScreenUiState.LinksUiState,
+    /** The top bar's search text; the list arrives already filtered by it. */
     query: String,
-    onQueryChange: (String) -> Unit,
     onTagToggle: (String) -> Unit,
     onLinkClick: (LinkEntity) -> Unit,
     onOpenLink: (LinkEntity) -> Unit,
@@ -241,7 +261,6 @@ fun LinksWithSearchScreen(
     val nowMillis = remember(state.links) { System.currentTimeMillis() }
     // One card animates at a time: a tap anywhere restarts the animation on the tapped card.
     var copyTap by remember { mutableStateOf<CopyTap?>(null) }
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
 
     var optionsLinkId by rememberSaveable { mutableStateOf<Long?>(null) }
     // The tray closes for good when its link is filtered out or deleted, rather than reappearing with it.
@@ -322,18 +341,18 @@ fun LinksWithSearchScreen(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 16.dp, end = 16.dp, top = 20.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SearchHeader(
-                meta = "${countLabel(state.linkCount, "LINK")} · ${countLabel(state.tags.size, "TAG")}",
-                query = query,
-                onQueryChange = onQueryChange,
-                expanded = searchExpanded,
-                onExpandedChange = { searchExpanded = it },
+            MetaLine(
+                if (query.isBlank()) {
+                    "${countLabel(state.linkCount, "LINK")} · ${countLabel(state.tags.size, "TAG")}"
+                } else {
+                    resultsLabel(state.links.size, query)
+                },
                 modifier = Modifier.graphicsLayer { alpha = chromeAlpha },
             )
-            // Registered after the header's, so back closes the tray before it collapses search.
+            // Registered after the top bar's search, so back closes the tray before it collapses search.
             BackHandler(enabled = optionsOpen, onBack = ::closeCard)
             if (state.tags.isNotEmpty()) {
                 TagFilters(
@@ -836,6 +855,10 @@ private const val PRESS_MS = 120
 private const val TRAY_MS = 250
 private const val CLOSE_MS = 200
 private const val SWAP_MS = 200
+// + leaves with the top bar's first search phase and returns once the field has closed.
+private const val FAB_OUT_MS = 150
+private const val FAB_IN_MS = 200
+private const val FAB_IN_DELAY_MS = 150
 private val OPEN_BORDER_WIDTH = 1.5.dp
 private val COUNTDOWN_HEIGHT = 2.dp
 private val UndoShape = RoundedCornerShape(12.dp)
@@ -884,7 +907,6 @@ private fun LinksWithSearchPreview() {
                     pendingDeletion = PendingDeletion(1, startedAtMillis = now, deadlineMillis = now + 5_000),
                 ),
                 query = "",
-                onQueryChange = {},
                 onTagToggle = {},
                 onLinkClick = {},
                 onOpenLink = {},

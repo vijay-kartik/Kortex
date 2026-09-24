@@ -26,25 +26,18 @@ sealed interface Overlay {
 }
 
 /**
- * Tab and overlay state for [RootScreen]. The tab rules live here so the tab bar and entry
+ * Tab, menu and overlay state for [RootScreen]. The tab rules live here so the menu and entry
  * requests move between tabs the same way.
  */
 @Stable
 class RootState(
     selected: KortexTab = KortexTab.Links,
-    lastAgentTab: KortexTab = KortexTab.Chat,
-    lastMyInfoTab: KortexTab = KortexTab.Links,
     overlay: Overlay = Overlay.None,
     pendingChatRequest: ChatRequest? = null,
+    menuOpen: Boolean = false,
 ) {
     var selected by mutableStateOf(selected)
         private set
-
-    // Coming back to Agent restores the leaf the user left, rather than resetting to Chat.
-    private var lastAgentTab by mutableStateOf(lastAgentTab)
-
-    // Same for My Info: Links or Topics, whichever the user was last on.
-    private var lastMyInfoTab by mutableStateOf(lastMyInfoTab)
 
     var overlay by mutableStateOf(overlay)
         private set
@@ -53,23 +46,22 @@ class RootState(
     var pendingChatRequest by mutableStateOf(pendingChatRequest)
         private set
 
-    /** The category shown expanded in the tab bar: always the selected tab's category. */
-    val expanded: TabCategory get() = selected.category
+    /** The full-width home menu, drawn over the tabs. Anything that navigates closes it. */
+    var menuOpen by mutableStateOf(menuOpen)
+        private set
+
+    fun openMenu() {
+        menuOpen = true
+    }
+
+    fun closeMenu() {
+        menuOpen = false
+    }
 
     fun openTab(tab: KortexTab) {
         selected = tab
-        when (tab.category) {
-            TabCategory.Agent -> lastAgentTab = tab
-            TabCategory.MyInfo -> lastMyInfoTab = tab
-        }
+        menuOpen = false
     }
-
-    fun openCategory(category: TabCategory) = openTab(
-        when (category) {
-            TabCategory.Agent -> lastAgentTab
-            TabCategory.MyInfo -> lastMyInfoTab
-        }
-    )
 
     /** Switches to the Chat tab and hands [request] to ChatScreen. */
     fun openChat(request: ChatRequest) {
@@ -82,10 +74,12 @@ class RootState(
     }
 
     fun openSettings() {
+        menuOpen = false
         overlay = Overlay.Settings
     }
 
     fun openCreateLink(url: String = "") {
+        menuOpen = false
         overlay = Overlay.CreateLink(url)
     }
 
@@ -111,14 +105,13 @@ class RootState(
         private const val NEW_SESSION = "new_session"
         private const val NEW_SESSION_WITH_DRAFT = "new_session_draft"
 
-        /** Saved as [selected, lastAgentTab, overlay kind, overlay value, chat request kind, chat request value, lastMyInfoTab]. */
+        /** Saved as [selected, overlay kind, overlay value, chat request kind, chat request value, menu open]. */
         val Saver: Saver<RootState, *> = listSaver(
             save = { state ->
                 val overlay = state.overlay
                 val chat = state.pendingChatRequest
                 listOf(
                     state.selected.name,
-                    state.lastAgentTab.name,
                     when (overlay) {
                         Overlay.None -> ""
                         Overlay.Settings -> SETTINGS
@@ -141,27 +134,26 @@ class RootState(
                         is ChatRequest.LoadSession -> chat.sessionId
                         is ChatRequest.NewSession -> chat.draft.orEmpty()
                     },
-                    state.lastMyInfoTab.name,
+                    state.menuOpen.toString(),
                 )
             },
             restore = { saved ->
                 RootState(
                     selected = KortexTab.valueOf(saved[0]),
-                    lastAgentTab = KortexTab.valueOf(saved[1]),
-                    lastMyInfoTab = KortexTab.valueOf(saved[6]),
-                    overlay = when (saved[2]) {
+                    overlay = when (saved[1]) {
                         SETTINGS -> Overlay.Settings
-                        CREATE_LINK -> Overlay.CreateLink(saved[3])
+                        CREATE_LINK -> Overlay.CreateLink(saved[2])
                         NEW_TOPIC -> Overlay.NewTopic
-                        TOPIC -> Overlay.Topic(saved[3].toLong())
+                        TOPIC -> Overlay.Topic(saved[2].toLong())
                         else -> Overlay.None
                     },
-                    pendingChatRequest = when (saved[4]) {
-                        LOAD_SESSION -> ChatRequest.LoadSession(saved[5])
+                    pendingChatRequest = when (saved[3]) {
+                        LOAD_SESSION -> ChatRequest.LoadSession(saved[4])
                         NEW_SESSION -> ChatRequest.NewSession()
-                        NEW_SESSION_WITH_DRAFT -> ChatRequest.NewSession(draft = saved[5])
+                        NEW_SESSION_WITH_DRAFT -> ChatRequest.NewSession(draft = saved[4])
                         else -> null
                     },
+                    menuOpen = saved[5].toBoolean(),
                 )
             },
         )

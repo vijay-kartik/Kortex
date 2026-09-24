@@ -3,10 +3,12 @@ package dev.kortex.sync
 import android.app.Activity
 import android.content.Context
 import android.util.Log
+import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CredentialOption
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.ClearCredentialException
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
@@ -79,6 +81,20 @@ class CloudAccount(context: Context, private val webClientId: String) {
         } catch (e: Exception) {
             Log.w(TAG, "Google sign-in failed", e)
             SignInResult.Failed(GENERIC_FAILURE)
+        }
+    }
+
+    /**
+     * Signs out of Firebase and forgets the chosen Google account, so the next sign-in shows the
+     * account picker again. Local links and topics are left alone.
+     */
+    suspend fun signOut() {
+        auth.signOut()
+        try {
+            credentials.clearCredentialState(ClearCredentialStateRequest())
+        } catch (e: ClearCredentialException) {
+            // The Firebase session is already gone; at worst the picker preselects the old account.
+            Log.w(TAG, "Couldn't clear the remembered Google account", e)
         }
     }
 

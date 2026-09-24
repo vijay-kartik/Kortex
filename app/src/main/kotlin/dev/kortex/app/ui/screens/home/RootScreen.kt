@@ -3,6 +3,7 @@ package dev.kortex.app.ui.screens.home
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -14,7 +15,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -22,12 +22,20 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.tooling.preview.Preview
-import dev.kortex.app.ui.appbar.KortexAppBar
+import dev.kortex.app.ui.navigation.HomeMenu
 import dev.kortex.app.ui.screens.chat.ChatRequest
 import dev.kortex.app.ui.screens.chat.ChatScreen
 import dev.kortex.app.ui.screens.chat.ChatShareAction
@@ -36,10 +44,14 @@ import dev.kortex.app.ui.screens.graph.GraphScreen
 import dev.kortex.app.ui.screens.runs.RunsScreen
 import dev.kortex.app.ui.screens.settings.SettingsScreen
 import dev.kortex.design.KortexTheme
+import dev.kortex.design.KortexTopBar
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
+import dev.kortex.design.TopBarSearch
+import dev.kortex.design.anim.EmphasizedAccelerate
 import dev.kortex.design.anim.EmphasizedDecelerate
 import dev.kortex.design.anim.StandardEasing
+import dev.kortex.design.rememberTopBarSearch
 import dev.kortex.links.ui.CreateLinkScreen
 import dev.kortex.links.ui.LinksScreen
 import dev.kortex.myinfo.topics.ui.TopicsScreen
@@ -56,6 +68,9 @@ fun RootScreen(
     onEntryRequestHandled: () -> Unit = {},
 ) {
     val state = rememberRootState()
+    // Held here, not in the tabs, so a query survives switching away and opening a topic from its results.
+    val linksSearch = rememberTopBarSearch()
+    val topicsSearch = rememberTopBarSearch()
 
     EntryRequestEffect(entryRequest, state, onEntryRequestHandled)
 
@@ -64,8 +79,23 @@ fun RootScreen(
 
     RootContent(
         state = state,
+        tabSearch = { tab ->
+            when (tab) {
+                KortexTab.Links -> linksSearch
+                KortexTab.Topics -> topicsSearch
+                else -> null
+            }
+        },
         tabActions = { tab ->
             if (tab == KortexTab.Chat) ChatShareAction()
+        },
+        menu = {
+            HomeMenu(
+                selected = state.selected,
+                onSelect = state::openTab,
+                onOpenSettings = state::openSettings,
+                onClose = state::closeMenu,
+            )
         },
         overlayContent = { overlay ->
             when (overlay) {
@@ -94,8 +124,9 @@ fun RootScreen(
                     onNewChat = { state.openChat(ChatRequest.NewSession()) },
                 )
                 KortexTab.Runs -> RunsScreen()
-                KortexTab.Links -> LinksScreen(onCreateLink = { state.openCreateLink() })
+                KortexTab.Links -> LinksScreen(search = linksSearch, onCreateLink = { state.openCreateLink() })
                 KortexTab.Topics -> TopicsScreen(
+                    search = topicsSearch,
                     onCreateTopic = state::openNewTopic,
                     onOpenTopic = state::openTopic,
                 )
@@ -105,14 +136,17 @@ fun RootScreen(
 }
 
 /**
- * Stateless home shell: app bar, category tabs and the switch between the tabbed
- * UI and a full-screen [Overlay]. Screen bodies come from [overlayContent] and [tabContent];
- * [tabActions] adds app-bar actions for the selected tab.
+ * Stateless home shell (Figma: Home Navigation): the top bar, the full-width [menu] sliding over the
+ * tabs, and the switch between the tabbed UI and a full-screen [Overlay]. Screen bodies come from
+ * [overlayContent] and [tabContent]; a tab gets the bar's search from [tabSearch], or puts
+ * [tabActions] in its place.
  */
 @Composable
 fun RootContent(
     state: RootState,
+    tabSearch: (KortexTab) -> TopBarSearch?,
     tabActions: @Composable (KortexTab) -> Unit,
+    menu: @Composable () -> Unit,
     overlayContent: @Composable (Overlay) -> Unit,
     tabContent: @Composable (KortexTab) -> Unit,
 ) {
@@ -122,30 +156,59 @@ fun RootContent(
         label = "overlay",
     ) { overlay ->
         when (overlay) {
-            Overlay.None -> Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
-                topBar = {
-                    // KortexAppBar emits the app bar and the tab bar as siblings; stack them.
-                    Column {
-                        KortexAppBar(
-                            selected = state.selected,
-                            expanded = state.expanded,
-                            actions = { tabActions(state.selected) },
-                            onMcpSettingsClick = state::openSettings,
-                            onCategorySelected = state::openCategory,
-                            onTabSelected = state::openTab,
+            Overlay.None -> Box(Modifier.fillMaxSize()) {
+                // A fresh tab starts at its top, so the hairline starts hidden.
+                val scroll = remember(state.selected) { ScrolledUnder() }
+                val search = tabSearch(state.selected)
+                Scaffold(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    topBar = {
+                        KortexTopBar(
+                            title = state.selected.label,
+                            onMenuClick = state::openMenu,
+                            search = search,
+                            searchHint = "Search ${state.selected.label.lowercase()}",
+                            scrolledUnder = scroll.scrolledUnder,
+                            action = { tabActions(state.selected) },
                         )
+                    },
+                ) { innerPadding ->
+                    Box(Modifier.padding(innerPadding).nestedScroll(scroll)) {
+                        tabContent(state.selected)
                     }
-                },
-            ) { innerPadding ->
-                Box(Modifier.padding(innerPadding)) {
-                    tabContent(state.selected)
+                }
+                AnimatedVisibility(
+                    visible = state.menuOpen,
+                    enter = slideInHorizontally(tween(MENU_OPEN_MS, easing = EmphasizedDecelerate)) { -it },
+                    exit = slideOutHorizontally(tween(MENU_CLOSE_MS, easing = EmphasizedAccelerate)) { -it },
+                    label = "menu",
+                ) {
+                    menu()
                 }
             }
             else -> overlayContent(overlay)
         }
     }
 }
+
+/**
+ * Fed by nested scroll from whatever list the tab shows; true while content sits scrolled under
+ * the top bar, so the bar can draw its hairline.
+ */
+private class ScrolledUnder : NestedScrollConnection {
+    private var offset by mutableFloatStateOf(0f)
+
+    // Derived, so the bar recomposes when this flips rather than on every scroll frame.
+    val scrolledUnder: Boolean by derivedStateOf { offset < -1f }
+
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+        offset = (offset + consumed.y).coerceAtMost(0f)
+        return Offset.Zero
+    }
+}
+
+private const val MENU_OPEN_MS = 320
+private const val MENU_CLOSE_MS = 250
 
 /**
  * How one screen gives way to the next. The Topics screens push in from the end and fall back the
@@ -227,7 +290,9 @@ private fun RootContentChatPreview() {
     KortexTheme {
         RootContent(
             state = remember { RootState(selected = KortexTab.Chat) },
+            tabSearch = { null },
             tabActions = {},
+            menu = {},
             overlayContent = { PreviewSlot(it.toString()) },
             tabContent = { PreviewSlot(it.label) },
         )

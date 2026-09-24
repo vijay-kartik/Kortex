@@ -39,7 +39,14 @@ fun AuthGate(
 ) {
     val user by account.user.collectAsStateWithLifecycle()
     var onboarding by rememberSaveable { mutableStateOf(user == null) }
-    LaunchedEffect(user) { if (user == null) onboarding = true }
+    // Onboarding reached from the app rather than a launch means the user just logged out.
+    var signedOut by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(user) {
+        if (user == null && !onboarding) {
+            signedOut = true
+            onboarding = true
+        }
+    }
     // The splash belongs to this launch only; returning here after a sign-out starts plainly.
     var introPending by remember { mutableStateOf(playIntro) }
 
@@ -62,8 +69,10 @@ fun AuthGate(
         if (showOnboarding) {
             OnboardingFlow(
                 splashHandoff = splashHandoff.takeIf { introPending },
+                signedOut = signedOut,
                 onFinished = {
                     introPending = false
+                    signedOut = false
                     onboarding = false
                 },
             )

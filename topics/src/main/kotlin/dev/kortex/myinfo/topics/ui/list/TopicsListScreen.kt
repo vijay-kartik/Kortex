@@ -2,11 +2,14 @@ package dev.kortex.myinfo.topics.ui.list
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,10 +33,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -42,11 +44,14 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.design.KortexTheme
-import dev.kortex.design.SearchHeader
+import dev.kortex.design.MetaLine
+import dev.kortex.design.TopBarSearch
 import dev.kortex.design.countLabel
 import dev.kortex.design.Muted
 import dev.kortex.design.Synapse
 import dev.kortex.design.Void
+import dev.kortex.design.anim.EmphasizedAccelerate
+import dev.kortex.design.anim.EmphasizedDecelerate
 import dev.kortex.design.anim.StandardEasing
 import dev.kortex.mvi.ObserveEffects
 import dev.kortex.myinfo.topics.domain.model.ItemType
@@ -68,6 +73,7 @@ import dev.kortex.myinfo.topics.ui.search.searchSummary
 /** Connects [TopicsListScreen] to its ViewModel and hands navigation to the host. */
 @Composable
 fun TopicsListRoute(
+    searchField: TopBarSearch,
     onOpenTopic: (Long) -> Unit,
     onCreateTopic: () -> Unit,
     modifier: Modifier = Modifier,
@@ -90,16 +96,19 @@ fun TopicsListRoute(
     TopicsListScreen(
         state = state,
         search = search,
+        searchField = searchField,
         onIntent = viewModel::onIntent,
         onSearchIntent = searchViewModel::onIntent,
         modifier = modifier,
     )
 }
 
+/** [searchField] is the home top bar's search; [search] holds the results for its query. */
 @Composable
 fun TopicsListScreen(
     state: TopicsListState,
     search: TopicSearchState,
+    searchField: TopBarSearch,
     onIntent: (TopicsListIntent) -> Unit,
     onSearchIntent: (TopicSearchIntent) -> Unit,
     modifier: Modifier = Modifier,
@@ -118,19 +127,29 @@ fun TopicsListScreen(
             // The home Scaffold already pads for the system bars.
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { onIntent(TopicsListIntent.CreateTopic) },
-                    shape = RoundedCornerShape(14.dp),
-                    containerColor = Synapse,
-                    contentColor = Void,
+                // Out of the way while searching, as on the Links tab.
+                AnimatedVisibility(
+                    visible = !searchField.expanded,
+                    enter = scaleIn(tween(FAB_IN_MS, delayMillis = FAB_IN_DELAY_MS, easing = EmphasizedDecelerate)) +
+                        fadeIn(tween(FAB_IN_MS, delayMillis = FAB_IN_DELAY_MS)),
+                    exit = scaleOut(tween(FAB_OUT_MS, easing = EmphasizedAccelerate), targetScale = 0.8f) +
+                        fadeOut(tween(FAB_OUT_MS)),
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "New topic")
+                    FloatingActionButton(
+                        onClick = { onIntent(TopicsListIntent.CreateTopic) },
+                        shape = RoundedCornerShape(14.dp),
+                        containerColor = Synapse,
+                        contentColor = Void,
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "New topic")
+                    }
                 }
             },
         ) { innerPadding ->
             TopicsList(
                 state = state,
                 search = search,
+                query = searchField.query,
                 onIntent = onIntent,
                 onSearchIntent = onSearchIntent,
                 modifier = Modifier
@@ -144,13 +163,14 @@ fun TopicsListScreen(
 }
 
 /**
- * The search field works as on the Links tab: it expands in place, and while it holds a query the
- * scope chips and results across every topic stand in for the sort chips and topic cards.
+ * While the top bar's search holds a [query], the scope chips and results across every topic stand
+ * in for the sort chips and topic cards.
  */
 @Composable
 private fun TopicsList(
     state: TopicsListState,
     search: TopicSearchState,
+    query: String,
     onIntent: (TopicsListIntent) -> Unit,
     onSearchIntent: (TopicSearchIntent) -> Unit,
     modifier: Modifier = Modifier,
@@ -160,14 +180,17 @@ private fun TopicsList(
     val optionsOpen = state.openOptionsTopicId != null
     val tapOutside = remember { OpenCardBounds() }
 
-    // The field reads local state so typing never waits on the debounced search. It starts from the
-    // search's query, which outlives this screen while a topic opened from the results is shown.
-    var query by rememberSaveable { mutableStateOf(search.query) }
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
     val showResults = query.isNotBlank()
-    // A restored query whose search didn't survive: run it again.
+    // The query outlives this screen while a topic opened from the results is shown, and the search
+    // may not have: rerun it when they differ, then pass every edit on.
+    val latestSearch by rememberUpdatedState(search)
+    val currentQuery by rememberUpdatedState(query)
     LaunchedEffect(Unit) {
-        if (showResults && search.query != query) onSearchIntent(TopicSearchIntent.QueryChanged(query))
+        var first = true
+        snapshotFlow { currentQuery }.collect { q ->
+            if (!first || q != latestSearch.query) onSearchIntent(TopicSearchIntent.QueryChanged(q))
+            first = false
+        }
     }
 
     // The pressed card dims everything else, as on the Links tab.
@@ -182,24 +205,17 @@ private fun TopicsList(
             .fillMaxSize()
             .tapOutsideToClose(tapOutside, open = optionsOpen) { onIntent(TopicsListIntent.HideOptions) },
     ) {
-        SearchHeader(
-            meta = if (showResults) {
+        MetaLine(
+            if (showResults) {
                 searchSummary(search)
             } else {
                 "${countLabel(state.topicCount, "TOPIC")} · ${countLabel(state.itemCount, "ITEM")}"
             },
-            query = query,
-            onQueryChange = {
-                query = it
-                onSearchIntent(TopicSearchIntent.QueryChanged(it))
-            },
-            expanded = searchExpanded,
-            onExpandedChange = { searchExpanded = it },
             modifier = Modifier
-                .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 6.dp)
+                .padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 12.dp)
                 .graphicsLayer { alpha = chromeAlpha },
         )
-        // Registered after the header's, so back closes the tray before it collapses search.
+        // Registered after the top bar's search, so back closes the tray before it collapses search.
         BackHandler(enabled = optionsOpen) { onIntent(TopicsListIntent.HideOptions) }
         Crossfade(targetState = showResults, modifier = Modifier.weight(1f), label = "list or results") { results ->
             if (results) {
@@ -326,6 +342,7 @@ private fun TopicsListPreview() {
         TopicsListScreen(
             state = TopicsListState(loading = false, topics = topics),
             search = TopicSearchState(),
+            searchField = TopBarSearch(),
             onIntent = {},
             onSearchIntent = {},
         )

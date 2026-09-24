@@ -1,6 +1,6 @@
 package dev.kortex.app.ui.screens.home
 
-/** Top-level grouping of tabs. The selected category expands; the others collapse to a chip. */
+/** The groups in the home menu, in order; [label] is shown as the section heading. */
 enum class TabCategory(val label: String) {
     Agent("Agent"),
     MyInfo("My Info"),

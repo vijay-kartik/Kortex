@@ -245,14 +245,6 @@ private fun TopicsList(
                 }
             }
         }
-        Text(
-            if (optionsOpen) "tap outside or back to close" else "long-press a topic for options",
-            style = MetaStyle.copy(letterSpacing = 0.6.sp),
-            color = Muted,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 18.dp, top = 8.dp, bottom = 30.dp),
-        )
     }
 }
 

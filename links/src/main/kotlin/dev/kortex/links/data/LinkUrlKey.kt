@@ -2,6 +2,7 @@ package dev.kortex.links.data
 
 import java.net.MalformedURLException
 import java.net.URL
+import java.security.MessageDigest
 
 /**
  * The identity of a link's address: two URLs with the same key are the same saved link.
@@ -35,6 +36,17 @@ fun linkUrlKey(url: String): String {
         .orEmpty()
     return host + port + path + query
 }
+
+/**
+ * A link's document id in the cloud: the first 32 hex characters of SHA-256 over its [urlKey]
+ * (UTF-8). Derived, not random, so the phone and the browser extension saving the same page write
+ * the same document. The extension must match `LinkUidTest`'s vectors exactly.
+ */
+fun linkUid(urlKey: String): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest(urlKey.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+        .take(32)
 
 private fun isTrackingParam(name: String): Boolean {
     val lower = name.lowercase()

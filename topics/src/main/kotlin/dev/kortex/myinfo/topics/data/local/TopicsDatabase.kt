@@ -9,8 +9,12 @@ import androidx.room.PrimaryKey
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import java.util.UUID
 
-@Entity(tableName = "topics", indices = [Index(value = ["name"], unique = true)])
+@Entity(
+    tableName = "topics",
+    indices = [Index(value = ["name"], unique = true), Index(value = ["uid"], unique = true)],
+)
 data class TopicEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     /** Unique ignoring case. */
@@ -20,7 +24,18 @@ data class TopicEntity(
     /** Comma-separated [dev.kortex.myinfo.topics.domain.model.ItemType] names. */
     val sections: String,
     val createdAtMillis: Long,
+    /**
+     * When the topic or its items last changed, as the screens show and sort it. Kept by the DAO, not
+     * the sync triggers, so pinning or a new summary doesn't lift a topic to the top of the list.
+     */
     val updatedAtMillis: Long,
+    /** The topic's document id in the cloud. */
+    val uid: String = UUID.randomUUID().toString(),
+    /**
+     * Local changes not yet pushed: 0 when in sync. Triggers count up on every change, so a push
+     * can tell whether the row changed again while it was in flight.
+     */
+    val dirty: Int = 1,
 )
 
 /**
@@ -34,7 +49,7 @@ data class TopicEntity(
         ForeignKey(entity = TopicEntity::class, parentColumns = ["id"], childColumns = ["topicId"], onDelete = ForeignKey.CASCADE),
     ],
     // A topic holds a link at most once. SQLite lets NULLs repeat, so other types are unaffected.
-    indices = [Index(value = ["topicId", "linkId"], unique = true)],
+    indices = [Index(value = ["topicId", "linkId"], unique = true), Index(value = ["uid"], unique = true)],
 )
 data class TopicItemEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -71,6 +86,12 @@ data class TopicItemEntity(
     val fromAddress: String? = null,
     val accountEmail: String? = null,
     val sentAtMillis: Long? = null,
+    /** The item's document id in the cloud. */
+    val uid: String = UUID.randomUUID().toString(),
+    /** Local changes not yet pushed, counted as on [TopicEntity.dirty]. */
+    val dirty: Int = 1,
+    /** Last change to anything that syncs, kept by triggers. The last writer wins on it. */
+    val updatedAtMillis: Long = addedAtMillis,
 )
 
 /**
@@ -91,11 +112,56 @@ data class TopicSummaryEntity(
     val fingerprint: String,
 )
 
-@Database(entities = [TopicEntity::class, TopicItemEntity::class, TopicSummaryEntity::class], version = 4, exportSchema = false)
+@Database(
+    entities = [
+        TopicEntity::class,
+        TopicItemEntity::class,
+        TopicSummaryEntity::class,
+        SyncTombstoneEntity::class,
+        SyncControlEntity::class,
+    ],
+    version = 5,
+    exportSchema = false,
+)
 abstract class TopicsDatabase : RoomDatabase() {
     abstract fun topicDao(): TopicDao
+    abstract fun topicSyncDao(): TopicSyncDao
 
     companion object {
+        /** A fresh database gets its tables from Room; the sync switch row and triggers come from here. */
+        val SYNC_ON_CREATE = object : Callback() {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                TopicSyncSchema.seedControl(db)
+                TopicSyncSchema.createTriggers(db)
+            }
+        }
+
+        /**
+         * Cloud sync (docs/CLOUD_SYNC_PLAN.md): a uid and change counter on topics and items, a
+         * change time on items, the tombstone and switch tables, and the triggers that keep them.
+         * Existing rows get random uids and start dirty, so the first sync uploads everything.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                for (table in listOf("topics", "topic_items")) {
+                    db.execSQL("ALTER TABLE $table ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
+                    db.execSQL("ALTER TABLE $table ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1")
+                    val ids = buildList {
+                        db.query("SELECT id FROM $table").use { cursor -> while (cursor.moveToNext()) add(cursor.getLong(0)) }
+                    }
+                    ids.forEach { id ->
+                        db.execSQL("UPDATE $table SET uid = ? WHERE id = ?", arrayOf<Any>(UUID.randomUUID().toString(), id))
+                    }
+                    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_${table}_uid` ON `$table` (`uid`)")
+                }
+                db.execSQL("ALTER TABLE topic_items ADD COLUMN updatedAtMillis INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE topic_items SET updatedAtMillis = addedAtMillis")
+                TopicSyncSchema.createTables(db)
+                TopicSyncSchema.seedControl(db)
+                TopicSyncSchema.createTriggers(db)
+            }
+        }
+
         /** Item pinning (Figma: Topics 1e). Everything already saved starts unpinned. */
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {

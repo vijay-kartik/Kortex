@@ -9,6 +9,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.links.data.LinkDao
+import dev.kortex.links.data.LinkSyncDao
 import dev.kortex.links.data.LinksDatabase
 import dev.kortex.links.data.TagDao
 import dev.kortex.links.tagging.EmbeddingTagSuggester
@@ -32,11 +33,15 @@ abstract class LinksModule {
         @Singleton
         fun provideDatabase(@ApplicationContext context: Context): LinksDatabase =
             Room.databaseBuilder(context, LinksDatabase::class.java, "links.db")
-                .addMigrations(LinksDatabase.MIGRATION_1_2, LinksDatabase.MIGRATION_2_3)
+                .addMigrations(LinksDatabase.MIGRATION_1_2, LinksDatabase.MIGRATION_2_3, LinksDatabase.MIGRATION_3_4)
+                .addCallback(LinksDatabase.SYNC_ON_CREATE)
                 .build()
 
         @Provides
         fun provideLinkDao(database: LinksDatabase): LinkDao = database.linkDao()
+
+        @Provides
+        fun provideLinkSyncDao(database: LinksDatabase): LinkSyncDao = database.linkSyncDao()
 
         @Provides
         fun provideTagDao(database: LinksDatabase): TagDao = database.tagDao()

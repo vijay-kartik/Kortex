@@ -26,6 +26,8 @@ android {
 dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
+    // Records only: files stay on the device (no Cloud Storage), and item docs carry their path.
+    implementation(libs.firebase.firestore)
 
     // Google sign-in through Credential Manager; the ID token is exchanged for a Firebase session.
     implementation(libs.androidx.credentials)

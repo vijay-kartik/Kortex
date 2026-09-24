@@ -11,6 +11,7 @@ import dev.kortex.myinfo.topics.data.RoomTopicsRepository
 import dev.kortex.myinfo.topics.data.files.EmailAttachmentCache
 import dev.kortex.myinfo.topics.data.files.TopicFileStore
 import dev.kortex.myinfo.topics.data.local.TopicDao
+import dev.kortex.myinfo.topics.data.local.TopicSyncDao
 import dev.kortex.myinfo.topics.data.local.TopicsDatabase
 import dev.kortex.myinfo.topics.domain.port.AttachmentCache
 import dev.kortex.myinfo.topics.domain.port.Clock
@@ -60,11 +61,20 @@ object TopicsModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TopicsDatabase =
         Room.databaseBuilder(context, TopicsDatabase::class.java, "topics.db")
-            .addMigrations(TopicsDatabase.MIGRATION_1_2, TopicsDatabase.MIGRATION_2_3, TopicsDatabase.MIGRATION_3_4)
+            .addMigrations(
+                TopicsDatabase.MIGRATION_1_2,
+                TopicsDatabase.MIGRATION_2_3,
+                TopicsDatabase.MIGRATION_3_4,
+                TopicsDatabase.MIGRATION_4_5,
+            )
+            .addCallback(TopicsDatabase.SYNC_ON_CREATE)
             .build()
 
     @Provides
     fun provideTopicDao(database: TopicsDatabase): TopicDao = database.topicDao()
+
+    @Provides
+    fun provideTopicSyncDao(database: TopicsDatabase): TopicSyncDao = database.topicSyncDao()
 
     @Provides
     @Singleton

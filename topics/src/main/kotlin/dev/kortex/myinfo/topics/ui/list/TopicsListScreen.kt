@@ -113,6 +113,10 @@ fun TopicsListScreen(
     onSearchIntent: (TopicSearchIntent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // No topics, nothing to search: the top bar drops its search button.
+    LaunchedEffect(state.loading, state.topicCount) {
+        if (!state.loading) searchField.updateSearchable(state.topicCount > 0)
+    }
     when {
         state.loading -> Unit
         state.firstRun -> TopicsFirstRun(

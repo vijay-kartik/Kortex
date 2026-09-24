@@ -2,7 +2,10 @@ package dev.kortex.design
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.keyframes
@@ -77,14 +80,27 @@ import kotlin.math.roundToInt
  * + while [expanded]. Hold one per searchable screen with [rememberTopBarSearch].
  */
 @Stable
-class TopBarSearch(query: String = "", expanded: Boolean = false) {
+class TopBarSearch(query: String = "", expanded: Boolean = false, searchable: Boolean = false) {
     var query by mutableStateOf(query)
     var expanded by mutableStateOf(expanded)
 
+    /** Whether the screen has anything to search. The bar only offers search while this is true. */
+    var searchable by mutableStateOf(searchable)
+        private set
+
+    /** Called by the screen as its content loads and changes. With nothing left, the field closes and the query goes. */
+    fun updateSearchable(hasItems: Boolean) {
+        searchable = hasItems
+        if (!hasItems) {
+            expanded = false
+            query = ""
+        }
+    }
+
     companion object {
         val Saver: Saver<TopBarSearch, Any> = listSaver(
-            save = { listOf(it.query, it.expanded) },
-            restore = { TopBarSearch(query = it[0] as String, expanded = it[1] as Boolean) },
+            save = { listOf(it.query, it.expanded, it.searchable) },
+            restore = { TopBarSearch(query = it[0] as String, expanded = it[1] as Boolean, searchable = it[2] as Boolean) },
         )
     }
 }
@@ -183,7 +199,16 @@ fun KortexTopBar(
                 .semantics { heading() },
         )
         if (search != null) {
-            SearchField(search, searchHint, progress, Modifier.align(Alignment.CenterEnd))
+            // Only once there's something to search; an empty screen shows no search at all.
+            AnimatedVisibility(
+                visible = search.searchable,
+                enter = fadeIn(tween(SEARCH_FADE_MS, easing = StandardEasing)),
+                exit = fadeOut(tween(SEARCH_FADE_MS, easing = StandardEasing)),
+                modifier = Modifier.align(Alignment.CenterEnd),
+                label = "search",
+            ) {
+                SearchField(search, searchHint, progress)
+            }
         } else {
             Box(Modifier.align(Alignment.CenterEnd).padding(end = TARGET_INSET)) { action() }
         }
@@ -320,6 +345,7 @@ private const val HANDOFF_MS = 150
 private const val HANDOFF = 0.5f
 private const val CLOSE_MS = 300
 private const val DIVIDER_MS = 200
+private const val SEARCH_FADE_MS = 150
 
 private val SynapseWarm = Synapse.copy(alpha = 0.6f)
 

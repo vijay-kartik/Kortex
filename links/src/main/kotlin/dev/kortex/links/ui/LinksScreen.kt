@@ -150,6 +150,14 @@ fun LinksScreen(
     LaunchedEffect(search) {
         snapshotFlow { search.query }.collect(viewModel::onQueryChange)
     }
+    // Nothing saved, nothing to search: the top bar drops its search button.
+    LaunchedEffect(uiState) {
+        when (val state = uiState) {
+            LinksScreenUiState.LoadingUiState -> Unit
+            LinksScreenUiState.EmptyLinksUiState -> search.updateSearchable(false)
+            is LinksScreenUiState.LinksUiState -> search.updateSearchable(state.linkCount > 0)
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,

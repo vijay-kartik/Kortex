@@ -174,7 +174,8 @@ item's `file` only names a path on the device that added it. `functions/src/link
 `linkUrlKey`/`linkUid` and is tested against the same vectors as `LinkUrlKeyTest`/`LinkUidTest`.
 
 Build and test with `npm --prefix functions test`; deploy with `firebase deploy --only functions`
-(needs the Blaze plan).
+(needs the Blaze plan). To try the deployed functions by hand, serve `functions/playground/` on
+localhost (`npx serve functions/playground`), paste the web app's config and sign in with Google.
 
 ## Security rules
 

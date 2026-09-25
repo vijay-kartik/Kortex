@@ -4,6 +4,7 @@
  * here breaks the app's pull.
  */
 
+import { HttpsError } from "firebase-functions/v2/https";
 import { Input, invalid } from "./input";
 import { parseWebAddress } from "./webAddress";
 
@@ -60,34 +61,28 @@ export function touchedTopic(nowMillis: number, serverTime: unknown): Doc {
 export const ITEM_TYPES = ["Note", "Link", "Article", "Video", "Doc", "Image", "Bill", "Email"] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 
-/** A file the caller already uploaded to Storage for the item. */
-export interface FileRef {
-  storagePath: string;
-  mimeType: string | null;
-  name: string | null;
-}
-
-/** An item as a caller submits it, checked and trimmed, before its link or file is resolved. */
+/** An item as a caller submits it, checked and trimmed, before its link is resolved. */
 export interface NewItem {
   type: ItemType;
   /** Every field of the item's document that comes straight from the request. */
   fields: Doc;
   /** Link, Article and Video: the address, saved to the Links library too. */
   link: { url: string; title: string | null } | null;
-  file: FileRef | null;
-  /** Doc and Image need a file; a Bill's invoice is optional. */
-  fileRequired: boolean;
 }
 
 /**
  * Reads `item` from an `addTopicItem` request by the rules of the app's `AddItem`: a blank note
  * or title, or a link that isn't a web address, is invalid.
+ *
+ * Doc and Image are refused: they are files, and an item's `file` only names a path on the device
+ * that added it until Cloud Storage is set up. A Bill is taken without its invoice for the same
+ * reason.
  */
 export function parseNewItem(item: Input): NewItem {
   const type = item.string("type", 20) as ItemType;
   if (!ITEM_TYPES.includes(type)) throw invalid(`item.type must be one of ${ITEM_TYPES.join(", ")}.`);
 
-  const base = { type, fields: {} as Doc, link: null, file: null, fileRequired: false };
+  const base = { type, fields: {} as Doc, link: null };
   switch (type) {
     case "Note":
       return { ...base, fields: { text: item.string("text") } };
@@ -106,17 +101,9 @@ export function parseNewItem(item: Input): NewItem {
       return { ...base, fields, link: { url, title: item.optionalString("title", MAX_TITLE) } };
     }
 
-    case "Doc": {
-      const fields: Doc = { title: item.string("title", MAX_TITLE) };
-      setIfPresent(fields, "pageCount", item.optionalInt("pageCount", 0, 100_000));
-      return { ...base, fields, file: parseFile(item.object("file")), fileRequired: true };
-    }
-
-    case "Image": {
-      const fields: Doc = {};
-      setIfPresent(fields, "text", item.optionalString("caption"));
-      return { ...base, fields, file: parseFile(item.object("file")), fileRequired: true };
-    }
+    case "Doc":
+    case "Image":
+      throw new HttpsError("failed-precondition", `${type} items hold a file, and files can't be added yet.`);
 
     case "Bill": {
       const currency = item.string("currency", 3).toUpperCase();
@@ -129,8 +116,8 @@ export function parseNewItem(item: Input): NewItem {
       };
       setIfPresent(fields, "issuedAt", item.optionalMillis("issuedAt"));
       setIfPresent(fields, "dueAt", item.optionalMillis("dueAt"));
-      const file = item.optionalObject("file");
-      return { ...base, fields, file: file && parseFile(file) };
+      if (item.optionalObject("file") !== null) throw new HttpsError("failed-precondition", "A bill's invoice can't be added yet.");
+      return { ...base, fields };
     }
 
     case "Email": {
@@ -155,7 +142,6 @@ export function itemDoc(item: {
   type: ItemType;
   fields: Doc;
   linkUid: string | null;
-  file: { storagePath: string; mimeType: string; name: string } | null;
   pinned: boolean;
   nowMillis: number;
   serverTime: unknown;
@@ -172,22 +158,7 @@ export function itemDoc(item: {
     deleted: false,
   };
   if (item.linkUid !== null) doc.linkUid = item.linkUid;
-  if (item.file !== null) doc.file = item.file;
   return doc;
-}
-
-/** Where an item's file must sit: `users/{uid}/topic-files/{itemUid}{ext}` (storage.rules). */
-export function isItemFilePath(storagePath: string, userUid: string, itemUid: string): boolean {
-  const prefix = `users/${userUid}/topic-files/${itemUid}`;
-  return storagePath.startsWith(prefix) && /^(\.[A-Za-z0-9]{1,10})?$/.test(storagePath.slice(prefix.length));
-}
-
-function parseFile(file: Input): FileRef {
-  return {
-    storagePath: file.string("storagePath", 1_000),
-    mimeType: file.optionalString("mimeType", 200),
-    name: file.optionalString("name", 500),
-  };
 }
 
 function setIfPresent(doc: Doc, key: string, value: unknown): void {

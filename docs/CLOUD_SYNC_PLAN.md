@@ -5,15 +5,19 @@ loses nothing, and a future **browser extension** can read and write the same re
 
 ## Decisions
 
-- **Scope: Links + Topics only.** Links (with tags), topics, topic items, topic summaries, and the
-  files topic items hold (docs, images, bill invoices). Not synced: chat history, run traces, the
-  knowledge graph, settings, API keys / OAuth tokens.
+- **Scope: Links + Topics only.** Links (with tags), topics, topic items and topic summaries. Not
+  synced: chat history, run traces, the knowledge graph, settings, API keys / OAuth tokens.
+- **Records only, no files (for now).** The files topic items hold (docs, images, bill invoices) stay
+  on the device that added them; an item's document carries the file's device path and type, and on
+  any other device opening it says the file is on the phone that added it. Uploading them needs a
+  Cloud Storage bucket (Blaze plan) and is left for later; the Storage parts below describe that.
 - **Firestore is a record store, not a snapshot.** One document per link / topic / item, so the
   extension can add a single link without knowing about the rest. Room stays the app's source of
   truth for the UI; Firestore is the remote copy the two clients meet at.
-- **Manual sync only.** Settings › *Cloud sync* has **Sign in with Google** and **Sync now** (with
-  "Last synced …"). No background worker, and no Firestore snapshot listeners. A single device is
-  supported, but the protocol is multi-writer safe because the extension is a second writer.
+- **Live sync while the app is on screen** (it replaced manual-only sync; see *Live sync* below).
+  Settings › *Cloud sync* keeps **Sync now** and "Last synced …" as a fallback. No background
+  worker: nothing syncs while Kortex is closed, and it catches up when it next opens. The protocol
+  is multi-writer safe, because the extension is a second writer.
 - **Firebase-default protection.** Encrypted at rest by Google; security rules let only
   `request.auth.uid == uid` read or write `users/{uid}/**`. No client-side encryption.
 - **Auth: Firebase Auth + Google** via Credential Manager (`androidx.credentials` +
@@ -46,11 +50,11 @@ users/{uid}/topics/{topicUid}
   name, purpose?, pinned, sections: [String], createdAt, updatedAt, serverUpdatedAt, deleted,
   summary?: { text, generatedAt, fingerprint }
 users/{uid}/topicItems/{itemUid}
-  topicUid, type, addedAt, title?, text?, linkUid?, file?: { storagePath, mimeType, name },
+  topicUid, type, addedAt, title?, text?, linkUid?, file?: { devicePath, mimeType },
   pageCount?, amountMinor?, currency?, issuedAt?, dueAt?, durationSeconds?, readingMinutes?,
   done, pinned, messageId?, threadId?, rfc822MessageId?, fromAddress?, accountEmail?, sentAt?,
   updatedAt, serverUpdatedAt, deleted
-Storage: users/{uid}/topic-files/{itemUid}{ext}
+Storage (not built; see "Records only"): users/{uid}/topic-files/{itemUid}{ext}
 ```
 
 - Items sit in one flat `topicItems` collection, so moving an item to another topic is a single field
@@ -85,8 +89,8 @@ uploaded over it, so the push only ever carries changes that are the newest anyw
 would overwrite, say, a newer title the extension wrote.)
 
 1. **Push** (runs second). For each dirty row, `set(merge)` its doc with `updatedAt` and `serverUpdatedAt`, in
-   batches of ≤ 500. Before an item's doc is written, its file is uploaded if it isn't in Storage
-   yet (`remoteFilePath` column). Tombstones become `deleted: true` writes. Then clear
+   batches of ≤ 500: deletes, then links, topics and items, so what an item refers to is in the cloud
+   before it is. Tombstones become `deleted: true` writes. Then clear
    `dirty` and delete the pushed tombstones, but only for rows whose `updatedAtMillis` hasn't
    changed since they were read.
 2. **Pull** (runs first). Query each collection with `serverUpdatedAt > lastPulledAt` (the watermark is
@@ -102,10 +106,11 @@ would overwrite, say, a newer title the extension wrote.)
    - `deleted` → delete the local row (cascades as today) plus its files and thumbnails.
    - **Unique clashes:** a topic name that's already taken locally by another uid is renamed
      "Name (2)". Links can't clash, because their uid is derived from `urlKey`.
-   - An item whose `linkUid` or `topicUid` isn't known locally yet is held back until the next sync.
-3. **Files.** Missing topic files are downloaded into `topic-files/` after the pull, and a failed
-   download leaves the item with a placeholder until the next sync. New link thumbnails are queued
-   through `LinkImageStore`.
+   - An item whose `linkUid` or `topicUid` isn't known locally yet is held back: its uid is kept
+     (`held_items:<uid>` in DataStore) and the next sync fetches it again by id, since the
+     watermark has moved past it.
+3. **Thumbnails.** New link thumbnails are queued through `LinkImageStore`. (Topic files would be
+   downloaded here once they're uploaded; see "Records only".)
 4. Save `lastPulledAt` as the max `serverUpdatedAt` seen, and "Last synced" as the current time.
 
 **Signing out** keeps local data. The phone records which account its links belong to (the
@@ -120,6 +125,24 @@ the account's changed docs (one aggregate read); if there are any, onboarding sh
 library* with live "n of total" progress, otherwise it goes straight to *All set*, whose summary card
 shows what was restored and whether the sync finished. Topics and files join the restore card in
 phase 4.
+
+## Live sync (`CloudSync.runLive()`)
+
+The signed-in app content runs it while the activity is at least STARTED (`ui/sync/LiveSync.kt`), so
+it starts only after onboarding has restored the library.
+
+1. **Catch up** with a full `syncNow()`: pull, then push.
+2. **Listen** to `links`, `topics` and `topicItems` with snapshot listeners on the same
+   `serverUpdatedAt > watermark − 1 min` query the pull uses. Each change batch is applied through
+   the same DAO calls as a pull, under the same lock. Writes this phone hasn't had confirmed yet
+   are skipped; they arrive again once confirmed, and applying our own echo changes nothing. Only
+   server answers (not memory-cache ones) move the watermark. After links or topics arrive,
+   held-back items are retried. A dropped listener reconnects with backoff (2 s doubling to 1 min).
+3. **Push on save.** Rows only turn dirty when something is saved (saving a link, adding an item,
+   creating or editing a topic, deleting), never while a form is being filled in. Room flows over
+   the dirty counts and tombstones see the save, and the push follows 300 ms later, just enough to
+   send saves that land together (a multi-select move, a delete's cascade) as one. A failed push retries with backoff (5 s doubling to 5 min).
+4. **On leaving the screen**, listeners stop and one last push runs in the app scope.
 
 ## Security rules
 
@@ -159,7 +182,8 @@ Done:
 
 Still to do in the console (no CLI equivalent):
 
-1. **Storage › Get started** — create the default bucket, in **`asia-south1`** to match Firestore.
+1. **Storage › Get started** (only once topic files are uploaded; not needed for records-only sync)
+   — create the default bucket, in **`asia-south1`** to match Firestore.
    Then `firebase deploy --only storage` pushes `firebase/storage.rules`.
 
 Don't let the CLI provision Firestore or Storage implicitly: `firebase deploy` will silently create
@@ -178,8 +202,28 @@ a missing default database in `nam5`, and both locations are permanent.
 3. **Push + pull for Links.** *(Implemented: `:sync` › `CloudSync`, `links/LinkSync`, `links/LinkDocs`;
    Settings › Cloud sync has "Sync now" and "Last synced".)* Start with the smallest part to prove the protocol end to end:
    uninstall, reinstall, sign in, sync, and every link is back.
-4. **Topics + files.** Topics, items and summaries, uploading and downloading topic files through
-   Storage.
+4. **Topics.** Topics, items and summaries. *(Implemented, records only: `:sync` ›
+   `topics/TopicSync`, `topics/TopicDocs`, and the shared `SyncRemote`. The restore screen and
+   account switch cover topics too. File upload through Storage is deferred.)*
 5. **Hardening.** Handle the account switch *(done: see "Signing out" above)*, show sync errors in Settings, and write the rules for the
    extension (the `linkUrlKey` test vectors and the doc schema above), which becomes the extension's
    contract.
+
+## To do (sync failures, deferred on 2026-09-25)
+
+Today a failed upload is never lost: rows stay dirty and tombstones stay put until a commit
+succeeds, live sync retries with backoff (5 s doubling to 5 min), the app pushes once more when it
+leaves the screen, and the next launch's catch-up sync pushes whatever is left. What's missing is
+telling the user, and not retrying errors that can't fix themselves:
+
+- [ ] **Sync status on the Settings card** (Figma: Login & Logout 10, "Sync failed · 2 h ago" with
+      a Retry chip). `CloudSync` exposes the last live failure and whether a retry is scheduled;
+      the card shows "Synced · 2 min ago", "Syncing…", or "Sync failed · retrying" in amber.
+- [ ] **"N changes not synced"** on the card, from `observeUnpushedCount()` of both DAOs, so a
+      stuck backlog is visible even when no error was reported.
+- [ ] **Permission and auth errors aren't retried.** `PERMISSION_DENIED` / `UNAUTHENTICATED` stop
+      the retry loop and ask the user to sign in again, instead of backing off forever.
+- [ ] **Items whose link is gone.** An item whose `linkId` is no longer in links.db is skipped on
+      every push and stays dirty; either push it without the link or delete it with the link.
+- [ ] **Log out with unsynced changes** (Figma: Login & Logout 08): the confirm dialog's amber line,
+      "3 changes haven't been backed up yet", from the same counts.

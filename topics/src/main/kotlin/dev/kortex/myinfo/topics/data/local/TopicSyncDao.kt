@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
 import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
 
 /** A topic with unpushed changes, with the summary its document carries. */
 data class DirtyTopic(
@@ -244,6 +245,63 @@ abstract class TopicSyncDao : TopicDao() {
         return TopicPullResult(orphanedFiles = orphanedFiles, heldBack = heldBack)
     }
 
+    @Query("SELECT COUNT(*) FROM topics")
+    abstract suspend fun topicCount(): Int
+
+    /** Local changes the cloud doesn't have yet: edited topics and items, plus unpushed deletes. */
+    @Query(UNPUSHED_COUNT)
+    abstract suspend fun unpushedCount(): Int
+
+    /** [unpushedCount], again on every change to topics.db: live sync pushes when it rises above 0. */
+    @Query(UNPUSHED_COUNT)
+    abstract fun observeUnpushedCount(): Flow<Int>
+
+    /**
+     * Hands this phone's topics to a newly signed-in account: everything is pushed to it on the next
+     * sync, and deletes made under the previous account are dropped rather than sent to this one.
+     */
+    @Transaction
+    open suspend fun adoptForNewAccount() {
+        markAllTopicsDirty()
+        markAllItemsDirty()
+        deleteAllTombstones()
+    }
+
+    /**
+     * Removes every topic, item and summary from this phone without recording a single delete, so
+     * nothing reaches any account's cloud. Returns the files the items held, for the caller to delete.
+     */
+    @Transaction
+    open suspend fun discardAll(): List<String> {
+        setApplying(true)
+        val files = allFilePaths()
+        deleteAllItems()
+        deleteAllSummaries()
+        deleteAllTopics()
+        deleteAllTombstones()
+        setApplying(false)
+        return files
+    }
+
+    // Counts up rather than setting 1, like the triggers, so a push in flight can't mark a row clean.
+    @Query("UPDATE topics SET dirty = dirty + 1")
+    protected abstract suspend fun markAllTopicsDirty()
+
+    @Query("UPDATE topic_items SET dirty = dirty + 1")
+    protected abstract suspend fun markAllItemsDirty()
+
+    @Query("DELETE FROM sync_tombstones")
+    protected abstract suspend fun deleteAllTombstones()
+
+    @Query("DELETE FROM topic_items")
+    protected abstract suspend fun deleteAllItems()
+
+    @Query("DELETE FROM topic_summaries")
+    protected abstract suspend fun deleteAllSummaries()
+
+    @Query("DELETE FROM topics")
+    protected abstract suspend fun deleteAllTopics()
+
     @Query("UPDATE sync_control SET applying = :applying WHERE id = 0")
     protected abstract suspend fun setApplying(applying: Boolean)
 
@@ -271,3 +329,7 @@ abstract class TopicSyncDao : TopicDao() {
     @Update(onConflict = androidx.room.OnConflictStrategy.IGNORE)
     protected abstract suspend fun updatePulledItem(item: TopicItemEntity)
 }
+
+private const val UNPUSHED_COUNT =
+    "SELECT (SELECT COUNT(*) FROM topics WHERE dirty > 0) + (SELECT COUNT(*) FROM topic_items WHERE dirty > 0) + " +
+        "(SELECT COUNT(*) FROM sync_tombstones)"

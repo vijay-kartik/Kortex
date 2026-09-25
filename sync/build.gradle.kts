@@ -26,6 +26,7 @@ android {
 dependencies {
     // The local side of sync: dirty rows to push, and applying pulled ones.
     implementation(project(":links"))
+    implementation(project(":topics"))
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)

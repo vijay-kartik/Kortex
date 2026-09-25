@@ -132,6 +132,7 @@ import dev.kortex.myinfo.topics.ui.common.openFile
 import dev.kortex.myinfo.topics.ui.common.updatedLabel
 import dev.kortex.myinfo.topics.ui.email.EmailReaderRoute
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Full-screen topic detail, with quick capture for adding to it. [onClose] leaves, and is also
@@ -166,8 +167,12 @@ private fun TopicDetailContent(
     ObserveEffects(viewModel.effects) { effect ->
         when (effect) {
             is TopicDetailEffect.OpenUrl -> context.openUrl(effect.url)
-            is TopicDetailEffect.OpenFile -> if (!context.openFile(effect.file)) {
-                scope.launch { snackbars.showSnackbar("No app on this phone opens that file.") }
+            is TopicDetailEffect.OpenFile -> when {
+                // Synced from another phone: files aren't backed up, only the item is.
+                !File(effect.file.path).exists() ->
+                    scope.launch { snackbars.showSnackbar("This file is on the phone that added it. Files aren’t backed up yet.") }
+                !context.openFile(effect.file) ->
+                    scope.launch { snackbars.showSnackbar("No app on this phone opens that file.") }
             }
             is TopicDetailEffect.ShareText -> context.shareText(effect.subject, effect.text)
             is TopicDetailEffect.CopyText -> {

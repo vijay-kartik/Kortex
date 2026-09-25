@@ -40,7 +40,7 @@ import dev.kortex.design.R
 import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
 
-/** Tools & Settings › CLOUD SYNC: the account links back up to, and Sync now. */
+/** Tools & Settings › CLOUD SYNC: the account links and topics back up to, and Sync now. */
 @Composable
 internal fun CloudSyncSection(
     onMessage: (String) -> Unit,
@@ -75,7 +75,7 @@ internal fun CloudSyncSection(
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Links backup", style = RowTitle, color = Ink)
+                Text("Links & topics backup", style = RowTitle, color = Ink)
                 Text(
                     user?.email ?: "Not signed in",
                     style = MaterialTheme.typography.bodySmall,

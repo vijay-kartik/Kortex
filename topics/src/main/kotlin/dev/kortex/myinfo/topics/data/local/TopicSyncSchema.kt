@@ -7,11 +7,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 /** A topic or item deleted here and not yet pushed as `deleted: true`. Written by the delete triggers only. */
 @Entity(tableName = "sync_tombstones", primaryKeys = ["kind", "uid"])
 data class SyncTombstoneEntity(
-    /** [TopicSyncSchema.KIND_TOPIC] or [TopicSyncSchema.KIND_ITEM]. */
+    /** [KIND_TOPIC] or [KIND_ITEM]. */
     val kind: String,
     val uid: String,
     val deletedAtMillis: Long,
-)
+) {
+    companion object {
+        /** For the sync engine, which tells the two apart to write to the right collection. */
+        const val KIND_TOPIC = TopicSyncSchema.KIND_TOPIC
+        const val KIND_ITEM = TopicSyncSchema.KIND_ITEM
+    }
+}
 
 /**
  * One row, id 0. The sync engine sets [applying] inside the transaction where it applies pulled

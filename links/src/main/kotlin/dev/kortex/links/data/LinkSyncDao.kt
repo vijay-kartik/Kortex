@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
 
 /** A link document as the cloud holds it (`users/{uid}/links/{uid}`). */
 data class RemoteLink(
@@ -123,8 +124,12 @@ abstract class LinkSyncDao : LinkDao() {
     abstract suspend fun linkCount(): Int
 
     /** Local changes the cloud doesn't have yet: edited links plus unpushed deletes. */
-    @Query("SELECT (SELECT COUNT(*) FROM links WHERE dirty > 0) + (SELECT COUNT(*) FROM sync_tombstones WHERE kind = '${LinkSyncSchema.KIND_LINK}')")
+    @Query(UNPUSHED_COUNT)
     abstract suspend fun unpushedCount(): Int
+
+    /** [unpushedCount], again on every change to links.db: live sync pushes when it rises above 0. */
+    @Query(UNPUSHED_COUNT)
+    abstract fun observeUnpushedCount(): Flow<Int>
 
     /**
      * Hands this phone's links to a newly signed-in account: every link is pushed to it on the next
@@ -182,3 +187,6 @@ abstract class LinkSyncDao : LinkDao() {
     @Update
     protected abstract suspend fun updatePulled(link: LinkEntity)
 }
+
+private const val UNPUSHED_COUNT =
+    "SELECT (SELECT COUNT(*) FROM links WHERE dirty > 0) + (SELECT COUNT(*) FROM sync_tombstones WHERE kind = '${LinkSyncSchema.KIND_LINK}')"

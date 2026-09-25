@@ -38,7 +38,7 @@ class CloudSyncViewModel @Inject constructor(
     fun syncNow() {
         appScope.launch {
             val message = when (val outcome = cloudSync.syncNow()) {
-                SyncOutcome.Done -> "Links synced"
+                SyncOutcome.Done -> "Links and topics synced"
                 is SyncOutcome.Failed -> outcome.message
             }
             _messages.send(message)

@@ -10,6 +10,7 @@ import dev.kortex.sync.CloudUser
 import dev.kortex.sync.OtherAccountData
 import dev.kortex.sync.SignInResult
 import dev.kortex.sync.SyncOutcome
+import dev.kortex.sync.SyncProgress
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,15 +21,15 @@ import kotlinx.coroutines.launch
 /** In the order the flow moves through them; the transition direction follows it. */
 enum class OnboardingStep { Welcome, OtherAccountLinks, Restoring, AllSet }
 
-/** Links pulled so far, of how many the account has in the cloud. */
-data class RestoreProgress(val done: Int, val total: Int)
-
 /** How the sign-in's sync ended, for the summary on "all set". */
 sealed interface SignInSync {
-    /** [restoredLinks] is null when nothing came back: a new account, or one whose links were all deleted. */
-    data class Done(val restoredLinks: Int?) : SignInSync
+    /** [restored] is null when nothing came back: a new account, or one whose data was all deleted. */
+    data class Done(val restored: Restored?) : SignInSync
     data class Failed(val message: String) : SignInSync
 }
+
+/** What a restore brought back, as the phone now holds it. */
+data class Restored(val links: Int, val topics: Int)
 
 data class OnboardingUi(
     val step: OnboardingStep = OnboardingStep.Welcome,
@@ -41,7 +42,7 @@ data class OnboardingUi(
     /** Keeping or removing those links is under way. */
     val resolving: Boolean = false,
     /** Set on [OnboardingStep.Restoring]. */
-    val restore: RestoreProgress? = null,
+    val restore: SyncProgress? = null,
     /** Set once the sign-in's sync has ended; null when "all set" is resumed after process death. */
     val sync: SignInSync? = null,
 )
@@ -88,10 +89,10 @@ class OnboardingViewModel @Inject constructor(
         restore()
     }
 
-    /** Adds the other account's links to the one just signed in. */
+    /** Adds the other account's links and topics to the one just signed in. */
     fun keepOtherAccountLinks() = resolve { cloudSync.keepLocalData(it) }
 
-    /** Removes the other account's links from this phone; its cloud copy stays. */
+    /** Removes the other account's links and topics from this phone; its cloud copy stays. */
     fun removeOtherAccountLinks() = resolve { cloudSync.discardLocalData(it) }
 
     private fun resolve(action: suspend (CloudUser) -> Unit) {
@@ -110,13 +111,11 @@ class OnboardingViewModel @Inject constructor(
      * "all set" (Figma: Login & Logout 03 / 04).
      */
     private suspend fun restore() {
-        val outcome = cloudSync.syncNow { done, total ->
-            _ui.update { it.copy(step = OnboardingStep.Restoring, restore = RestoreProgress(done, total)) }
+        val outcome = cloudSync.syncNow { progress ->
+            if (!progress.isEmpty) _ui.update { it.copy(step = OnboardingStep.Restoring, restore = progress) }
         }
-        val restored = _ui.value.restore != null
         val sync = when (outcome) {
-            // The count includes deleted docs, so a restore can bring nothing back; say nothing then.
-            SyncOutcome.Done -> SignInSync.Done(restoredLinks = if (restored) cloudSync.linkCount().takeIf { it > 0 } else null)
+            SyncOutcome.Done -> SignInSync.Done(restored = if (_ui.value.restore != null) restoredCounts() else null)
             is SyncOutcome.Failed -> SignInSync.Failed(outcome.message)
         }
         _ui.update {
@@ -129,4 +128,8 @@ class OnboardingViewModel @Inject constructor(
             )
         }
     }
+
+    // The counts include deleted docs, so a restore can bring nothing back; say nothing then.
+    private suspend fun restoredCounts(): Restored? =
+        Restored(links = cloudSync.linkCount(), topics = cloudSync.topicCount()).takeIf { it.links + it.topics > 0 }
 }

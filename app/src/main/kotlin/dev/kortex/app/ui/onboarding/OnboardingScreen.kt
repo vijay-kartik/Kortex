@@ -97,6 +97,7 @@ import dev.kortex.design.anim.EmphasizedDecelerate
 import dev.kortex.design.drawKortexMark
 import dev.kortex.sync.CloudUser
 import dev.kortex.sync.OtherAccountData
+import dev.kortex.sync.SyncProgress
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
@@ -359,8 +360,10 @@ private fun OtherAccountLinksScreen(
     onKeep: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    val count = other?.linkCount ?: 0
-    val links = if (count == 1) "1 link" else "$count links"
+    val what = listOfNotNull(
+        other?.linkCount?.takeIf { it > 0 }?.let { if (it == 1) "1 link" else "$it links" },
+        other?.topicCount?.takeIf { it > 0 }?.let { if (it == 1) "1 topic" else "$it topics" },
+    ).joinToString(" and ")
     val previous = other?.ownerEmail ?: "another account"
     val current = user?.email ?: "this account"
 
@@ -374,7 +377,7 @@ private fun OtherAccountLinksScreen(
         }
         Spacer(Modifier.height(24.dp))
         Text(
-            "This phone has $links from $previous",
+            "This phone has $what from $previous",
             style = MaterialTheme.typography.headlineSmall,
             color = Ink,
             textAlign = TextAlign.Center,
@@ -422,16 +425,15 @@ private fun OtherAccountLinksScreen(
 
 // ── Restoring your library ──────────────────────────────────────────────
 
-/** The account's library coming back after a sign-in (Figma: Login & Logout 03). Links only until topics sync. */
+/**
+ * The account's library coming back after a sign-in (Figma: Login & Logout 03). Links pull first,
+ * then topics with their items. Files aren't backed up, so the design's Files row isn't here.
+ */
 @Composable
-private fun RestoringScreen(user: CloudUser?, progress: RestoreProgress?) {
-    val total = progress?.total ?: 0
-    val done = progress?.done ?: 0
-    val fraction by animateFloatAsState(
-        targetValue = if (total > 0) done.toFloat() / total else 0f,
-        animationSpec = tween(300, easing = EmphasizedDecelerate),
-        label = "restore-links",
-    )
+private fun RestoringScreen(user: CloudUser?, progress: SyncProgress?) {
+    val links = progress?.links ?: SyncProgress.Part(0, 0)
+    val topics = progress?.topics ?: SyncProgress.Part(0, 0)
+    val linksPulled = links.done >= links.total
 
     Column(
         modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 24.dp),
@@ -467,24 +469,10 @@ private fun RestoringScreen(user: CloudUser?, progress: RestoreProgress?) {
                 .background(Panel, RoundedCornerShape(12.dp))
                 .border(1.dp, Edge, RoundedCornerShape(12.dp))
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Links",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium),
-                    color = Ink,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    "$done of $total",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                    color = Synapse,
-                )
-            }
-            Box(Modifier.fillMaxWidth().height(4.dp).background(Edge, RoundedCornerShape(2.dp))) {
-                Box(Modifier.fillMaxWidth(fraction).height(4.dp).background(Synapse, RoundedCornerShape(2.dp)))
-            }
+            RestoreRow("Links", links, started = true)
+            RestoreRow("Topics", topics, started = linksPulled)
         }
         Spacer(Modifier.weight(1f))
         Text(
@@ -495,6 +483,42 @@ private fun RestoringScreen(user: CloudUser?, progress: RestoreProgress?) {
             modifier = Modifier.padding(horizontal = 16.dp),
         )
         Spacer(Modifier.height(48.dp))
+    }
+}
+
+/**
+ * One part of the restore: its count and bar once it has started, "Waiting" before, "None" when the
+ * account has nothing of it.
+ */
+@Composable
+private fun RestoreRow(label: String, part: SyncProgress.Part, started: Boolean) {
+    val active = started && part.total > 0
+    val fraction by animateFloatAsState(
+        targetValue = if (active) part.done.toFloat() / part.total else 0f,
+        animationSpec = tween(300, easing = EmphasizedDecelerate),
+        label = "restore-$label",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                color = if (active) Ink else Muted,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                when {
+                    part.total == 0 -> "None"
+                    !started -> "Waiting"
+                    else -> "${part.done} of ${part.total}"
+                },
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                color = if (active) Synapse else Muted,
+            )
+        }
+        Box(Modifier.fillMaxWidth().height(4.dp).background(Edge, RoundedCornerShape(2.dp))) {
+            Box(Modifier.fillMaxWidth(fraction).height(4.dp).background(Synapse, RoundedCornerShape(2.dp)))
+        }
     }
 }
 
@@ -625,10 +649,16 @@ private fun SummaryCard(user: CloudUser?, sync: SignInSync?, modifier: Modifier 
             .border(1.dp, Edge, shape),
     ) {
         AccountRow(user)
-        val restored = (sync as? SignInSync.Done)?.restoredLinks
+        val restored = (sync as? SignInSync.Done)?.restored
         if (restored != null) {
             SummaryDivider()
-            SummaryRow("Restored", if (restored == 1) "1 link" else "$restored links")
+            SummaryRow(
+                "Restored",
+                listOf(
+                    if (restored.links == 1) "1 link" else "${restored.links} links",
+                    if (restored.topics == 1) "1 topic" else "${restored.topics} topics",
+                ).joinToString(" · "),
+            )
         }
         if (sync != null) {
             SummaryDivider()

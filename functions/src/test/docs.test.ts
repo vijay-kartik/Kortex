@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isItemFilePath, itemDoc, parseNewItem } from "../docs";
+import { itemDoc, parseNewItem } from "../docs";
 import { Input } from "../input";
 import { parseWebAddress } from "../webAddress";
 
@@ -33,19 +33,18 @@ test("link types carry their address and only articles and videos are done", () 
   assert.throws(() => parse({ type: "Link", url: "not a url" }), /not a web address/);
 });
 
-test("docs and images need a file; a bill's is optional", () => {
-  assert.throws(() => parse({ type: "Doc", title: "Lease" }), /item.file is required/);
-  const doc = parse({ type: "Doc", title: "Lease", pageCount: 3, file: { storagePath: "p" } });
-  assert.deepEqual(doc.fields, { title: "Lease", pageCount: 3 });
-  assert.equal(doc.fileRequired, true);
+test("files can't be added until Cloud Storage is set up", () => {
+  assert.throws(() => parse({ type: "Doc", title: "Lease" }), /files can't be added yet/);
+  assert.throws(() => parse({ type: "Image", caption: "view" }), /files can't be added yet/);
+  assert.throws(
+    () => parse({ type: "Bill", title: "Power", amountMinor: 1, currency: "INR", file: { devicePath: "p" } }),
+    /invoice can't be added yet/,
+  );
+});
 
-  const image = parse({ type: "Image", caption: " view ", file: { storagePath: "p", mimeType: "image/png" } });
-  assert.deepEqual(image.fields, { text: "view" });
-
+test("a bill is kept in minor units with its currency code", () => {
   const bill = parse({ type: "Bill", title: "Power", amountMinor: 123450, currency: "inr", dueAt: 1_700_000_000_000, paid: true });
   assert.deepEqual(bill.fields, { title: "Power", amountMinor: 123450, currency: "INR", done: true, dueAt: 1_700_000_000_000 });
-  assert.equal(bill.file, null);
-  assert.equal(bill.fileRequired, false);
 
   assert.throws(() => parse({ type: "Bill", title: "Power", amountMinor: 1.5, currency: "INR" }), /amountMinor/);
   assert.throws(() => parse({ type: "Bill", title: "Power", amountMinor: 1, currency: "RS" }), /ISO 4217/);
@@ -61,21 +60,12 @@ test("unknown types are rejected", () => {
   assert.throws(() => parse({ type: "Podcast" }), /item.type must be one of/);
 });
 
-test("an item's file must sit at its own path", () => {
-  const item = "0f8fad5b-d9cb-469f-a165-70867728950e";
-  assert.ok(isItemFilePath(`users/u1/topic-files/${item}.pdf`, "u1", item));
-  assert.ok(isItemFilePath(`users/u1/topic-files/${item}`, "u1", item));
-  assert.ok(!isItemFilePath(`users/u2/topic-files/${item}.pdf`, "u1", item));
-  assert.ok(!isItemFilePath(`users/u1/topic-files/${item}/../x.pdf`, "u1", item));
-});
-
 test("an item document has the sync fields the app reads", () => {
   const doc = itemDoc({
     topicUid: "t1",
     type: "Article",
     fields: { done: true },
     linkUid: "l1",
-    file: null,
     pinned: false,
     nowMillis: 10,
     serverTime: "server",

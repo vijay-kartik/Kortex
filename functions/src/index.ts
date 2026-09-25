@@ -2,7 +2,7 @@
  * Callable functions that write a user's Links and Topics straight into Firestore, for clients
  * that don't hold the app's database (the browser extension, shortcuts, the agent). They write the
  * same documents the app's sync pushes (docs/CLOUD_SYNC_PLAN.md › Firestore layout), and the app
- * picks them up on its next "Sync now".
+ * picks them up live, or on its next sync.
  *
  * All three need a signed-in Firebase user and only touch `users/{uid}/**` of that user.
  */
@@ -10,16 +10,15 @@
 import { randomUUID } from "node:crypto";
 import { initializeApp } from "firebase-admin/app";
 import { DocumentReference, FieldValue, getFirestore } from "firebase-admin/firestore";
-import { getStorage } from "firebase-admin/storage";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
-import { isItemFilePath, itemDoc, linkDoc, MAX_TAG_LENGTH, MAX_TAGS, MAX_TITLE, MAX_URL, NewItem, parseNewItem, topicDoc, touchedTopic } from "./docs";
+import { itemDoc, linkDoc, MAX_TAG_LENGTH, MAX_TAGS, MAX_TITLE, MAX_URL, parseNewItem, topicDoc, touchedTopic } from "./docs";
 import { Input, invalid } from "./input";
 import { linkUid, linkUrlKey } from "./linkKey";
 import { parseWebAddress } from "./webAddress";
 
 initializeApp();
-// Next to Firestore and Storage (asia-south1), which can't move.
+// Next to Firestore (asia-south1), which can't move.
 setGlobalOptions({ region: "asia-south1", maxInstances: 10 });
 
 const db = getFirestore();
@@ -80,23 +79,20 @@ export const createTopic = onCall(async (request) => {
 });
 
 /**
- * Adds an item of any type a topic holds (Note, Link, Article, Video, Doc, Image, Bill, Email).
+ * Adds an item to a topic: a Note, Link, Article, Video, Bill or Email.
  *
- * Request: `{ topicUid, item: { type, ... }, pinned?, itemUid? }`, where `item` carries:
+ * Request: `{ topicUid, item: { type, ... }, pinned? }`, where `item` carries:
  * - Note: `text`
  * - Link / Article / Video: `url`, `title?`; Article `readingMinutes?`, `done?` (read);
  *   Video `durationSeconds?`, `done?` (watched). The link is saved to the Links library too,
  *   unless it is there already.
- * - Doc: `title`, `file`, `pageCount?`
- * - Image: `file`, `caption?`
  * - Bill: `title`, `amountMinor` (paise, cents…), `currency` (ISO 4217), `issuedAt?`, `dueAt?`
- *   (epoch millis), `paid?`, `file?` (the invoice)
+ *   (epoch millis), `paid?`
  * - Email: `messageId`, `threadId?`, `subject?`, `from?`, `snippet?`, `sentAt?`,
  *   `rfc822MessageId?`, `accountEmail?`
  *
- * A `file` is `{ storagePath, mimeType?, name? }` for an object the caller has already uploaded
- * to `users/{uid}/topic-files/{itemUid}{ext}`, so a caller adding a file picks the `itemUid`
- * (a UUID) first, uploads, then calls this with both.
+ * Doc and Image items, and a bill's invoice, are refused with `failed-precondition`: they need
+ * files, which wait on Cloud Storage.
  *
  * Response: `{ itemUid, linkUid? }`. Throws `not-found` for a missing or deleted topic and
  * `already-exists` when the topic already holds the link.
@@ -105,20 +101,16 @@ export const addTopicItem = onCall(async (request) => {
   const userUid = signedInUser(request);
   const input = Input.of(request.data);
   const topicUid = input.string("topicUid", 128);
-  const itemUid = input.optionalString("itemUid", 36) ?? randomUUID();
-  if (!UUID.test(itemUid)) throw invalid("itemUid must be a UUID.");
   const pinned = input.boolean("pinned", false);
   const item = parseNewItem(input.object("item"));
-  const file = await resolveFile(item, userUid, itemUid);
 
   const user = userDoc(userUid);
   const topicRef = user.collection("topics").doc(topicUid);
-  const itemRef = user.collection("topicItems").doc(itemUid);
+  const itemRef = user.collection("topicItems").doc(randomUUID());
 
   return db.runTransaction(async (tx) => {
     // Every read comes before the first write, as a transaction requires.
     if (!isLive(await tx.get(topicRef))) throw new HttpsError("not-found", "That topic doesn't exist.");
-    if ((await tx.get(itemRef)).exists) throw new HttpsError("already-exists", "An item with that itemUid already exists.");
 
     const nowMillis = Date.now();
     const serverTime = FieldValue.serverTimestamp();
@@ -144,36 +136,11 @@ export const addTopicItem = onCall(async (request) => {
     }
 
     if (newLink !== null) tx.set(newLink.ref, newLink.doc);
-    tx.create(itemRef, itemDoc({ topicUid, type: item.type, fields: item.fields, linkUid: uid, file, pinned, nowMillis, serverTime }));
+    tx.create(itemRef, itemDoc({ topicUid, type: item.type, fields: item.fields, linkUid: uid, pinned, nowMillis, serverTime }));
     tx.update(topicRef, touchedTopic(nowMillis, serverTime));
-    return uid === null ? { itemUid } : { itemUid, linkUid: uid };
+    return uid === null ? { itemUid: itemRef.id } : { itemUid: itemRef.id, linkUid: uid };
   });
 });
-
-/** Checks the item's uploaded file is where it belongs and exists, and fills in its type and name. */
-async function resolveFile(item: NewItem, userUid: string, itemUid: string) {
-  if (item.file === null) {
-    if (item.fileRequired) throw invalid(`A ${item.type} needs item.file.`);
-    return null;
-  }
-  const { storagePath } = item.file;
-  if (!isItemFilePath(storagePath, userUid, itemUid)) {
-    throw invalid(`item.file.storagePath must be users/${userUid}/topic-files/${itemUid} plus an optional extension.`);
-  }
-  let contentType: string | undefined;
-  try {
-    [{ contentType }] = await getStorage().bucket().file(storagePath).getMetadata();
-  } catch (e) {
-    if ((e as { code?: number }).code === 404) {
-      throw new HttpsError("failed-precondition", "Upload the file to item.file.storagePath before adding the item.");
-    }
-    throw e;
-  }
-  const mimeType = item.file.mimeType ?? contentType ?? null;
-  if (mimeType === null) throw invalid("item.file.mimeType is required: the uploaded file has no content type.");
-  if (item.type === "Image" && !mimeType.startsWith("image/")) throw invalid("An Image's file must be an image.");
-  return { storagePath, mimeType, name: item.file.name ?? storagePath.slice(storagePath.lastIndexOf("/") + 1) };
-}
 
 function signedInUser(request: CallableRequest): string {
   const uid = request.auth?.uid;
@@ -198,4 +165,3 @@ function webAddress(text: string, field: string): string {
 
 const MAX_TOPIC_NAME = 200;
 const MAX_PURPOSE = 2_000;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

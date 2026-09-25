@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kortex Functions Playground</title>
+<style>
+  :root { --bg: #fafafa; --fg: #1a1a1a; --muted: #666; --card: #fff; --line: #ddd; --ok: #1b7f3b; --err: #b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121212; --fg: #eee; --muted: #999; --card: #1e1e1e; --line: #333; --ok: #6fcf8a; --err: #f2968f; }
+  }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  h1 { font-size: 22px; } h2 { font-size: 17px; margin-top: 0; }
+  textarea { width: 100%; box-sizing: border-box; font: 13px/1.4 ui-monospace, monospace; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  button { font: inherit; padding: 6px 14px; margin: 8px 8px 0 0; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  pre { white-space: pre-wrap; word-break: break-word; font: 13px/1.4 ui-monospace, monospace; margin: 8px 0 0; }
+  .ok { color: var(--ok); } .err { color: var(--err); } .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kortex functions playground</h1>
+  <p class="muted">Calls the deployed <code>addLink</code>, <code>createTopic</code> and <code>addTopicItem</code> as you. Sign in with the account your phone syncs with, and what you add shows up in the app.</p>
+
+  <section>
+    <h2>1. Web app config</h2>
+    <p class="muted">Paste the object from <code>firebase apps:sdkconfig web</code>. It's kept in this browser only.</p>
+    <textarea id="config" rows="8" placeholder='{ "apiKey": "...", "authDomain": "kortex-a24b7.firebaseapp.com", "projectId": "kortex-a24b7", "appId": "..." }'></textarea>
+    <button id="signIn">Save and sign in with Google</button>
+    <button id="signOut">Sign out</button>
+    <pre id="who" class="muted">Not signed in.</pre>
+  </section>
+
+  <section>
+    <h2>2. addLink</h2>
+    <textarea id="addLink" rows="4">{ "url": "example.com/post", "title": "Example post", "tags": ["reading"] }</textarea>
+    <button data-call="addLink">Call</button>
+    <pre id="addLink-out"></pre>
+  </section>
+
+  <section>
+    <h2>3. createTopic</h2>
+    <textarea id="createTopic" rows="3">{ "name": "Test topic", "purpose": "Trying the cloud functions" }</textarea>
+    <button data-call="createTopic">Call</button>
+    <pre id="createTopic-out"></pre>
+  </section>
+
+  <section>
+    <h2>4. addTopicItem</h2>
+    <p class="muted"><code>topicUid</code> fills in after createTopic. Examples:
+      <button data-example="note">Note</button><button data-example="article">Article</button>
+      <button data-example="bill">Bill</button><button data-example="email">Email</button></p>
+    <textarea id="addTopicItem" rows="8"></textarea>
+    <button data-call="addTopicItem">Call</button>
+    <pre id="addTopicItem-out"></pre>
+  </section>
+</main>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+
+  const $ = (id) => document.getElementById(id);
+  const CONFIG_KEY = "kortex-playground-config";
+  let topicUid = "PASTE-A-TOPIC-UID";
+  let app = null;
+
+  const examples = {
+    note: () => ({ topicUid, item: { type: "Note", text: "Remember to try the extension" } }),
+    article: () => ({ topicUid, item: { type: "Article", url: "https://example.com/long-read", title: "A long read", readingMinutes: 12 } }),
+    bill: () => ({ topicUid, item: { type: "Bill", title: "Electricity", amountMinor: 245000, currency: "INR", dueAt: Date.now() + 7 * 864e5 } }),
+    email: () => ({ topicUid, item: { type: "Email", messageId: "18c2f0example", subject: "Your booking", from: "Hotel <stay@example.com>", snippet: "See you on Friday" } }),
+  };
+  const showExample = (name) => { $("addTopicItem").value = JSON.stringify(examples[name](), null, 2); };
+  showExample("note");
+
+  try { $("config").value = localStorage.getItem(CONFIG_KEY) ?? ""; } catch {}
+
+  function start() {
+    if (app) return true;
+    let config;
+    // The CLI prints a JS object literal (unquoted keys), so read it as one; it's your own paste.
+    const text = $("config").value;
+    try { config = new Function(`return (${text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)})`)(); }
+    catch { config = null; }
+    if (!config?.apiKey) { $("who").textContent = "Paste the whole config object, with its apiKey."; $("who").className = "err"; return false; }
+    try { localStorage.setItem(CONFIG_KEY, $("config").value); } catch {}
+    app = initializeApp(config);
+    onAuthStateChanged(getAuth(app), (user) => {
+      $("who").textContent = user ? `Signed in as ${user.email} (uid ${user.uid})` : "Not signed in.";
+      $("who").className = user ? "ok" : "muted";
+    });
+    return true;
+  }
+  if ($("config").value.trim()) start();
+
+  $("signIn").onclick = async () => {
+    if (!start()) return;
+    try { await signInWithPopup(getAuth(app), new GoogleAuthProvider()); }
+    catch (e) { $("who").textContent = e.message; $("who").className = "err"; }
+  };
+  $("signOut").onclick = () => app && signOut(getAuth(app));
+
+  document.querySelectorAll("[data-example]").forEach((b) => (b.onclick = () => showExample(b.dataset.example)));
+
+  document.querySelectorAll("[data-call]").forEach((button) => {
+    button.onclick = async () => {
+      const name = button.dataset.call;
+      const out = $(`${name}-out`);
+      if (!app) { out.textContent = "Sign in first."; out.className = "err"; return; }
+      let data;
+      try { data = JSON.parse($(name).value); } catch { out.textContent = "The request isn't valid JSON."; out.className = "err"; return; }
+      out.textContent = "Calling…"; out.className = "muted";
+      try {
+        // The region must match the deployed functions, or the call goes to us-central1.
+        const result = await httpsCallable(getFunctions(app, "asia-south1"), name)(data);
+        out.textContent = JSON.stringify(result.data, null, 2); out.className = "ok";
+        if (name === "createTopic") {
+          topicUid = result.data.topicUid;
+          const item = JSON.parse($("addTopicItem").value);
+          $("addTopicItem").value = JSON.stringify({ ...item, topicUid }, null, 2);
+        }
+      } catch (e) {
+        out.textContent = `${e.code}: ${e.message}`; out.className = "err";
+      }
+    };
+  });
+</script>
+</body>
+</html>

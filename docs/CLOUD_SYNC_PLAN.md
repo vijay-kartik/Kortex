@@ -173,9 +173,27 @@ rules:
 item's `file` only names a path on the device that added it. `functions/src/linkKey.ts` ports
 `linkUrlKey`/`linkUid` and is tested against the same vectors as `LinkUrlKeyTest`/`LinkUidTest`.
 
+**Personal API keys** reach the same three actions from anywhere without a Firebase sign-in
+(scripts, iOS Shortcuts, Tasker, another server):
+
+```
+POST https://asia-south1-kortex-a24b7.cloudfunctions.net/api/{addLink|createTopic|addTopicItem}
+Authorization: Bearer kx_…
+Content-Type: application/json
+
+{ "url": "example.com/post" }          ← the callable's request, not wrapped in "data"
+```
+
+It answers with the result as JSON, or `{ "error": { "status", "message" } }` with the matching HTTP
+status (400, 401, 404, 409, …). Keys are made, listed and revoked only while signed in, through the
+callables `createApiKey({ label? })` → `{ key, keyId, label, hint }` (the only time the key is
+shown), `listApiKeys()` and `revokeApiKey({ keyId })`; at most 10 per user. Only a key's SHA-256 is
+kept, as the id of `apiKeys/{keyId}` (`uid`, `label`, `hint`, `createdAt`, `lastUsedAt`); that
+collection is outside `users/{uid}`, so the security rules keep every client out of it.
+
 Build and test with `npm --prefix functions test`; deploy with `firebase deploy --only functions`
 (needs the Blaze plan). To try the deployed functions by hand, serve `functions/playground/` on
-localhost (`npx serve functions/playground`), paste the web app's config and sign in with Google.
+localhost (`npx serve functions/playground`), paste the web app's config and sign in with Google. It also creates and revokes API keys.
 
 ## Security rules
 

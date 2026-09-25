@@ -22,7 +22,7 @@
 <body>
 <main>
   <h1>Kortex functions playground</h1>
-  <p class="muted">Calls the deployed <code>addLink</code>, <code>createTopic</code> and <code>addTopicItem</code> as you. Sign in with the account your phone syncs with, and what you add shows up in the app.</p>
+  <p class="muted">Calls the deployed <code>addLink</code>, <code>createTopic</code> and <code>addTopicItem</code> as you, and manages your personal API keys. Sign in with the account your phone syncs with, and what you add shows up in the app.</p>
 
   <section>
     <h2>1. Web app config</h2>
@@ -55,6 +55,15 @@
     <textarea id="addTopicItem" rows="8"></textarea>
     <button data-call="addTopicItem">Call</button>
     <pre id="addTopicItem-out"></pre>
+  </section>
+  <section>
+    <h2>5. Personal API keys</h2>
+    <p class="muted">For calling <code>POST https://asia-south1-kortex-a24b7.cloudfunctions.net/api/{addLink|createTopic|addTopicItem}</code> from anywhere, with <code>Authorization: Bearer &lt;key&gt;</code>. A key is shown once, when it's made.</p>
+    <input id="keyLabel" placeholder="Label, e.g. iPhone shortcut" style="font: inherit; padding: 6px; width: 60%; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;">
+    <button id="createKey">Create key</button>
+    <button id="listKeys">Refresh list</button>
+    <pre id="newKey"></pre>
+    <div id="keys" class="muted"></div>
   </section>
 </main>
 
@@ -92,6 +101,7 @@
     onAuthStateChanged(getAuth(app), (user) => {
       $("who").textContent = user ? `Signed in as ${user.email} (uid ${user.uid})` : "Not signed in.";
       $("who").className = user ? "ok" : "muted";
+      if (user) refreshKeys();
     });
     return true;
   }
@@ -128,6 +138,37 @@
       }
     };
   });
+  function call(name, data) { return httpsCallable(getFunctions(app, "asia-south1"), name)(data).then((r) => r.data); }
+
+  async function refreshKeys() {
+    if (!app) return;
+    const box = $("keys");
+    try {
+      const { keys } = await call("listApiKeys", {});
+      box.replaceChildren(...(keys.length ? keys.map((k) => {
+        const row = document.createElement("div");
+        const used = k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : "never";
+        row.textContent = `${k.label ?? "(no label)"} · …${k.hint} · made ${new Date(k.createdAt).toLocaleString()} · last used ${used} `;
+        const revoke = document.createElement("button");
+        revoke.textContent = "Revoke";
+        revoke.onclick = async () => { await call("revokeApiKey", { keyId: k.keyId }); refreshKeys(); };
+        row.append(revoke);
+        return row;
+      }) : ["No keys yet."]));
+    } catch (e) { box.textContent = `${e.code}: ${e.message}`; }
+  }
+
+  $("listKeys").onclick = refreshKeys;
+  $("createKey").onclick = async () => {
+    const out = $("newKey");
+    if (!app) { out.textContent = "Sign in first."; out.className = "err"; return; }
+    try {
+      const { key } = await call("createApiKey", { label: $("keyLabel").value });
+      out.className = "ok";
+      out.textContent = `Your key (copy it now, it won't be shown again):\n${key}\n\nTry it:\ncurl -X POST https://asia-south1-kortex-a24b7.cloudfunctions.net/api/addLink \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"url": "example.com/post", "tags": ["reading"]}'`;
+      refreshKeys();
+    } catch (e) { out.textContent = `${e.code}: ${e.message}`; out.className = "err"; }
+  };
 </script>
 </body>
 </html>

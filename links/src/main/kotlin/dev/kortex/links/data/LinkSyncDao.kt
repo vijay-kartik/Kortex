@@ -23,10 +23,12 @@ data class RemoteLink(
 /** What applying a pull changed outside the database's own rows. */
 data class LinkPullResult(
     /** Links whose thumbnail has to be downloaded: new here, or given a different image. */
-    val needsImage: List<Long>,
+    val needsImage: List<LinkImageNeeded>,
     /** Links deleted on another client; their thumbnails are left for the caller to remove. */
     val deleted: List<Long>,
 )
+
+data class LinkImageNeeded(val id: Long, val url: String, val imageUrl: String)
 
 data class LinkIdUid(val id: Long, val uid: String)
 
@@ -72,7 +74,7 @@ abstract class LinkSyncDao : LinkDao() {
     @Transaction
     open suspend fun applyPulled(links: List<RemoteLink>): LinkPullResult {
         setApplying(true)
-        val needsImage = mutableListOf<Long>()
+        val needsImage = mutableListOf<LinkImageNeeded>()
         val deleted = mutableListOf<Long>()
         for (remote in links) {
             val urlKey = linkUrlKey(remote.url)
@@ -108,7 +110,7 @@ abstract class LinkSyncDao : LinkDao() {
                     )
                     val id = if (local == null) insertPulled(row) else local.id.also { updatePulled(row) }
                     replaceTags(id, remote.tags.map { it.trim() }.filter { it.isNotEmpty() })
-                    if (remote.imageUrl != null && !sameImage) needsImage += id
+                    if (remote.imageUrl != null && !sameImage) needsImage += LinkImageNeeded(id, remote.url, remote.imageUrl)
                     tombstone?.let { deleteTombstone(it.kind, it.uid, it.deletedAtMillis) }
                 }
             }
@@ -116,6 +118,51 @@ abstract class LinkSyncDao : LinkDao() {
         setApplying(false)
         return LinkPullResult(needsImage = needsImage, deleted = deleted)
     }
+
+    @Query("SELECT COUNT(*) FROM links")
+    abstract suspend fun linkCount(): Int
+
+    /** Local changes the cloud doesn't have yet: edited links plus unpushed deletes. */
+    @Query("SELECT (SELECT COUNT(*) FROM links WHERE dirty > 0) + (SELECT COUNT(*) FROM sync_tombstones WHERE kind = '${LinkSyncSchema.KIND_LINK}')")
+    abstract suspend fun unpushedCount(): Int
+
+    /**
+     * Hands this phone's links to a newly signed-in account: every link is pushed to it on the next
+     * sync, and deletes made under the previous account are dropped rather than sent to this one.
+     */
+    @Transaction
+    open suspend fun adoptForNewAccount() {
+        markAllDirty()
+        deleteTombstones(LinkSyncSchema.KIND_LINK)
+    }
+
+    /**
+     * Removes every link and tag from this phone without recording a single delete, so nothing
+     * reaches any account's cloud. Returns the removed link ids, whose thumbnails the caller deletes.
+     */
+    @Transaction
+    open suspend fun discardAll(): List<Long> {
+        setApplying(true)
+        val ids = getAllIds()
+        deleteAllLinks()
+        deleteAllTags()
+        deleteTombstones(LinkSyncSchema.KIND_LINK)
+        setApplying(false)
+        return ids
+    }
+
+    // Counts up rather than setting 1, like the triggers, so a push in flight can't mark it clean.
+    @Query("UPDATE links SET dirty = dirty + 1")
+    protected abstract suspend fun markAllDirty()
+
+    @Query("DELETE FROM sync_tombstones WHERE kind = :kind")
+    protected abstract suspend fun deleteTombstones(kind: String)
+
+    @Query("DELETE FROM links")
+    protected abstract suspend fun deleteAllLinks()
+
+    @Query("DELETE FROM tags")
+    protected abstract suspend fun deleteAllTags()
 
     @Query("UPDATE sync_control SET applying = :applying WHERE id = 0")
     protected abstract suspend fun setApplying(applying: Boolean)

@@ -137,8 +137,21 @@ fun SettingsScreen(
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            // ── Cloud sync ───────────────────────────────────────────
+            item { SectionLabel("CLOUD SYNC") }
+            item {
+                CloudSyncSection(
+                    onMessage = { message ->
+                        scope.launch {
+                            snackbar.currentSnackbarData?.dismiss()
+                            snackbar.showSnackbar(message)
+                        }
+                    },
+                )
+            }
+
             // ── Privacy & security ───────────────────────────────────
-            item { SectionLabel("PRIVACY & SECURITY") }
+            item { SectionLabel("PRIVACY & SECURITY", Modifier.padding(top = 16.dp)) }
             item {
                 AppLockSection(
                     settings = appLock,

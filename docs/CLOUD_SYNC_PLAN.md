@@ -78,15 +78,23 @@ a Room `onCreate` callback:
 - Migrations: links v3→v4 and topics v4→v5. Existing rows get a uid backfilled in Kotlin (like
   `MIGRATION_2_3`) and start with `dirty = 1`, so the first sync uploads everything.
 
-## Sync algorithm (`SyncEngine.syncNow()`)
+## Sync algorithm (`CloudSync.syncNow()`)
 
-1. **Push.** For each dirty row, `set(merge)` its doc with `updatedAt` and `serverUpdatedAt`, in
+**Pull runs before push.** A newer remote change then replaces the local one before it could be
+uploaded over it, so the push only ever carries changes that are the newest anywhere. (Pushing first
+would overwrite, say, a newer title the extension wrote.)
+
+1. **Push** (runs second). For each dirty row, `set(merge)` its doc with `updatedAt` and `serverUpdatedAt`, in
    batches of ≤ 500. Before an item's doc is written, its file is uploaded if it isn't in Storage
    yet (`remoteFilePath` column). Tombstones become `deleted: true` writes. Then clear
    `dirty` and delete the pushed tombstones, but only for rows whose `updatedAtMillis` hasn't
    changed since they were read.
-2. **Pull.** Query each collection with `serverUpdatedAt > lastPulledAt` (the watermark is stored in
-   DataStore, and it's 0 on a fresh install, so the first pull is a full restore). Apply everything
+2. **Pull** (runs first). Query each collection with `serverUpdatedAt > lastPulledAt` (the watermark is
+   stored in DataStore per account, and it's 0 on a fresh install, so the first pull is a full
+   restore). The query starts a minute before the watermark, since server timestamps don't commit
+   strictly in order; re-applying a doc is harmless. Pages of 300 are read from the server only
+   (never Firestore's cache) and each is applied in its own transaction, advancing the watermark, so
+   an interrupted restore resumes. Apply everything
    in one transaction per DB with `applying = 1`:
    - Order: links → topics → items, so cross-refs resolve.
    - **Last writer wins** on `updatedAt`. A remote doc older than a still-dirty local row is
@@ -100,8 +108,15 @@ a Room `onCreate` callback:
    through `LinkImageStore`.
 4. Save `lastPulledAt` as the max `serverUpdatedAt` seen, and "Last synced" as the current time.
 
-**Signing out** keeps local data and clears the watermark. **Signing into a different account**
-asks whether to merge the local data into it or wipe it first.
+**Signing out** keeps local data. The phone records which account its links belong to (the
+*owner*, in the `cloud_sync` DataStore). **Signing into a different account** while the phone holds
+the owner's links asks, before anything syncs, whether to *add them to the new account* (every link
+is marked dirty and the old owner's unpushed deletes are dropped, so they never reach the new
+account) or *remove them from this phone* (deleted with tracking off, so no account's cloud copy is
+touched). Every change of owner resets the new owner's watermark, since the phone no longer holds
+what was pulled up to it. `syncNow()` refuses to run while the owner isn't the signed-in account.
+Each sign-in ends with a sync in the background, so a reinstall or an account switch restores the
+links without a trip to Settings.
 
 ## Security rules
 
@@ -157,10 +172,11 @@ a missing default database in `nam5`, and both locations are permanent.
    merge rules.
 2. **Auth.** `CloudAccount` (sign in with Google, sign out, current user flow), and a Settings ›
    *Cloud sync* section showing the account, a sign-in/out button and "Last synced".
-3. **Push + pull for Links.** Start with the smallest part to prove the protocol end to end:
+3. **Push + pull for Links.** *(Implemented: `:sync` › `CloudSync`, `links/LinkSync`, `links/LinkDocs`;
+   Settings › Cloud sync has "Sync now" and "Last synced".)* Start with the smallest part to prove the protocol end to end:
    uninstall, reinstall, sign in, sync, and every link is back.
 4. **Topics + files.** Topics, items and summaries, uploading and downloading topic files through
    Storage.
-5. **Hardening.** Handle the account switch, show sync errors in Settings, and write the rules for the
+5. **Hardening.** Handle the account switch *(done: see "Signing out" above)*, show sync errors in Settings, and write the rules for the
    extension (the `linkUrlKey` test vectors and the doc schema above), which becomes the extension's
    contract.

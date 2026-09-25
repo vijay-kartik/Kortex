@@ -24,6 +24,9 @@ android {
 }
 
 dependencies {
+    // The local side of sync: dirty rows to push, and applying pulled ones.
+    implementation(project(":links"))
+
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     // Records only: files stay on the device (no Cloud Storage), and item docs carry their path.
@@ -36,4 +39,9 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
+
+    // Pull watermarks and "Last synced", per account.
+    implementation(libs.datastore.preferences)
+
+    testImplementation(libs.junit)
 }

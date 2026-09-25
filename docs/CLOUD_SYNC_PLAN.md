@@ -115,8 +115,11 @@ is marked dirty and the old owner's unpushed deletes are dropped, so they never 
 account) or *remove them from this phone* (deleted with tracking off, so no account's cloud copy is
 touched). Every change of owner resets the new owner's watermark, since the phone no longer holds
 what was pulled up to it. `syncNow()` refuses to run while the owner isn't the signed-in account.
-Each sign-in ends with a sync in the background, so a reinstall or an account switch restores the
-links without a trip to Settings.
+Each sign-in ends with a sync inside onboarding (Figma: Login & Logout 03/04). The pull first counts
+the account's changed docs (one aggregate read); if there are any, onboarding shows *Restoring your
+library* with live "n of total" progress, otherwise it goes straight to *All set*, whose summary card
+shows what was restored and whether the sync finished. Topics and files join the restore card in
+phase 4.
 
 ## Security rules
 

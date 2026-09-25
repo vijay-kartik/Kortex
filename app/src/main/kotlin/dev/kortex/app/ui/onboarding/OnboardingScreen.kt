@@ -96,6 +96,7 @@ import dev.kortex.design.anim.EmphasizedAccelerate
 import dev.kortex.design.anim.EmphasizedDecelerate
 import dev.kortex.design.drawKortexMark
 import dev.kortex.sync.CloudUser
+import dev.kortex.sync.OtherAccountData
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
@@ -121,7 +122,8 @@ private val MarkSlot = 72.dp
 private val TopGap = 96.dp
 
 /**
- * First launch and signed-out onboarding: Welcome (sign in with Google) → All set.
+ * First launch and signed-out onboarding: Welcome (sign in with Google) → [another account's links]
+ * → [Restoring your library] → All set.
  * [splashHandoff] is non-null only when this launch should take over the splash icon; [signedOut]
  * greets someone who just logged out (Figma: Login & Logout 09).
  */
@@ -149,7 +151,15 @@ fun OnboardingFlow(
                 splashHandoff = splashHandoff,
                 onSignIn = { activity?.let(vm::signIn) },
             )
-            OnboardingStep.AllSet -> AllSetScreen(user = ui.user, onStart = onFinished)
+            OnboardingStep.OtherAccountLinks -> OtherAccountLinksScreen(
+                user = ui.user,
+                other = ui.otherAccount,
+                resolving = ui.resolving,
+                onKeep = vm::keepOtherAccountLinks,
+                onRemove = vm::removeOtherAccountLinks,
+            )
+            OnboardingStep.Restoring -> RestoringScreen(user = ui.user, progress = ui.restore)
+            OnboardingStep.AllSet -> AllSetScreen(user = ui.user, sync = ui.sync, onStart = onFinished)
         }
     }
 }
@@ -338,10 +348,160 @@ private fun Benefit(@DrawableRes icon: Int, title: String, body: String, modifie
     }
 }
 
+// ── Another account's links ─────────────────────────────────────────────
+
+/** The links on this phone belong to the account signed in before; they go with this one or leave. */
+@Composable
+private fun OtherAccountLinksScreen(
+    user: CloudUser?,
+    other: OtherAccountData?,
+    resolving: Boolean,
+    onKeep: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val count = other?.linkCount ?: 0
+    val links = if (count == 1) "1 link" else "$count links"
+    val previous = other?.ownerEmail ?: "another account"
+    val current = user?.email ?: "this account"
+
+    Column(
+        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(TopGap))
+        Box(Modifier.size(MarkSlot).background(SynapseDim, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(painterResource(DesignR.drawable.ic_link), contentDescription = null, tint = Synapse, modifier = Modifier.size(32.dp))
+        }
+        Spacer(Modifier.height(24.dp))
+        Text(
+            "This phone has $links from $previous",
+            style = MaterialTheme.typography.headlineSmall,
+            color = Ink,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.semantics { heading() },
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Add them to $current, or remove them from this phone. Removing them doesn’t touch what $previous has in the cloud.",
+            style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+            color = Muted,
+            textAlign = TextAlign.Center,
+        )
+        val unpushed = other?.unpushedCount ?: 0
+        if (unpushed > 0) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                if (unpushed == 1) "1 change was never synced and would be lost if removed."
+                else "$unpushed changes were never synced and would be lost if removed.",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = Amber,
+                textAlign = TextAlign.Center,
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        PillButton(onClick = onKeep, container = SynapseDim, enabled = !resolving) {
+            Text(
+                "Add to $current",
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
+                color = Synapse,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        PillButton(onClick = onRemove, container = Panel, enabled = !resolving) {
+            Text(
+                "Remove from this phone",
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
+                color = Ink,
+            )
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+// ── Restoring your library ──────────────────────────────────────────────
+
+/** The account's library coming back after a sign-in (Figma: Login & Logout 03). Links only until topics sync. */
+@Composable
+private fun RestoringScreen(user: CloudUser?, progress: RestoreProgress?) {
+    val total = progress?.total ?: 0
+    val done = progress?.done ?: 0
+    val fraction by animateFloatAsState(
+        targetValue = if (total > 0) done.toFloat() / total else 0f,
+        animationSpec = tween(300, easing = EmphasizedDecelerate),
+        label = "restore-links",
+    )
+
+    Column(
+        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(TopGap))
+        Box(Modifier.size(MarkSlot), contentAlignment = Alignment.Center) {
+            KortexMark(Modifier.requiredSize(MarkSlot * 1.5f))
+        }
+        Spacer(Modifier.height(24.dp))
+        Text(
+            "Restoring your library",
+            style = MaterialTheme.typography.headlineSmall,
+            color = Ink,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.semantics { heading() },
+        )
+        Spacer(Modifier.height(10.dp))
+        user?.email?.let { email ->
+            Text(
+                "Signed in as $email",
+                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                color = Muted,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.height(40.dp))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(Panel, RoundedCornerShape(12.dp))
+                .border(1.dp, Edge, RoundedCornerShape(12.dp))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Links",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                    color = Ink,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "$done of $total",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = Synapse,
+                )
+            }
+            Box(Modifier.fillMaxWidth().height(4.dp).background(Edge, RoundedCornerShape(2.dp))) {
+                Box(Modifier.fillMaxWidth(fraction).height(4.dp).background(Synapse, RoundedCornerShape(2.dp)))
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Text(
+            "Keep Kortex open. This only happens the first time you sign in on a phone.",
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = Muted,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Spacer(Modifier.height(48.dp))
+    }
+}
+
 // ── All set ─────────────────────────────────────────────────────────────
 
 @Composable
-private fun AllSetScreen(user: CloudUser?, onStart: () -> Unit) {
+private fun AllSetScreen(user: CloudUser?, sync: SignInSync?, onStart: () -> Unit) {
     val badge = remember { Animatable(0f) }
     val check = remember { Animatable(0f) }
     val reveal = remember { Animatable(0f) }
@@ -377,24 +537,41 @@ private fun AllSetScreen(user: CloudUser?, onStart: () -> Unit) {
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            "You’re signed in with Google.",
+            "Your library is backed up to your Google account.",
             style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
             color = Muted,
             textAlign = TextAlign.Center,
             modifier = Modifier.staggered({ reveal.value }, 1),
         )
         Spacer(Modifier.height(32.dp))
-        AccountCard(user, Modifier.staggered({ reveal.value }, 2))
-        Spacer(Modifier.weight(1f))
-        PillButton(
-            onClick = onStart,
-            container = SynapseDim,
-            modifier = Modifier.staggered({ reveal.value }, 3, rise = 24.dp),
-        ) {
+        SummaryCard(user, sync, Modifier.staggered({ reveal.value }, 2))
+        if (sync is SignInSync.Failed) {
             Text(
-                "Start using Kortex",
-                style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
-                color = Synapse,
+                sync.message,
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = Amber,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).staggered({ reveal.value }, 2),
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        Column(
+            Modifier.fillMaxWidth().staggered({ reveal.value }, 3, rise = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            PillButton(onClick = onStart, container = SynapseDim) {
+                Text(
+                    "Start using Kortex",
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
+                    color = Synapse,
+                )
+            }
+            Text(
+                "Sync any time from Tools & Settings › Cloud sync.",
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                color = Muted,
+                textAlign = TextAlign.Center,
             )
         }
         Spacer(Modifier.height(24.dp))
@@ -437,16 +614,38 @@ private fun CheckBadge(scale: () -> Float, drawn: () -> Float) {
     }
 }
 
+/** Who signed in, what came back and when it last synced (Figma: Login & Logout 04 › Card/Summary). */
 @Composable
-private fun AccountCard(user: CloudUser?, modifier: Modifier = Modifier) {
+private fun SummaryCard(user: CloudUser?, sync: SignInSync?, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(12.dp)
-    val label = user?.name ?: user?.email ?: "Google account"
-    Row(
+    Column(
         modifier
             .fillMaxWidth()
             .background(Panel, shape)
-            .border(1.dp, Edge, shape)
-            .padding(14.dp),
+            .border(1.dp, Edge, shape),
+    ) {
+        AccountRow(user)
+        val restored = (sync as? SignInSync.Done)?.restoredLinks
+        if (restored != null) {
+            SummaryDivider()
+            SummaryRow("Restored", if (restored == 1) "1 link" else "$restored links")
+        }
+        if (sync != null) {
+            SummaryDivider()
+            SummaryRow(
+                "Last synced",
+                if (sync is SignInSync.Done) "Just now" else "Didn’t finish",
+                valueColor = if (sync is SignInSync.Done) Ink else Amber,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AccountRow(user: CloudUser?) {
+    val label = user?.name ?: user?.email ?: "Google account"
+    Row(
+        Modifier.fillMaxWidth().padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -461,6 +660,26 @@ private fun AccountCard(user: CloudUser?, modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+@Composable
+private fun SummaryRow(label: String, value: String, valueColor: Color = Ink) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = Muted, modifier = Modifier.weight(1f))
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, fontWeight = FontWeight.Medium),
+            color = valueColor,
+        )
+    }
+}
+
+@Composable
+private fun SummaryDivider() {
+    Box(Modifier.fillMaxWidth().height(1.dp).background(Edge))
 }
 
 // ── Shared pieces ───────────────────────────────────────────────────────

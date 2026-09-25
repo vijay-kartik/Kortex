@@ -69,8 +69,11 @@ class CloudSync(
      * Pulls, then pushes. Pulling first lets a newer remote change replace a local one before it
      * could be uploaded over it, so the push only carries changes that are the newest anywhere.
      * A second call waits for the running one, then syncs again.
+     *
+     * [onLinksProgress] reports the pull as (read, total); it isn't called when there's nothing to
+     * pull, which is how a sign-in tells a new account from one with a library to restore.
      */
-    suspend fun syncNow(): SyncOutcome {
+    suspend fun syncNow(onLinksProgress: (read: Int, total: Int) -> Unit = { _, _ -> }): SyncOutcome {
         val user = account.user.value ?: return SyncOutcome.Failed("Sign in to sync.")
         return mutex.withLock {
             // Never push one account's links, or deletes made under it, into another.
@@ -81,7 +84,7 @@ class CloudSync(
             }
             _syncing.value = true
             try {
-                links.pull(user.uid)
+                links.pull(user.uid, onLinksProgress)
                 links.push(user.uid)
                 store.setLastSyncedAt(user.uid, System.currentTimeMillis())
                 SyncOutcome.Done
@@ -108,6 +111,9 @@ class CloudSync(
             }
         }
     }
+
+    /** How many links this phone has. */
+    suspend fun linkCount(): Int = linkDao.linkCount()
 
     /**
      * Call right after [user] signs in. Returns null when the links on this phone are already

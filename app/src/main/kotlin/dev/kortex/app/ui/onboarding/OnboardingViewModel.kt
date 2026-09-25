@@ -5,8 +5,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.sync.CloudAccount
+import dev.kortex.sync.CloudSync
 import dev.kortex.sync.CloudUser
+import dev.kortex.sync.OtherAccountData
 import dev.kortex.sync.SignInResult
+import dev.kortex.sync.SyncOutcome
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +17,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class OnboardingStep { Welcome, AllSet }
+/** In the order the flow moves through them; the transition direction follows it. */
+enum class OnboardingStep { Welcome, OtherAccountLinks, Restoring, AllSet }
+
+/** Links pulled so far, of how many the account has in the cloud. */
+data class RestoreProgress(val done: Int, val total: Int)
+
+/** How the sign-in's sync ended, for the summary on "all set". */
+sealed interface SignInSync {
+    /** [restoredLinks] is null when nothing came back: a new account, or one whose links were all deleted. */
+    data class Done(val restoredLinks: Int?) : SignInSync
+    data class Failed(val message: String) : SignInSync
+}
 
 data class OnboardingUi(
     val step: OnboardingStep = OnboardingStep.Welcome,
@@ -22,11 +36,20 @@ data class OnboardingUi(
     val signingIn: Boolean = false,
     /** Shown above the sign-in button; null after a cancel, which isn't an error. */
     val error: String? = null,
+    /** Set on [OnboardingStep.OtherAccountLinks]: the links another account left on this phone. */
+    val otherAccount: OtherAccountData? = null,
+    /** Keeping or removing those links is under way. */
+    val resolving: Boolean = false,
+    /** Set on [OnboardingStep.Restoring]. */
+    val restore: RestoreProgress? = null,
+    /** Set once the sign-in's sync has ended; null when "all set" is resumed after process death. */
+    val sync: SignInSync? = null,
 )
 
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
     private val account: CloudAccount,
+    private val cloudSync: CloudSync,
 ) : ViewModel() {
 
     // Signed in already means the process died on "all set"; resume there.
@@ -46,14 +69,64 @@ class OnboardingViewModel @Inject constructor(
         if (_ui.value.signingIn) return
         _ui.update { it.copy(signingIn = true, error = null) }
         viewModelScope.launch {
-            val result = account.signIn(activity)
-            _ui.update {
-                when (result) {
-                    is SignInResult.Success -> it.copy(signingIn = false, step = OnboardingStep.AllSet, user = result.user)
-                    SignInResult.Cancelled -> it.copy(signingIn = false)
-                    is SignInResult.Failed -> it.copy(signingIn = false, error = result.message)
-                }
+            when (val result = account.signIn(activity)) {
+                is SignInResult.Success -> onSignedIn(result.user)
+                SignInResult.Cancelled -> _ui.update { it.copy(signingIn = false) }
+                is SignInResult.Failed -> _ui.update { it.copy(signingIn = false, error = result.message) }
             }
+        }
+    }
+
+    private suspend fun onSignedIn(user: CloudUser) {
+        _ui.update { it.copy(user = user) }
+        // Links another account left here must be kept or removed before anything syncs.
+        val other = cloudSync.otherAccountData(user)
+        if (other != null) {
+            _ui.update { it.copy(signingIn = false, otherAccount = other, step = OnboardingStep.OtherAccountLinks) }
+            return
+        }
+        restore()
+    }
+
+    /** Adds the other account's links to the one just signed in. */
+    fun keepOtherAccountLinks() = resolve { cloudSync.keepLocalData(it) }
+
+    /** Removes the other account's links from this phone; its cloud copy stays. */
+    fun removeOtherAccountLinks() = resolve { cloudSync.discardLocalData(it) }
+
+    private fun resolve(action: suspend (CloudUser) -> Unit) {
+        val user = _ui.value.user ?: return
+        if (_ui.value.resolving) return
+        _ui.update { it.copy(resolving = true) }
+        viewModelScope.launch {
+            action(user)
+            restore()
+        }
+    }
+
+    /**
+     * Syncs the account in. The current screen keeps its spinner while the cloud is counted; an
+     * account with a library moves to "restoring" with progress, a new one goes straight to
+     * "all set" (Figma: Login & Logout 03 / 04).
+     */
+    private suspend fun restore() {
+        val outcome = cloudSync.syncNow { done, total ->
+            _ui.update { it.copy(step = OnboardingStep.Restoring, restore = RestoreProgress(done, total)) }
+        }
+        val restored = _ui.value.restore != null
+        val sync = when (outcome) {
+            // The count includes deleted docs, so a restore can bring nothing back; say nothing then.
+            SyncOutcome.Done -> SignInSync.Done(restoredLinks = if (restored) cloudSync.linkCount().takeIf { it > 0 } else null)
+            is SyncOutcome.Failed -> SignInSync.Failed(outcome.message)
+        }
+        _ui.update {
+            it.copy(
+                signingIn = false,
+                resolving = false,
+                otherAccount = null,
+                step = OnboardingStep.AllSet,
+                sync = sync,
+            )
         }
     }
 }

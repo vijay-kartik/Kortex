@@ -2,6 +2,7 @@ package dev.kortex.sync.links
 
 import android.util.Log
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
@@ -28,16 +29,19 @@ internal class LinkSync(
     /**
      * Applies every link document written since the last pull, a page at a time. Each page is its
      * own transaction and moves the watermark on, so an interrupted restore resumes where it stopped.
-     * Returns how many documents were read.
+     * [onProgress] gets (read, total) once the total is known and after every page, but not at all
+     * when there's nothing to pull. Returns how many documents were read.
      */
-    suspend fun pull(userUid: String): Int {
+    suspend fun pull(userUid: String, onProgress: (read: Int, total: Int) -> Unit = { _, _ -> }): Int {
         // Server timestamps aren't guaranteed to commit in order, so re-read a little before the
         // watermark. Applying a document twice is harmless: the second time changes nothing.
         val since = (store.linksPulledAt(userUid) - PULL_OVERLAP_MS).coerceAtLeast(0)
-        val query = links(userUid)
-            .whereGreaterThan(LinkFields.SERVER_UPDATED_AT, Timestamp(Date(since)))
-            .orderBy(LinkFields.SERVER_UPDATED_AT)
-            .limit(PAGE_SIZE.toLong())
+        val changed = links(userUid).whereGreaterThan(LinkFields.SERVER_UPDATED_AT, Timestamp(Date(since)))
+        // One aggregate read, so a restore can show "84 of 128" rather than a spinner.
+        val total = changed.count().get(AggregateSource.SERVER).await().count.toInt()
+        if (total == 0) return 0
+        onProgress(0, total)
+        val query = changed.orderBy(LinkFields.SERVER_UPDATED_AT).limit(PAGE_SIZE.toLong())
 
         var read = 0
         var last: DocumentSnapshot? = null
@@ -55,6 +59,8 @@ internal class LinkSync(
 
             docs.last().getTimestamp(LinkFields.SERVER_UPDATED_AT)?.let { store.advanceLinksPulledAt(userUid, it.toDate().time) }
             read += docs.size
+            // Documents written since the count can push it past the total.
+            onProgress(read.coerceAtMost(total), total)
             last = docs.last()
         } while (docs.size == PAGE_SIZE)
         return read

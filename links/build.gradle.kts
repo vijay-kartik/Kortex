@@ -6,6 +6,9 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+// Links (the Links tab): a pure domain (models, ports, use cases), Room storage, page reading and
+// on-device tag suggestions behind those ports, and MVI screens. :sync reads the Room types in
+// data/ directly; everything else goes through the domain.
 android {
     namespace = "dev.kortex.links"
     compileSdk = 36

@@ -1,4 +1,4 @@
-package dev.kortex.links.ui
+package dev.kortex.links.ui.common
 
 import android.graphics.BitmapFactory
 import android.util.LruCache

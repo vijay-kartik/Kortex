@@ -1,4 +1,4 @@
-package dev.kortex.links.ui
+package dev.kortex.links.ui.common
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.keyframes

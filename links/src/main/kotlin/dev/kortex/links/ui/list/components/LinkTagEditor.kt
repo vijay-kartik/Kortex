@@ -46,9 +46,9 @@ import dev.kortex.design.Muted
 import dev.kortex.design.R
 import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
-import dev.kortex.links.ui.LinkMetaStyle
-import dev.kortex.links.ui.components.NewTagChip
-import dev.kortex.links.ui.components.TagChip
+import dev.kortex.links.ui.common.LinkMetaStyle
+import dev.kortex.links.ui.common.components.NewTagChip
+import dev.kortex.links.ui.common.components.TagChip
 
 /**
  * The open card's tag editor (Figma: Links / Edit tags · 2 Editing, 3 New tag): every tag as a

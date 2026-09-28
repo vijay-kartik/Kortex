@@ -1,4 +1,4 @@
-package dev.kortex.links.ui
+package dev.kortex.links.ui.create
 
 import android.view.HapticFeedbackConstants
 import androidx.annotation.DrawableRes
@@ -50,7 +50,13 @@ import dev.kortex.design.Panel
 import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
 import dev.kortex.links.domain.model.PageReadPhase
-import dev.kortex.links.ui.create.PreviewImage
+import dev.kortex.links.ui.LinkCardInset
+import dev.kortex.links.ui.LinkCardShape
+import dev.kortex.links.ui.LinkMetaStyle
+import dev.kortex.links.ui.LinkThumbnail
+import dev.kortex.links.ui.LinkTitleStyle
+import dev.kortex.links.ui.LinkUrlStyle
+import dev.kortex.links.ui.ThumbnailContent
 
 /**
  * The card as it will appear in Links, filled in as the page is read (Figma: New link / Preview).
@@ -71,10 +77,9 @@ internal fun LinkPreviewSection(
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
+    // Showing an image that never arrived also tries it again; the ViewModel decides that.
     fun setHidden(hidden: Boolean) {
         view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-        // Showing an image that never arrived means trying again.
-        if (!hidden && image == PreviewImage.Failed) onRetryImage()
         onImageHiddenChange(hidden)
     }
 

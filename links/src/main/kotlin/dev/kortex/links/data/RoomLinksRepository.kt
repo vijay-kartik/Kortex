@@ -1,6 +1,7 @@
 package dev.kortex.links.data
 
 import android.database.sqlite.SQLiteConstraintException
+import android.util.Log
 import dev.kortex.links.domain.model.Link
 import dev.kortex.links.domain.model.LinkDraft
 import dev.kortex.links.domain.model.LinkImageSource
@@ -8,6 +9,7 @@ import dev.kortex.links.domain.model.TagCount
 import dev.kortex.links.domain.repository.LinksRepository
 import dev.kortex.links.domain.repository.SaveLinkResult
 import dev.kortex.links.images.LinkImageStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -57,14 +59,14 @@ class RoomLinksRepository(
      * Saves right away; the thumbnail follows when its download finishes, even if that's after the
      * form has closed. [imageHidden] is kept either way so the user's choice survives a late image.
      *
-     * @return false, saving nothing, when this address is already saved.
+     * @return [SaveLinkResult.AlreadySaved], saving nothing, when this address is already saved.
      */
     override suspend fun saveLink(
         draft: LinkDraft,
         nowMillis: Long,
     ): SaveLinkResult {
-        val tagIds = if (draft.tags.isEmpty()) emptyList() else tagDao.getByNames(draft.tags).map { it.id }
         val linkId = try {
+            val tagIds = if (draft.tags.isEmpty()) emptyList() else tagDao.getByNames(draft.tags).map { it.id }
             linkDao.insertWithTags(
                 LinkEntity(
                     url = draft.url,
@@ -78,8 +80,17 @@ class RoomLinksRepository(
         } catch (e: SQLiteConstraintException) {
             // The unique urlKey index: the form's live check can lag a keystroke behind the field.
             return SaveLinkResult.AlreadySaved
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Saving link failed for ${draft.url}", e)
+            return SaveLinkResult.Failed
         }
         imageStore.attachWhenReady(linkId, draft.url, draft.image)
         return SaveLinkResult.Saved(linkId)
+    }
+
+    private companion object {
+        const val TAG = "RoomLinksRepository"
     }
 }

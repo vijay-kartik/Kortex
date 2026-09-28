@@ -3,7 +3,7 @@ package dev.kortex.links.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.kortex.links.domain.model.Link
+import dev.kortex.links.domain.model.matches
 import dev.kortex.links.domain.port.Clock
 import dev.kortex.links.domain.usecase.DeleteLink
 import dev.kortex.links.domain.usecase.ObserveLinks
@@ -103,12 +103,6 @@ class LinksViewModel @Inject constructor(
         val pending = deletions.value.pending ?: return
         GlobalScope.launch { deleteLink(pending.linkId) }
     }
-
-    private fun Link.matches(query: String): Boolean =
-        query.isEmpty() ||
-                title.contains(query, ignoreCase = true) ||
-                url.contains(query, ignoreCase = true) ||
-                tags.any { it.contains(query, ignoreCase = true) }
 
     /** [committedIds] are deleted, or being deleted, in the database; link ids are never reused. */
     private data class Deletions(val pending: PendingDeletion? = null, val committedIds: Set<Long> = emptySet())

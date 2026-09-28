@@ -7,7 +7,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.links.domain.model.AlreadySavedLink
 import dev.kortex.links.domain.model.LinkAnalysis
 import dev.kortex.links.domain.model.LinkDraft
-import dev.kortex.links.domain.model.LinkImageState
 import dev.kortex.links.domain.model.PageReadPhase
 import dev.kortex.links.domain.repository.SaveLinkResult
 import dev.kortex.links.domain.usecase.AnalyzeLink
@@ -16,6 +15,8 @@ import dev.kortex.links.domain.usecase.ObserveDuplicate
 import dev.kortex.links.domain.usecase.ObserveTagNames
 import dev.kortex.links.domain.usecase.RetryLinkImage
 import dev.kortex.links.domain.usecase.SaveLink
+import dev.kortex.links.ui.create.PreviewImage
+import dev.kortex.links.ui.create.previewImage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -31,21 +32,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-/** The page's share image as the preview card sees it. */
-sealed interface PreviewImage {
-    /** The page hasn't been read, so it isn't known whether there is one. */
-    data object Unknown : PreviewImage
-
-    /** The page names no image (or couldn't be read). */
-    data object None : PreviewImage
-
-    data class Loading(val fraction: Float?) : PreviewImage
-
-    data class Ready(val path: String, val width: Int, val height: Int) : PreviewImage
-
-    data object Failed : PreviewImage
-}
 
 data class CreateLinkUiState(
     val tags: List<String> = emptyList(),
@@ -143,16 +129,6 @@ class CreateLinkViewModel @Inject constructor(
             } finally {
                 isSaving = false
             }
-        }
-    }
-
-    private fun LinkAnalysis.previewImage(): PreviewImage = when {
-        phase == PageReadPhase.Idle || phase == PageReadPhase.ReadingPage -> PreviewImage.Unknown
-        imageUrl == null -> PreviewImage.None
-        else -> when (val download = image) {
-            null, is LinkImageState.Loading -> PreviewImage.Loading((download as? LinkImageState.Loading)?.fraction)
-            is LinkImageState.Ready -> PreviewImage.Ready(download.path, download.width, download.height)
-            LinkImageState.Failed -> PreviewImage.Failed
         }
     }
 

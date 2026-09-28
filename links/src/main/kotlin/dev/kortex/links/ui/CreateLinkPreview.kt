@@ -50,6 +50,7 @@ import dev.kortex.design.Panel
 import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
 import dev.kortex.links.domain.model.PageReadPhase
+import dev.kortex.links.ui.create.PreviewImage
 
 /**
  * The card as it will appear in Links, filled in as the page is read (Figma: New link / Preview).

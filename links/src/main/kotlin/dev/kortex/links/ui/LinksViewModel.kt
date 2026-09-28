@@ -3,9 +3,12 @@ package dev.kortex.links.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.kortex.links.data.LinkWithTags
-import dev.kortex.links.data.RoomLinksRepository
 import dev.kortex.links.domain.model.Link
+import dev.kortex.links.domain.port.Clock
+import dev.kortex.links.domain.usecase.DeleteLink
+import dev.kortex.links.domain.usecase.ObserveLinks
+import dev.kortex.links.domain.usecase.ObserveTagCounts
+import dev.kortex.links.domain.usecase.SetLinkTags
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
@@ -21,7 +24,11 @@ import javax.inject.Inject
 
 @HiltViewModel
 class LinksViewModel @Inject constructor(
-    private val repository: RoomLinksRepository,
+    observeLinks: ObserveLinks,
+    observeTagCounts: ObserveTagCounts,
+    private val setLinkTags: SetLinkTags,
+    private val deleteLink: DeleteLink,
+    private val clock: Clock,
 ) : ViewModel() {
     private val query = MutableStateFlow("")
     private val selectedTags = MutableStateFlow(emptySet<String>())
@@ -29,7 +36,7 @@ class LinksViewModel @Inject constructor(
     private var deletionJob: Job? = null
 
     val linksScreenUiState: StateFlow<LinksScreenUiState> =
-        combine(repository.observeLinks(), repository.observeTagCounts(), query, selectedTags, deletions) { links, tags, query, selected, deletions ->
+        combine(observeLinks(), observeTagCounts(), query, selectedTags, deletions) { links, tags, query, selected, deletions ->
             // A deleted link can outlive its row by one emission; don't let it flash back as a card.
             val saved = links.filterNot { it.id in deletions.committedIds }
             if (saved.isEmpty()) {
@@ -59,17 +66,17 @@ class LinksViewModel @Inject constructor(
         selectedTags.value = selectedTags.value.let { if (name in it) it - name else it + name }
     }
 
-    fun setLinkTags(id: Long, tagNames: List<String>) {
-        viewModelScope.launch { repository.setLinkTags(id, tagNames) }
+    fun saveTags(id: Long, tagNames: List<String>) {
+        viewModelScope.launch { setLinkTags(id, tagNames) }
     }
 
     /**
      * Hides the link behind an undo row and deletes it once [UNDO_WINDOW_MS] passes. Only one link
      * is restorable at a time: deleting another ends the previous window early.
      */
-    fun deleteLink(id: Long) {
+    fun startDeletion(id: Long) {
         commitPendingDeletion()
-        val now = System.currentTimeMillis()
+        val now = clock.nowMillis()
         deletions.update { it.copy(pending = PendingDeletion(id, startedAtMillis = now, deadlineMillis = now + UNDO_WINDOW_MS)) }
         deletionJob = viewModelScope.launch {
             delay(UNDO_WINDOW_MS)
@@ -86,7 +93,7 @@ class LinksViewModel @Inject constructor(
         val pending = deletions.value.pending ?: return
         deletionJob?.cancel()
         deletions.update { Deletions(committedIds = it.committedIds + pending.linkId) }
-        viewModelScope.launch { repository.deleteLink(pending.linkId) }
+        viewModelScope.launch { deleteLink(pending.linkId) }
     }
 
     @OptIn(DelicateCoroutinesApi::class)
@@ -94,14 +101,8 @@ class LinksViewModel @Inject constructor(
         // Leaving ends the undo window early rather than dropping the delete. viewModelScope is
         // already cancelled here, and the delete is a short, self-contained database write.
         val pending = deletions.value.pending ?: return
-        GlobalScope.launch { repository.deleteLink(pending.linkId) }
+        GlobalScope.launch { deleteLink(pending.linkId) }
     }
-
-    private fun LinkWithTags.matches(query: String): Boolean =
-        query.isEmpty() ||
-            link.title.contains(query, ignoreCase = true) ||
-            link.url.contains(query, ignoreCase = true) ||
-            tagNames.any { it.contains(query, ignoreCase = true) }
 
     private fun Link.matches(query: String): Boolean =
         query.isEmpty() ||

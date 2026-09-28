@@ -4,46 +4,33 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.kortex.links.data.RoomLinksRepository
+import dev.kortex.links.domain.model.AlreadySavedLink
+import dev.kortex.links.domain.model.LinkAnalysis
 import dev.kortex.links.domain.model.LinkDraft
-import dev.kortex.links.domain.model.LinkImageSource
 import dev.kortex.links.domain.model.LinkImageState
-import dev.kortex.links.domain.model.linkDomain
+import dev.kortex.links.domain.model.PageReadPhase
 import dev.kortex.links.domain.repository.SaveLinkResult
-import dev.kortex.links.images.LinkImageStore
-import dev.kortex.links.tagging.PageMetadataFetcher
-import dev.kortex.links.tagging.TagSuggester
-import dev.kortex.links.tagging.tagCandidates
+import dev.kortex.links.domain.usecase.AnalyzeLink
+import dev.kortex.links.domain.usecase.CreateTag
+import dev.kortex.links.domain.usecase.ObserveDuplicate
+import dev.kortex.links.domain.usecase.ObserveTagNames
+import dev.kortex.links.domain.usecase.RetryLinkImage
+import dev.kortex.links.domain.usecase.SaveLink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-/** How far reading the typed address has got. */
-enum class PageReadPhase {
-    /** No usable address yet, or it hasn't settled. */
-    Idle,
-    ReadingPage,
-
-    /** The page is in; tags are still being matched. The image loads alongside, on its own clock. */
-    SuggestingTags,
-    Done,
-}
 
 /** The page's share image as the preview card sees it. */
 sealed interface PreviewImage {
@@ -75,26 +62,15 @@ data class CreateLinkUiState(
     val alreadySaved: AlreadySavedLink? = null,
 )
 
-/** The saved link that [url] (the field's trimmed text when checked) is an address of. */
-data class AlreadySavedLink(val url: String, val title: String)
-
-private data class LinkAnalysis(
-    val url: String = "",
-    val suggestedTitle: String? = null,
-    val suggestedTags: List<String> = emptyList(),
-    val candidateTags: List<String> = emptyList(),
-    val phase: PageReadPhase = PageReadPhase.Idle,
-    val imageUrl: String? = null,
-    val image: PreviewImage = PreviewImage.Unknown,
-)
-
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CreateLinkViewModel @Inject constructor(
-    private val repository: RoomLinksRepository,
-    private val metadataFetcher: PageMetadataFetcher,
-    private val tagSuggester: TagSuggester,
-    private val imageStore: LinkImageStore,
+    observeTagNames: ObserveTagNames,
+    observeDuplicate: ObserveDuplicate,
+    analyzeLink: AnalyzeLink,
+    private val createTag: CreateTag,
+    private val retryLinkImage: RetryLinkImage,
+    private val saveLink: SaveLink,
 ) : ViewModel() {
     private val url = MutableStateFlow("")
     private val analysis = MutableStateFlow(LinkAnalysis())
@@ -103,27 +79,21 @@ class CreateLinkViewModel @Inject constructor(
     private val alreadySaved: Flow<AlreadySavedLink?> = url
         .map { it.trim() }
         .distinctUntilChanged()
-        .flatMapLatest { typed ->
-            if (linkDomain(typed) == null) {
-                flowOf(null)
-            } else {
-                repository.observeSavedLink(typed).map { saved -> saved?.let { AlreadySavedLink(typed, it.title) } }
-            }
-        }
+        .flatMapLatest { observeDuplicate(it) }
 
     val uiState: StateFlow<CreateLinkUiState> =
-        combine(repository.observeTagNames(), analysis, alreadySaved) { tags, current, saved ->
+        combine(observeTagNames(), analysis, alreadySaved) { tags, current, saved ->
             CreateLinkUiState(
                 tags = tags,
                 analyzedUrl = current.url,
                 suggestedTitle = current.suggestedTitle,
                 suggestedTags = current.suggestedTags,
-                // Filtered here rather than in analyze() so a candidate disappears as soon as it's created.
+                // Filtered here rather than in the analysis so a candidate disappears as soon as it's created.
                 candidateTags = current.candidateTags
                     .filterNot { candidate -> tags.any { it.equals(candidate, ignoreCase = true) } }
                     .take(MAX_CANDIDATE_TAGS),
                 phase = current.phase,
-                image = current.image,
+                image = current.previewImage(),
                 alreadySaved = saved,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CreateLinkUiState())
@@ -134,7 +104,8 @@ class CreateLinkViewModel @Inject constructor(
                 .map { it.trim() }
                 .distinctUntilChanged()
                 // A newer URL cancels the fetch/embedding for the previous one.
-                .collectLatest { analyze(it) }
+                .flatMapLatest { analyzeLink(it) }
+                .collect { analysis.value = it }
         }
     }
 
@@ -142,14 +113,13 @@ class CreateLinkViewModel @Inject constructor(
         url.value = value
     }
 
-    fun createTag(name: String) {
-        if (name.isBlank()) return
-        viewModelScope.launch { repository.createTag(name) }
+    fun addTag(name: String) {
+        viewModelScope.launch { createTag(name) }
     }
 
     /** Tries a failed image download again; the preview follows along. */
     fun retryImage() {
-        analysis.value.imageUrl?.let(imageStore::retry)
+        analysis.value.imageUrl?.let { retryLinkImage(it) }
     }
 
     private var isSaving = false
@@ -162,15 +132,10 @@ class CreateLinkViewModel @Inject constructor(
     fun save(url: String, title: String, tags: List<String>, imageHidden: Boolean, onSaved: () -> Unit) {
         if (isSaving) return
         isSaving = true
-        val current = analysis.value
-        val image = when {
-            current.url != url || current.phase == PageReadPhase.Idle || current.phase == PageReadPhase.ReadingPage -> LinkImageSource.Unknown
-            current.imageUrl != null -> LinkImageSource.Known(current.imageUrl)
-            else -> LinkImageSource.None
-        }
+        val image = analysis.value.imageSourceFor(url)
         viewModelScope.launch {
             try {
-                if (repository.saveLink(LinkDraft(url, title, tags, image), System.currentTimeMillis()) is SaveLinkResult.Saved) onSaved()
+                if (saveLink(LinkDraft(url, title, tags, image, imageHidden)) is SaveLinkResult.Saved) onSaved()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -181,49 +146,14 @@ class CreateLinkViewModel @Inject constructor(
         }
     }
 
-    private suspend fun analyze(url: String) {
-        if (linkDomain(url) == null) {
-            analysis.value = LinkAnalysis(url = url)
-            return
+    private fun LinkAnalysis.previewImage(): PreviewImage = when {
+        phase == PageReadPhase.Idle || phase == PageReadPhase.ReadingPage -> PreviewImage.Unknown
+        imageUrl == null -> PreviewImage.None
+        else -> when (val download = image) {
+            null, is LinkImageState.Loading -> PreviewImage.Loading((download as? LinkImageState.Loading)?.fraction)
+            is LinkImageState.Ready -> PreviewImage.Ready(download.path, download.width, download.height)
+            LinkImageState.Failed -> PreviewImage.Failed
         }
-        analysis.value = LinkAnalysis(url = url, phase = PageReadPhase.ReadingPage)
-
-        val page = metadataFetcher.fetch(url)
-        val imageUrl = page.imageUrl
-        analysis.value = LinkAnalysis(
-            url = url,
-            suggestedTitle = page.title,
-            candidateTags = tagCandidates(page),
-            phase = PageReadPhase.SuggestingTags,
-            imageUrl = imageUrl,
-            image = if (imageUrl == null) PreviewImage.None else PreviewImage.Loading(fraction = null),
-        )
-
-        coroutineScope {
-            // Keeps watching after the download ends so a retry shows up; a newer URL cancels it.
-            if (imageUrl != null) {
-                launch {
-                    imageStore.image(imageUrl).collect { state -> analysis.update { it.copy(image = state.toPreview()) } }
-                }
-            }
-
-            val suggestedTags = try {
-                tagSuggester.suggest(page).map { it.tagName }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Suggestions are best-effort (e.g. model asset missing); the form still works without them.
-                Log.w(TAG, "Tag suggestion failed for $url", e)
-                emptyList()
-            }
-            analysis.update { it.copy(suggestedTags = suggestedTags, phase = PageReadPhase.Done) }
-        }
-    }
-
-    private fun LinkImageState.toPreview(): PreviewImage = when (this) {
-        is LinkImageState.Loading -> PreviewImage.Loading(fraction)
-        is LinkImageState.Ready -> PreviewImage.Ready(path, width, height)
-        LinkImageState.Failed -> PreviewImage.Failed
     }
 
     private companion object {

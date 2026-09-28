@@ -77,6 +77,8 @@ import dev.kortex.design.Muted
 import dev.kortex.design.Panel
 import dev.kortex.design.Synapse
 import dev.kortex.design.Void
+import dev.kortex.links.domain.model.AlreadySavedLink
+import dev.kortex.links.domain.model.PageReadPhase
 import dev.kortex.links.domain.model.linkDomain
 import dev.kortex.links.ui.components.CandidateTagChip
 import dev.kortex.links.ui.components.NewTagChip
@@ -150,7 +152,7 @@ fun CreateLinkScreen(
             if (trimmed.isNotEmpty()) {
                 // Reuse the stored spelling so typing an existing tag in another case still selects its chip.
                 val tag = uiState.tags.firstOrNull { it.equals(trimmed, ignoreCase = true) }
-                    ?: trimmed.also(viewModel::createTag)
+                    ?: trimmed.also(viewModel::addTag)
                 if (tag !in selectedTags) selectedTags = selectedTags + tag
             }
             closeNewTag()

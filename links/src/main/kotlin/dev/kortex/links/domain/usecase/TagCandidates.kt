@@ -1,9 +1,10 @@
-package dev.kortex.links.tagging
+package dev.kortex.links.domain.usecase
 
+import dev.kortex.links.domain.model.PageMetadata
 import java.net.URI
 
 /**
- * New tag names read straight off a page, best first. Unlike [TagSuggester], these are not
+ * New tag names read straight off a page, best first. Unlike [dev.kortex.links.domain.port.TagSuggester], these are not
  * existing tags, so callers drop the ones the user already has.
  *
  * One pick from each source leads — a meta keyword, the last word of the URL slug (usually the

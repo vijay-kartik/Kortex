@@ -1,18 +1,16 @@
 package dev.kortex.links.tagging
 
+import android.util.Log
 import dev.kortex.links.data.TagDao
 import dev.kortex.links.data.TagEntity
+import dev.kortex.links.domain.model.PageMetadata
+import dev.kortex.links.domain.port.TagSuggester
+import dev.kortex.links.domain.port.TagSuggestion
+import kotlinx.coroutines.CancellationException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import javax.inject.Inject
 import kotlin.math.sqrt
-
-data class TagSuggestion(val tagName: String, val score: Float)
-
-/** Picks which of the user's existing tags fit a page, best first. */
-interface TagSuggester {
-    suspend fun suggest(page: PageMetadata): List<TagSuggestion>
-}
 
 /**
  * Embeds the page once and compares it with each tag's cached vector. Needs no training:
@@ -23,7 +21,17 @@ class EmbeddingTagSuggester @Inject constructor(
     private val tagDao: TagDao,
 ) : TagSuggester {
 
-    override suspend fun suggest(page: PageMetadata): List<TagSuggestion> {
+    override suspend fun suggest(page: PageMetadata): List<TagSuggestion> = try {
+        rank(page)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // Suggestions are best-effort (e.g. model asset missing); callers work without them.
+        Log.w(TAG, "Tag suggestion failed for ${page.url}", e)
+        emptyList()
+    }
+
+    private suspend fun rank(page: PageMetadata): List<TagSuggestion> {
         val tags = tagDao.getAll()
         val pageText = page.toEmbeddingText()
         if (tags.isEmpty() || pageText.isBlank()) return emptyList()
@@ -47,6 +55,8 @@ class EmbeddingTagSuggester @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "EmbeddingTagSuggester"
+
         // Starting points, not calibrated for USE yet — tune against real tagged links.
         const val MIN_SCORE = 0.25f
         const val MAX_GAP_FROM_BEST = 0.10f

@@ -11,11 +11,8 @@ import dev.kortex.links.images.LinkImageStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class RoomLinksRepository @Inject constructor(
+class RoomLinksRepository(
     private val linkDao: LinkDao,
     private val tagDao: TagDao,
     private val imageStore: LinkImageStore,

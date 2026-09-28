@@ -206,9 +206,9 @@ fun LinksScreen(
                     onLinkClick = { link -> clipboard.setText(AnnotatedString(link.url)) },
                     onOpenLink = { link -> context.openLink(link.url) },
                     onShareLink = { link -> context.shareLink(link) },
-                    onDeleteLink = { link -> viewModel.deleteLink(link.id) },
+                    onDeleteLink = { link -> viewModel.startDeletion(link.id) },
                     onUndoDelete = viewModel::undoDelete,
-                    onSaveTags = { link, tags -> viewModel.setLinkTags(link.id, tags) },
+                    onSaveTags = { link, tags -> viewModel.saveTags(link.id, tags) },
                 )
             }
         }

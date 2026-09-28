@@ -8,6 +8,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.kortex.links.data.LinkDao
 import dev.kortex.links.domain.model.LinkImageSource
 import dev.kortex.links.domain.model.LinkImageState
+import dev.kortex.links.domain.port.ImageDownloads
 import dev.kortex.links.tagging.FETCH_TIMEOUT_MS
 import dev.kortex.links.tagging.FETCH_USER_AGENT
 import dev.kortex.links.tagging.PageMetadataFetcher
@@ -46,7 +47,7 @@ class LinkImageStore @Inject constructor(
     @ApplicationContext private val context: Context,
     private val linkDao: LinkDao,
     private val metadataFetcher: PageMetadataFetcher,
-) {
+) : ImageDownloads {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val downloads = ConcurrentHashMap<String, MutableStateFlow<LinkImageState>>()
 
@@ -55,7 +56,7 @@ class LinkImageStore @Inject constructor(
     }
 
     /** Starts downloading [imageUrl] unless it already is (or has). */
-    fun image(imageUrl: String): StateFlow<LinkImageState> {
+    override fun image(imageUrl: String): StateFlow<LinkImageState> {
         val state = downloads.computeIfAbsent(imageUrl) { MutableStateFlow<LinkImageState>(LinkImageState.Loading(null)).also { start(imageUrl, it) } }
         // The system may clear the cache under a finished download.
         val current = state.value
@@ -64,7 +65,7 @@ class LinkImageStore @Inject constructor(
     }
 
     /** Restarts a failed download. Does nothing while one is running or after one succeeded. */
-    fun retry(imageUrl: String) {
+    override fun retry(imageUrl: String) {
         val state = downloads[imageUrl] ?: run {
             image(imageUrl)
             return
@@ -83,7 +84,7 @@ class LinkImageStore @Inject constructor(
                 is LinkImageSource.Known -> source.imageUrl
                 LinkImageSource.None -> return@launch
                 LinkImageSource.Unknown -> {
-                    val found = metadataFetcher.fetch(pageUrl).imageUrl ?: return@launch
+                    val found = metadataFetcher.read(pageUrl).imageUrl ?: return@launch
                     // Deleted while the page was being read: nothing to attach to.
                     if (linkDao.updateImage(linkId, found, imagePath = null) == 0) return@launch
                     found

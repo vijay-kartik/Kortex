@@ -1,17 +1,14 @@
 package dev.kortex.app.data.topics
 
-import android.util.Log
-import dev.kortex.links.data.LinkWithTags
-import dev.kortex.links.data.RoomLinksRepository
 import dev.kortex.links.domain.model.Link
 import dev.kortex.links.domain.model.LinkDraft
-import dev.kortex.links.tagging.PageMetadata
-import dev.kortex.links.tagging.PageMetadataFetcher
-import dev.kortex.links.tagging.TagSuggester
+import dev.kortex.links.domain.model.PageMetadata
+import dev.kortex.links.domain.port.PageReader
+import dev.kortex.links.domain.port.TagSuggester
+import dev.kortex.links.domain.repository.LinksRepository
 import dev.kortex.myinfo.topics.domain.model.LinkLookup
 import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -23,8 +20,8 @@ import kotlinx.coroutines.flow.map
  * looked up after saving; and their suggested tags the way the Links tab's add form does.
  */
 class LinksLinkCatalog(
-    private val links: RoomLinksRepository,
-    private val pages: PageMetadataFetcher,
+    private val links: LinksRepository,
+    private val pages: PageReader,
     private val tagSuggester: TagSuggester,
 ) : LinkCatalog {
     // The page read for the last lookup, so saving right after it doesn't read the page again.
@@ -39,11 +36,11 @@ class LinksLinkCatalog(
         val existing = links.observeSavedLink(url).first()
         if (existing != null) {
             // Rewriting an unchanged set would still mark the link for sync, so only real edits go through.
-            if (tags != null && !sameTags(tags, tagsOf(existing.id))) links.setLinkTags(existing.id, tags)
+            if (tags != null && !sameTags(tags, existing.tags)) links.setLinkTags(existing.id, tags)
             return existing.id
         }
         val pageTitle = title ?: page(url).title
-        // saveLink returns false if the address was saved between the check and here; either
+        // saveLink answers AlreadySaved if the address was saved between the check and here; either
         // way the link now exists. It only attaches tags that exist already, so the tags are set
         // afterwards, which creates any new ones.
         links.saveLink(LinkDraft(url = url, title = pageTitle ?: url, tags = emptyList()), System.currentTimeMillis())
@@ -54,27 +51,15 @@ class LinksLinkCatalog(
 
     override suspend fun lookUp(url: String): LinkLookup {
         links.observeSavedLink(url).first()?.let { saved ->
-            return LinkLookup(title = saved.title, inLinks = true, tags = tagsOf(saved.id))
+            return LinkLookup(title = saved.title, inLinks = true, tags = saved.tags)
         }
         val page = page(url)
-        return LinkLookup(title = page.title, inLinks = false, tags = suggestTags(url, page))
+        // Best-effort, as in the Links tab: the suggester answers nothing rather than failing.
+        return LinkLookup(title = page.title, inLinks = false, tags = tagSuggester.suggest(page).map { it.tagName })
     }
 
     private suspend fun page(url: String): PageMetadata =
-        lastPage?.takeIf { it.url == url } ?: pages.fetch(url).also { lastPage = it }
-
-    private suspend fun suggestTags(url: String, page: PageMetadata): List<String> = try {
-        tagSuggester.suggest(page).map { it.tagName }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        // Best-effort, as in the Links tab (e.g. model asset missing): the sheet works without them.
-        Log.w(TAG, "Tag suggestion failed for $url", e)
-        emptyList()
-    }
-
-    private suspend fun tagsOf(linkId: Long): List<String> =
-        links.observeLinks().first().firstOrNull { it.id == linkId }?.tags.orEmpty()
+        lastPage?.takeIf { it.url == url } ?: pages.read(url).also { lastPage = it }
 
     private fun sameTags(a: List<String>, b: List<String>): Boolean =
         a.map { it.trim().lowercase() }.toSet() == b.map { it.lowercase() }.toSet()
@@ -86,8 +71,4 @@ class LinksLinkCatalog(
         thumbnailPath = thumbnailPath,
         tags = tags,
     )
-
-    private companion object {
-        const val TAG = "LinksLinkCatalog"
-    }
 }

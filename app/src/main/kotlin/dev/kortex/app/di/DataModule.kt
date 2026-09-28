@@ -18,9 +18,9 @@ import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.observability.AgentRunStore
 import dev.kortex.core.observability.RoomAgentRunStore
 import dev.kortex.core.store.KortexDatabase
-import dev.kortex.links.data.RoomLinksRepository
-import dev.kortex.links.tagging.PageMetadataFetcher
-import dev.kortex.links.tagging.TagSuggester
+import dev.kortex.links.domain.port.PageReader
+import dev.kortex.links.domain.port.TagSuggester
+import dev.kortex.links.domain.repository.LinksRepository
 import dev.kortex.myinfo.topics.domain.port.EmailDirectory
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import dev.kortex.myinfo.topics.domain.port.TopicSummarizer
@@ -52,7 +52,7 @@ object DataModule {
     /** Topics keep links in the Links library rather than their own copy. */
     @Provides
     @Singleton
-    fun provideLinkCatalog(links: RoomLinksRepository, pages: PageMetadataFetcher, tagSuggester: TagSuggester): LinkCatalog =
+    fun provideLinkCatalog(links: LinksRepository, pages: PageReader, tagSuggester: TagSuggester): LinkCatalog =
         LinksLinkCatalog(links, pages, tagSuggester)
 
     /** Topics read the mailbox connected in Settings, with the same read-only token the agent uses. */

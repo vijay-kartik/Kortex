@@ -6,8 +6,16 @@ Effect>`, `ObserveEffects`, `ScopedViewModelStore`). Each phase below ends with 
 behaving exactly as before. Phases 4 and 6 are the risky ones. **Behaviours to preserve** near the
 end is the regression checklist to walk through after each of them.
 
-> Before starting: `links/ui/LinksScreen.kt` has an uncommitted change (the hint `Crossfade` is removed,
-> imports sorted). Commit or drop it first. If you keep it, `HintStyle` is now unused.
+> **Status:** phases 1–7 are done. Where the code departs from the plan below:
+> - `linkDomain` parses with `java.net.URL` rather than `android.net.Uri`, so domain tests run on the JVM.
+> - `PageReadPhase`, `AlreadySavedLink` and `LinkAnalysis` moved to `domain/model` in phase 2, since the use cases return them.
+> - `RetryLinkImage` is an extra use case, and `CreateLinkIntent.RetryImage` an extra intent, for the preview's Retry button.
+> - `SaveLinkResult.Failed` exists; `RoomLinksRepository` logs the cause (C7's first option).
+> - The stateless create form is `CreateLinkForm`; `CreateLinkScreen` and `LinksScreen` stay as the host's entry points.
+> - `LinksState` also derives `openLink`, `draftEdited`, `draftTagsWith` and `tagsToSave`; `CreateLinkState` also has
+>   `orderedTags`, `withAnalysis`, `tagNamed`, `isNewTag`, `withTagAdded` and `toggledTag`.
+> - Not done (optional): hoisting the tap-outside handling into `:design` (§9 keeps sharing with `:topics` out of scope),
+>   and moving `images/` and `tagging/` under `data/`.
 
 ---
 

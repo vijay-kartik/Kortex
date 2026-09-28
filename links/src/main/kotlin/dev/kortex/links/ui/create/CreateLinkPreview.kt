@@ -50,13 +50,13 @@ import dev.kortex.design.Panel
 import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
 import dev.kortex.links.domain.model.PageReadPhase
-import dev.kortex.links.ui.LinkCardInset
-import dev.kortex.links.ui.LinkCardShape
-import dev.kortex.links.ui.LinkMetaStyle
-import dev.kortex.links.ui.LinkThumbnail
-import dev.kortex.links.ui.LinkTitleStyle
-import dev.kortex.links.ui.LinkUrlStyle
-import dev.kortex.links.ui.ThumbnailContent
+import dev.kortex.links.ui.common.LinkCardInset
+import dev.kortex.links.ui.common.LinkCardShape
+import dev.kortex.links.ui.common.LinkMetaStyle
+import dev.kortex.links.ui.common.LinkThumbnail
+import dev.kortex.links.ui.common.LinkTitleStyle
+import dev.kortex.links.ui.common.LinkUrlStyle
+import dev.kortex.links.ui.common.ThumbnailContent
 
 /**
  * The card as it will appear in Links, filled in as the page is read (Figma: New link / Preview).

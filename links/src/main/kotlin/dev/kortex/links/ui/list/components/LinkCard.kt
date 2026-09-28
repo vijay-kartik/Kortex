@@ -76,18 +76,18 @@ import dev.kortex.design.Void
 import dev.kortex.design.anim.EmphasizedDecelerate
 import dev.kortex.design.anim.StandardEasing
 import dev.kortex.links.domain.model.Link
-import dev.kortex.links.ui.LinkCardInset
-import dev.kortex.links.ui.LinkCardShape
-import dev.kortex.links.ui.LinkCopyAnimation
-import dev.kortex.links.ui.LinkMetaStyle
-import dev.kortex.links.ui.LinkThumbnailShape
-import dev.kortex.links.ui.LinkThumbnailSize
-import dev.kortex.links.ui.LinkTitleStyle
-import dev.kortex.links.ui.LinkUrlStyle
-import dev.kortex.links.ui.ThumbnailImage
+import dev.kortex.links.ui.common.LinkCardInset
+import dev.kortex.links.ui.common.LinkCardShape
+import dev.kortex.links.ui.common.LinkCopyAnimation
+import dev.kortex.links.ui.common.LinkMetaStyle
+import dev.kortex.links.ui.common.LinkThumbnailShape
+import dev.kortex.links.ui.common.LinkThumbnailSize
+import dev.kortex.links.ui.common.LinkTitleStyle
+import dev.kortex.links.ui.common.LinkUrlStyle
+import dev.kortex.links.ui.common.ThumbnailImage
 import dev.kortex.links.ui.common.displayTitle
 import dev.kortex.links.ui.common.relativeAge
-import dev.kortex.links.ui.rememberLinkCopyAnimation
+import dev.kortex.links.ui.common.rememberLinkCopyAnimation
 import kotlinx.coroutines.delay
 
 /**

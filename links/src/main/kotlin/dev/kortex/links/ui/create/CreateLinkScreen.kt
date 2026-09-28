@@ -81,9 +81,9 @@ import dev.kortex.links.domain.model.AlreadySavedLink
 import dev.kortex.links.domain.model.LinkAnalysis
 import dev.kortex.links.domain.model.PageReadPhase
 import dev.kortex.links.domain.model.linkDomain
-import dev.kortex.links.ui.components.CandidateTagChip
-import dev.kortex.links.ui.components.NewTagChip
-import dev.kortex.links.ui.components.TagChip
+import dev.kortex.links.ui.common.components.CandidateTagChip
+import dev.kortex.links.ui.common.components.NewTagChip
+import dev.kortex.links.ui.common.components.TagChip
 import dev.kortex.mvi.ObserveEffects
 import dev.kortex.mvi.ScopedViewModelStore
 

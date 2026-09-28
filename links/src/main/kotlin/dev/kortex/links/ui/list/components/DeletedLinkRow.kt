@@ -38,8 +38,8 @@ import dev.kortex.design.R
 import dev.kortex.design.Synapse
 import dev.kortex.design.dashedBorder
 import dev.kortex.links.domain.model.Link
-import dev.kortex.links.ui.LinkCardShape
-import dev.kortex.links.ui.LinkMetaStyle
+import dev.kortex.links.ui.common.LinkCardShape
+import dev.kortex.links.ui.common.LinkMetaStyle
 import dev.kortex.links.ui.common.displayTitle
 import dev.kortex.links.ui.list.PendingLinkDeletion
 

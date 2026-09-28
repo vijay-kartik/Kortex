@@ -4,7 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.links.data.LinkWithTags
-import dev.kortex.links.data.LinksRepository
+import dev.kortex.links.data.RoomLinksRepository
+import dev.kortex.links.domain.model.Link
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
@@ -20,7 +21,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class LinksViewModel @Inject constructor(
-    private val repository: LinksRepository,
+    private val repository: RoomLinksRepository,
 ) : ViewModel() {
     private val query = MutableStateFlow("")
     private val selectedTags = MutableStateFlow(emptySet<String>())
@@ -28,19 +29,19 @@ class LinksViewModel @Inject constructor(
     private var deletionJob: Job? = null
 
     val linksScreenUiState: StateFlow<LinksScreenUiState> =
-        combine(repository.observeLinks(), repository.observeTagLinkCounts(), query, selectedTags, deletions) { links, tags, query, selected, deletions ->
+        combine(repository.observeLinks(), repository.observeTagCounts(), query, selectedTags, deletions) { links, tags, query, selected, deletions ->
             // A deleted link can outlive its row by one emission; don't let it flash back as a card.
-            val saved = links.filterNot { it.link.id in deletions.committedIds }
+            val saved = links.filterNot { it.id in deletions.committedIds }
             if (saved.isEmpty()) {
                 LinksScreenUiState.EmptyLinksUiState
             } else {
-                val pending = deletions.pending?.let { pending -> saved.firstOrNull { it.link.id == pending.linkId }?.let { pending to it } }
-                val pendingTags = pending?.second?.tagNames.orEmpty()
+                val pending = deletions.pending?.let { pending -> saved.firstOrNull { it.id == pending.linkId }?.let { pending to it } }
+                val pendingTags = pending?.second?.tags.orEmpty()
                 val counts = tags.map { if (it.name in pendingTags) it.copy(linkCount = it.linkCount - 1) else it }
                 // Drop selections for tags that no longer exist so they can't hide every link.
                 val activeTags = selected.filterTo(mutableSetOf()) { name -> tags.any { it.name == name } }
                 LinksScreenUiState.LinksUiState(
-                    links = saved.filter { it.matches(query.trim()) && it.tagNames.containsAll(activeTags) },
+                    links = saved.filter { it.matches(query.trim()) && it.tags.containsAll(activeTags) },
                     tags = counts,
                     selectedTags = activeTags,
                     linkCount = saved.size - if (pending != null) 1 else 0,
@@ -101,6 +102,12 @@ class LinksViewModel @Inject constructor(
             link.title.contains(query, ignoreCase = true) ||
             link.url.contains(query, ignoreCase = true) ||
             tagNames.any { it.contains(query, ignoreCase = true) }
+
+    private fun Link.matches(query: String): Boolean =
+        query.isEmpty() ||
+                title.contains(query, ignoreCase = true) ||
+                url.contains(query, ignoreCase = true) ||
+                tags.any { it.contains(query, ignoreCase = true) }
 
     /** [committedIds] are deleted, or being deleted, in the database; link ids are never reused. */
     private data class Deletions(val pending: PendingDeletion? = null, val committedIds: Set<Long> = emptySet())

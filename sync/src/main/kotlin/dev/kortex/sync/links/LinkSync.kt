@@ -4,7 +4,7 @@ import android.util.Log
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import dev.kortex.links.data.LinkSyncDao
-import dev.kortex.links.images.LinkImageSource
+import dev.kortex.links.domain.model.LinkImageSource
 import dev.kortex.links.images.LinkImageStore
 import dev.kortex.sync.PendingWrite
 import dev.kortex.sync.RemoteChanges

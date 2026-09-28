@@ -22,13 +22,13 @@ import dev.kortex.app.ui.security.AppLockGate
 import dev.kortex.app.ui.security.applyAppLockWindowPolicy
 import dev.kortex.app.ui.onboarding.AuthGate
 import dev.kortex.app.ui.onboarding.SplashHandoff
-import dev.kortex.links.ui.linkDomain
 import dev.kortex.app.di.ApplicationScope
 import dev.kortex.app.ui.sync.LiveSync
 import dev.kortex.sync.CloudAccount
 import dev.kortex.sync.CloudSync
 import kotlinx.coroutines.CoroutineScope
 import dagger.hilt.android.AndroidEntryPoint
+import dev.kortex.links.domain.model.linkDomain
 import javax.inject.Inject
 
 // FragmentActivity: the app-lock BiometricPrompt attaches to a FragmentManager.

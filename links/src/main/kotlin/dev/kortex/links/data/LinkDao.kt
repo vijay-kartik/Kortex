@@ -99,4 +99,7 @@ abstract class LinkDao {
         insertTagRefs(tagIds.map { LinkTagCrossRef(linkId = linkId, tagId = it) })
         return linkId
     }
+
+    @Transaction @Query("SELECT * FROM links WHERE urlKey = :urlKey LIMIT 1")
+    abstract fun observeWithTagsByUrlKey(urlKey: String): Flow<LinkWithTags?>
 }

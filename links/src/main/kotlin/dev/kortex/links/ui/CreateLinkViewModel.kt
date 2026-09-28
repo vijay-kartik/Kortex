@@ -4,9 +4,12 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.kortex.links.data.LinksRepository
-import dev.kortex.links.images.LinkImageSource
-import dev.kortex.links.images.LinkImageState
+import dev.kortex.links.data.RoomLinksRepository
+import dev.kortex.links.domain.model.LinkDraft
+import dev.kortex.links.domain.model.LinkImageSource
+import dev.kortex.links.domain.model.LinkImageState
+import dev.kortex.links.domain.model.linkDomain
+import dev.kortex.links.domain.repository.SaveLinkResult
 import dev.kortex.links.images.LinkImageStore
 import dev.kortex.links.tagging.PageMetadataFetcher
 import dev.kortex.links.tagging.TagSuggester
@@ -88,7 +91,7 @@ private data class LinkAnalysis(
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class CreateLinkViewModel @Inject constructor(
-    private val repository: LinksRepository,
+    private val repository: RoomLinksRepository,
     private val metadataFetcher: PageMetadataFetcher,
     private val tagSuggester: TagSuggester,
     private val imageStore: LinkImageStore,
@@ -167,7 +170,7 @@ class CreateLinkViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                if (repository.saveLink(url, title, tags, image, imageHidden)) onSaved()
+                if (repository.saveLink(LinkDraft(url, title, tags, image), System.currentTimeMillis()) is SaveLinkResult.Saved) onSaved()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

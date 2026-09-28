@@ -1,29 +1,36 @@
 package dev.kortex.links.data
 
 import android.database.sqlite.SQLiteConstraintException
-import dev.kortex.links.images.LinkImageSource
+import dev.kortex.links.domain.model.Link
+import dev.kortex.links.domain.model.LinkDraft
+import dev.kortex.links.domain.model.LinkImageSource
+import dev.kortex.links.domain.model.TagCount
+import dev.kortex.links.domain.repository.LinksRepository
+import dev.kortex.links.domain.repository.SaveLinkResult
 import dev.kortex.links.images.LinkImageStore
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class LinksRepository @Inject constructor(
+class RoomLinksRepository @Inject constructor(
     private val linkDao: LinkDao,
     private val tagDao: TagDao,
     private val imageStore: LinkImageStore,
-) {
-    fun observeTagNames(): Flow<List<String>> = tagDao.observeAll().map { tags -> tags.map { it.name } }
+): LinksRepository {
+    override fun observeTagNames(): Flow<List<String>> = tagDao.observeAll().map { tags -> tags.map { it.name } }
 
     /** Newest first. */
-    fun observeLinks(): Flow<List<LinkWithTags>> = linkDao.observeLinksWithTags()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun observeLinks(): Flow<List<Link>> = linkDao.observeLinksWithTags().map { list -> list.map { it.toDomain() } }
 
     /** Every tag, including unused ones (count 0), ordered by name. Tags orphaned by [deleteLink] are gone. */
-    fun observeTagLinkCounts(): Flow<List<TagLinkCount>> = tagDao.observeTagLinkCounts()
+    override fun observeTagCounts(): Flow<List<TagCount>> = tagDao.observeTagLinkCounts()
 
     /** No-op if a tag with this name already exists (names are case-insensitive). */
-    suspend fun createTag(name: String) {
+    override suspend fun createTag(name: String) {
         tagDao.insert(TagEntity(name = name.trim()))
     }
 
@@ -33,7 +40,7 @@ class LinksRepository @Inject constructor(
      * files are removed leaves only orphan files, which [LinkImageStore] sweeps up, never a link
      * pointing at a missing image.
      */
-    suspend fun deleteLink(id: Long) {
+    override suspend fun deleteLink(id: Long) {
         linkDao.deleteWithOrphanedTags(id)
         imageStore.deleteImages(id)
     }
@@ -42,12 +49,12 @@ class LinksRepository @Inject constructor(
      * Replaces the link's tags with [tagNames], creating any that don't exist yet. Tags the link
      * drops that no other link carries are deleted, as [deleteLink] does.
      */
-    suspend fun setLinkTags(linkId: Long, tagNames: List<String>) {
+    override suspend fun setLinkTags(linkId: Long, tagNames: List<String>) {
         linkDao.replaceTags(linkId, tagNames.map { it.trim() }.filter { it.isNotEmpty() })
     }
 
     /** The saved link that [url] is an address of (see [linkUrlKey]), or null; follows saves as they happen. */
-    fun observeSavedLink(url: String): Flow<LinkEntity?> = linkDao.observeByUrlKey(linkUrlKey(url))
+    override fun observeSavedLink(url: String): Flow<Link?> = linkDao.observeWithTagsByUrlKey(linkUrlKey(url)).map { it?.toDomain() }
 
     /**
      * Saves right away; the thumbnail follows when its download finishes, even if that's after the
@@ -55,30 +62,27 @@ class LinksRepository @Inject constructor(
      *
      * @return false, saving nothing, when this address is already saved.
      */
-    suspend fun saveLink(
-        url: String,
-        title: String,
-        tagNames: List<String>,
-        image: LinkImageSource = LinkImageSource.Unknown,
-        imageHidden: Boolean = false,
-    ): Boolean {
-        val tagIds = if (tagNames.isEmpty()) emptyList() else tagDao.getByNames(tagNames).map { it.id }
+    override suspend fun saveLink(
+        draft: LinkDraft,
+        nowMillis: Long,
+    ): SaveLinkResult {
+        val tagIds = if (draft.tags.isEmpty()) emptyList() else tagDao.getByNames(draft.tags).map { it.id }
         val linkId = try {
             linkDao.insertWithTags(
                 LinkEntity(
-                    url = url,
-                    title = title,
-                    createdAtMillis = System.currentTimeMillis(),
-                    imageUrl = (image as? LinkImageSource.Known)?.imageUrl,
-                    imageHidden = imageHidden,
+                    url = draft.url,
+                    title = draft.title,
+                    createdAtMillis = nowMillis,
+                    imageUrl = (draft.image as? LinkImageSource.Known)?.imageUrl,
+                    imageHidden = draft.imageHidden,
                 ),
                 tagIds,
             )
         } catch (e: SQLiteConstraintException) {
             // The unique urlKey index: the form's live check can lag a keystroke behind the field.
-            return false
+            return SaveLinkResult.AlreadySaved
         }
-        imageStore.attachWhenReady(linkId, url, image)
-        return true
+        imageStore.attachWhenReady(linkId, draft.url, draft.image)
+        return SaveLinkResult.Saved(linkId)
     }
 }

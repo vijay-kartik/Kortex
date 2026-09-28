@@ -11,7 +11,10 @@ import dagger.hilt.components.SingletonComponent
 import dev.kortex.links.data.LinkDao
 import dev.kortex.links.data.LinkSyncDao
 import dev.kortex.links.data.LinksDatabase
+import dev.kortex.links.data.RoomLinksRepository
 import dev.kortex.links.data.TagDao
+import dev.kortex.links.domain.repository.LinksRepository
+import dev.kortex.links.images.LinkImageStore
 import dev.kortex.links.tagging.EmbeddingTagSuggester
 import dev.kortex.links.tagging.LinkEmbedder
 import dev.kortex.links.tagging.MediaPipeLinkEmbedder
@@ -45,5 +48,10 @@ abstract class LinksModule {
 
         @Provides
         fun provideTagDao(database: LinksDatabase): TagDao = database.tagDao()
+
+        @Provides
+        @Singleton
+        fun provideRepository(linkDao: LinkDao, tagDao: TagDao, imageStore: LinkImageStore): LinksRepository =
+            RoomLinksRepository(linkDao, tagDao, imageStore)
     }
 }

@@ -1,6 +1,5 @@
 package dev.kortex.links.ui
 
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -78,6 +77,7 @@ import dev.kortex.design.Muted
 import dev.kortex.design.Panel
 import dev.kortex.design.Synapse
 import dev.kortex.design.Void
+import dev.kortex.links.domain.model.linkDomain
 import dev.kortex.links.ui.components.CandidateTagChip
 import dev.kortex.links.ui.components.NewTagChip
 import dev.kortex.links.ui.components.TagChip
@@ -577,14 +577,6 @@ private fun SaveLinkButton(enabled: Boolean, onClick: () -> Unit) {
             color = if (enabled) Void else Muted,
         )
     }
-}
-
-/** Host of a well-formed http(s) URL without "www.", or null while the address isn't usable yet. */
-fun linkDomain(url: String): String? {
-    val uri = Uri.parse(url.trim())
-    if (uri.scheme !in setOf("http", "https")) return null
-    val host = uri.host?.takeIf { '.' in it && !it.startsWith('.') && !it.endsWith('.') } ?: return null
-    return host.removePrefix("www.")
 }
 
 // ── Previews ──────────────────────────────────────────────────────

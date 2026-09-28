@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import dev.kortex.links.domain.model.TagCount
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -22,7 +23,7 @@ interface TagDao {
         ORDER BY tags.name
         """
     )
-    fun observeTagLinkCounts(): Flow<List<TagLinkCount>>
+    fun observeTagLinkCounts(): Flow<List<TagCount>>
 
     @Query("SELECT * FROM tags WHERE name IN (:names)")
     suspend fun getByNames(names: List<String>): List<TagEntity>

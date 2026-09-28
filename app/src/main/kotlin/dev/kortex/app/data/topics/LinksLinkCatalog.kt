@@ -2,7 +2,9 @@ package dev.kortex.app.data.topics
 
 import android.util.Log
 import dev.kortex.links.data.LinkWithTags
-import dev.kortex.links.data.LinksRepository
+import dev.kortex.links.data.RoomLinksRepository
+import dev.kortex.links.domain.model.Link
+import dev.kortex.links.domain.model.LinkDraft
 import dev.kortex.links.tagging.PageMetadata
 import dev.kortex.links.tagging.PageMetadataFetcher
 import dev.kortex.links.tagging.TagSuggester
@@ -21,7 +23,7 @@ import kotlinx.coroutines.flow.map
  * looked up after saving; and their suggested tags the way the Links tab's add form does.
  */
 class LinksLinkCatalog(
-    private val links: LinksRepository,
+    private val links: RoomLinksRepository,
     private val pages: PageMetadataFetcher,
     private val tagSuggester: TagSuggester,
 ) : LinkCatalog {
@@ -29,7 +31,7 @@ class LinksLinkCatalog(
     @Volatile private var lastPage: PageMetadata? = null
 
     override fun observeLinks(): Flow<Map<Long, SavedLink>> =
-        links.observeLinks().map { saved -> saved.associate { it.link.id to it.toSavedLink() } }
+        links.observeLinks().map { saved -> saved.associate { it.id to it.toSavedLink() } }
 
     override fun observeTagNames(): Flow<List<String>> = links.observeTagNames()
 
@@ -44,7 +46,7 @@ class LinksLinkCatalog(
         // saveLink returns false if the address was saved between the check and here; either
         // way the link now exists. It only attaches tags that exist already, so the tags are set
         // afterwards, which creates any new ones.
-        links.saveLink(url = url, title = pageTitle ?: url, tagNames = emptyList())
+        links.saveLink(LinkDraft(url = url, title = pageTitle ?: url, tags = emptyList()), System.currentTimeMillis())
         val id = checkNotNull(links.observeSavedLink(url).first()) { "Link for $url was not saved" }.id
         if (!tags.isNullOrEmpty()) links.setLinkTags(id, tags)
         return id
@@ -72,17 +74,17 @@ class LinksLinkCatalog(
     }
 
     private suspend fun tagsOf(linkId: Long): List<String> =
-        links.observeLinks().first().firstOrNull { it.link.id == linkId }?.tagNames.orEmpty()
+        links.observeLinks().first().firstOrNull { it.id == linkId }?.tags.orEmpty()
 
     private fun sameTags(a: List<String>, b: List<String>): Boolean =
         a.map { it.trim().lowercase() }.toSet() == b.map { it.lowercase() }.toSet()
 
-    private fun LinkWithTags.toSavedLink() = SavedLink(
-        id = link.id,
-        url = link.url,
-        title = link.title,
-        thumbnailPath = link.imagePath.takeUnless { link.imageHidden },
-        tags = tagNames,
+    private fun Link.toSavedLink() = SavedLink(
+        id = id,
+        url = url,
+        title = title,
+        thumbnailPath = thumbnailPath,
+        tags = tags,
     )
 
     private companion object {

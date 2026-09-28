@@ -110,26 +110,29 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.design.Alarm
 import dev.kortex.design.Edge
 import dev.kortex.design.Grotesk
-import dev.kortex.design.R
-import dev.kortex.design.MetaLine
-import dev.kortex.design.TopBarSearch
-import dev.kortex.design.countLabel
-import dev.kortex.design.resultsLabel
 import dev.kortex.design.Ink
 import dev.kortex.design.KortexTheme
+import dev.kortex.design.MetaLine
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
+import dev.kortex.design.R
 import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
+import dev.kortex.design.TopBarSearch
 import dev.kortex.design.Void
 import dev.kortex.design.anim.EmphasizedAccelerate
 import dev.kortex.design.anim.EmphasizedDecelerate
 import dev.kortex.design.anim.StandardEasing
+import dev.kortex.design.countLabel
 import dev.kortex.design.dashedBorder
-import dev.kortex.links.ui.components.TagChip
+import dev.kortex.design.resultsLabel
 import dev.kortex.links.data.LinkEntity
 import dev.kortex.links.data.LinkWithTags
-import dev.kortex.links.data.TagLinkCount
+import dev.kortex.links.data.toDomain
+import dev.kortex.links.domain.model.Link
+import dev.kortex.links.domain.model.TagCount
+import dev.kortex.links.domain.model.linkDomain
+import dev.kortex.links.ui.components.TagChip
 import kotlinx.coroutines.delay
 
 
@@ -205,7 +208,7 @@ fun LinksScreen(
                     onShareLink = { link -> context.shareLink(link) },
                     onDeleteLink = { link -> viewModel.deleteLink(link.id) },
                     onUndoDelete = viewModel::undoDelete,
-                    onSaveTags = { link, tagNames -> viewModel.setLinkTags(link.id, tagNames) },
+                    onSaveTags = { link, tags -> viewModel.setLinkTags(link.id, tags) },
                 )
             }
         }
@@ -257,12 +260,12 @@ fun LinksWithSearchScreen(
     /** The top bar's search text; the list arrives already filtered by it. */
     query: String,
     onTagToggle: (String) -> Unit,
-    onLinkClick: (LinkEntity) -> Unit,
-    onOpenLink: (LinkEntity) -> Unit,
-    onShareLink: (LinkEntity) -> Unit,
-    onDeleteLink: (LinkEntity) -> Unit,
+    onLinkClick: (Link) -> Unit,
+    onOpenLink: (Link) -> Unit,
+    onShareLink: (Link) -> Unit,
+    onDeleteLink: (Link) -> Unit,
     onUndoDelete: () -> Unit,
-    onSaveTags: (LinkEntity, List<String>) -> Unit,
+    onSaveTags: (Link, List<String>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Ages only need minute precision; refresh them whenever the list itself changes.
@@ -273,7 +276,7 @@ fun LinksWithSearchScreen(
     var optionsLinkId by rememberSaveable { mutableStateOf<Long?>(null) }
     // The tray closes for good when its link is filtered out or deleted, rather than reappearing with it.
     val openLinkId = optionsLinkId?.takeIf { id ->
-        id != state.pendingDeletion?.linkId && state.links.any { it.link.id == id }
+        id != state.pendingDeletion?.linkId && state.links.any { it.id == id }
     }
     val optionsOpen = openLinkId != null
     val currentOptionsOpen by rememberUpdatedState(optionsOpen)
@@ -300,10 +303,10 @@ fun LinksWithSearchScreen(
 
     /** Closes the tray or the tag editor, saving the editor's changes. */
     fun closeCard() {
-        val link = state.links.firstOrNull { it.link.id == openLinkId }
+        val link = state.links.firstOrNull { it.id == openLinkId }
         if (editingTags && link != null) {
             val tags = draftWithNewTag()
-            if (tags.toSet() != link.tagNames.toSet()) onSaveTags(link.link, tags)
+            if (tags.toSet() != link.tags.toSet()) onSaveTags(link, tags)
             // Drops the keyboard with the tray instead of after the field leaves.
             focusManager.clearFocus()
         }
@@ -376,8 +379,8 @@ fun LinksWithSearchScreen(
                 contentPadding = PaddingValues(bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(state.links, key = { it.link.id }) { link ->
-                    val linkId = link.link.id
+                items(state.links, key = { it.id }) { link ->
+                    val linkId = link.id
                     val isOpen = linkId == openLinkId
                     val rowAlpha by animateFloatAsState(
                         targetValue = if (optionsOpen && !isOpen) DIMMED_ALPHA else 1f,
@@ -405,7 +408,7 @@ fun LinksWithSearchScreen(
                                 editingTags = isOpen && editingTags,
                                 onCopy = {
                                     copyTap = CopyTap(linkId, tick = (copyTap?.tick ?: 0) + 1)
-                                    onLinkClick(link.link)
+                                    onLinkClick(link)
                                 },
                                 // Clear once finished so a card scrolled back into view doesn't replay it.
                                 onCopyFinished = { if (copyTap?.tick == copyTick) copyTap = null },
@@ -413,18 +416,18 @@ fun LinksWithSearchScreen(
                                 onLongPress = { if (!isOpen) optionsLinkId = linkId },
                                 onOpen = {
                                     optionsLinkId = null
-                                    onOpenLink(link.link)
+                                    onOpenLink(link)
                                 },
                                 onShare = {
                                     optionsLinkId = null
-                                    onShareLink(link.link)
+                                    onShareLink(link)
                                 },
                                 onDelete = {
                                     optionsLinkId = null
-                                    onDeleteLink(link.link)
+                                    onDeleteLink(link)
                                 },
                                 onEditTags = {
-                                    draftTags = link.tagNames
+                                    draftTags = link.tags
                                     addingTag = false
                                     newTagName = ""
                                     editingTags = true
@@ -433,7 +436,7 @@ fun LinksWithSearchScreen(
                                     LinkTagEditor(
                                         tags = editorTags,
                                         selectedTags = draftTags,
-                                        edited = draftTags.toSet() != link.tagNames.toSet(),
+                                        edited = draftTags.toSet() != link.tags.toSet(),
                                         addingTag = addingTag,
                                         newTagName = newTagName,
                                         onTagToggle = { tag -> draftTags = if (tag in draftTags) draftTags - tag else draftTags + tag },
@@ -464,19 +467,6 @@ fun LinksWithSearchScreen(
                 }
             }
         }
-        Crossfade(
-            targetState = when {
-                !optionsOpen -> "tap to copy · long-press for options"
-                editingTags -> "tap outside or back to save"
-                else -> "tap outside or back to close"
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, top = 8.dp, bottom = 30.dp),
-            label = "hint",
-        ) { hint ->
-            Text(hint, style = HintStyle, color = Muted)
-        }
     }
 }
 
@@ -495,7 +485,7 @@ private class OptionsCardBounds {
 
 @Composable
 private fun TagFilters(
-    tags: List<TagLinkCount>,
+    tags: List<TagCount>,
     selectedTags: Set<String>,
     onTagToggle: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -523,7 +513,7 @@ private data class CopyTap(val linkId: Long, val tick: Int)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LinkCard(
-    link: LinkWithTags,
+    link: Link,
     nowMillis: Long,
     copyTick: Int?,
     optionsOpen: Boolean,
@@ -599,7 +589,7 @@ private fun LinkCard(
                 .padding(LinkCardInset),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            LinkCardThumbnail(link = link.link, copyAnimation = copyAnimation)
+            LinkCardThumbnail(link = link, copyAnimation = copyAnimation)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -613,7 +603,7 @@ private fun LinkCard(
                 )
                 Box(Modifier.fillMaxWidth()) {
                     Text(
-                        link.link.url,
+                        link.url,
                         style = LinkUrlStyle,
                         color = Muted,
                         maxLines = 1,
@@ -632,11 +622,11 @@ private fun LinkCard(
                 }
                 Text(
                     buildAnnotatedString {
-                        if (link.tagNames.isNotEmpty()) {
-                            withStyle(SpanStyle(color = Synapse)) { append(link.tagNames.joinToString(" · ").uppercase()) }
+                        if (link.tags.isNotEmpty()) {
+                            withStyle(SpanStyle(color = Synapse)) { append(link.tags.joinToString(" · ").uppercase()) }
                             append(" · ")
                         }
-                        append(relativeAge(link.link.createdAtMillis, nowMillis))
+                        append(relativeAge(link.createdAtMillis, nowMillis))
                     },
                     style = LinkMetaStyle,
                     color = Muted,
@@ -712,7 +702,7 @@ private fun RowScope.TrayAction(
 
 /** Stands in for a deleted link until its undo window runs out; the bottom bar counts it down. */
 @Composable
-private fun DeletedLinkRow(link: LinkWithTags, deletion: PendingDeletion, onUndo: () -> Unit) {
+private fun DeletedLinkRow(link: Link, deletion: PendingDeletion, onUndo: () -> Unit) {
     val countdown = remember(deletion) {
         val window = (deletion.deadlineMillis - deletion.startedAtMillis).coerceAtLeast(1)
         Animatable(((deletion.deadlineMillis - System.currentTimeMillis()).toFloat() / window).coerceIn(0f, 1f))
@@ -773,9 +763,9 @@ private fun DeletedLinkRow(link: LinkWithTags, deletion: PendingDeletion, onUndo
  * An image that finishes downloading after the link was saved crossfades in over the glyph.
  */
 @Composable
-private fun LinkCardThumbnail(link: LinkEntity, copyAnimation: LinkCopyAnimation) {
+private fun LinkCardThumbnail(link: Link, copyAnimation: LinkCopyAnimation) {
     Crossfade(
-        targetState = link.imagePath?.takeUnless { link.imageHidden },
+        targetState = link.thumbnailPath,
         animationSpec = tween(IMAGE_ARRIVAL_MS),
         modifier = Modifier
             .size(LinkThumbnailSize)
@@ -831,7 +821,7 @@ private fun LinkCardThumbnail(link: LinkEntity, copyAnimation: LinkCopyAnimation
     }
 }
 
-private fun LinkWithTags.displayTitle(): String = link.title.ifBlank { linkDomain(link.url) ?: link.url }
+private fun Link.displayTitle(): String = title.ifBlank { linkDomain(url) ?: url }
 
 private fun Context.openLink(url: String) {
     // Addresses can be saved without a scheme, which no browser would claim.
@@ -843,7 +833,7 @@ private fun Context.openLink(url: String) {
     }
 }
 
-private fun Context.shareLink(link: LinkEntity) {
+private fun Context.shareLink(link: Link) {
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, link.url)
@@ -906,10 +896,10 @@ private fun LinksWithSearchPreview() {
                         LinkWithTags(
                             LinkEntity(1, "https://curaahome.com/products/curaa-automatic-pepper-grinder", "Auto pepper grinder", now - 3 * day),
                             listOf("to buy"),
-                        ),
-                        LinkWithTags(LinkEntity(2, "https://www.google.com", "Google website", now - 14 * day), listOf("sample")),
+                        ).toDomain(),
+                        LinkWithTags(LinkEntity(2, "https://www.google.com", "Google website", now - 14 * day), listOf("sample")).toDomain(),
                     ),
-                    tags = listOf(TagLinkCount("sample", 1), TagLinkCount("ticket", 0), TagLinkCount("to buy", 0)),
+                    tags = listOf(TagCount("sample", 1), TagCount("ticket", 0), TagCount("to buy", 0)),
                     selectedTags = emptySet(),
                     linkCount = 1,
                     pendingDeletion = PendingDeletion(1, startedAtMillis = now, deadlineMillis = now + 5_000),

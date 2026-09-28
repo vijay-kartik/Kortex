@@ -31,6 +31,8 @@ class FakeLinksRepository : LinksRepository {
     /** Every draft [saveLink] was handed, with the time it was given. */
     val saves = mutableListOf<Pair<LinkDraft, Long>>()
     val deleted = mutableListOf<Long>()
+    /** Every [setLinkTags] call, in order. */
+    val tagWrites = mutableListOf<Pair<Long, List<String>>>()
     private var nextId = 1L
 
     override fun observeLinks(): Flow<List<Link>> = links
@@ -49,6 +51,7 @@ class FakeLinksRepository : LinksRepository {
     }
 
     override suspend fun setLinkTags(linkId: Long, tagNames: List<String>) {
+        tagWrites += linkId to tagNames
         tagNames.forEach { createTag(it) }
         links.update { saved -> saved.map { if (it.id == linkId) it.copy(tags = tagNames) else it } }
     }

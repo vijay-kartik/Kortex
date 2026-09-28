@@ -1,4 +1,4 @@
-package dev.kortex.links.ui
+package dev.kortex.links.ui.list.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,6 +46,7 @@ import dev.kortex.design.Muted
 import dev.kortex.design.R
 import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
+import dev.kortex.links.ui.LinkMetaStyle
 import dev.kortex.links.ui.components.NewTagChip
 import dev.kortex.links.ui.components.TagChip
 

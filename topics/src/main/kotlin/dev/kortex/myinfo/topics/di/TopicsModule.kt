@@ -32,6 +32,7 @@ import dev.kortex.myinfo.topics.domain.usecase.FetchEmailAttachment
 import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
+import dev.kortex.myinfo.topics.domain.usecase.ObserveLinkTags
 import dev.kortex.myinfo.topics.domain.usecase.ObserveSearchCorpus
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSuggestions
@@ -165,6 +166,9 @@ object TopicsModule {
 
     @Provides
     fun provideLookUpLink(linkCatalog: LinkCatalog) = LookUpLink(linkCatalog)
+
+    @Provides
+    fun provideObserveLinkTags(linkCatalog: LinkCatalog) = ObserveLinkTags(linkCatalog)
 
     @Provides
     fun provideCaptureItem(createTopic: CreateTopic, addItem: AddItem, detectItemType: DetectItemType) =

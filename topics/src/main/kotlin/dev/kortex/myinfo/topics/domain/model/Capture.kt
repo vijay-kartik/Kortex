@@ -6,6 +6,11 @@ data class LinkLookup(
     val title: String?,
     /** Already in Links, so the topic will point at that link rather than save it again. */
     val inLinks: Boolean,
+    /**
+     * The saved link's tags if the address is in Links, else the user's tags that fit the page.
+     * The sheet starts with these picked.
+     */
+    val tags: List<String> = emptyList(),
 )
 
 /** A file already copied into app storage, waiting to be saved into a topic. */
@@ -40,6 +45,8 @@ data class CaptureDraft(
     val file: PickedFile? = null,
     /** An email picked from the mailbox; it stands in for the text, as a file does. */
     val email: SavedEmail? = null,
+    /** A link's tags in Links, only read for the link types; null leaves them as they are. */
+    val tags: List<String>? = null,
     /** Only read when [type] is [ItemType.Bill]. */
     val bill: BillFields? = null,
 )

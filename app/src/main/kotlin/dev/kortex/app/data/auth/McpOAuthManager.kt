@@ -8,6 +8,7 @@ import dev.kortex.app.data.settings.McpOAuthState
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.core.mcp.McpOAuth
 import dev.kortex.core.mcp.McpServer
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -17,7 +18,6 @@ import kotlinx.coroutines.withContext
 class McpOAuthManager(
     private val context: Context,
     private val settingsStore: SettingsStore,
-    private val appScope: kotlinx.coroutines.CoroutineScope
 ) {
     companion object {
         const val REDIRECT_URI = "kortex://oauth/callback"

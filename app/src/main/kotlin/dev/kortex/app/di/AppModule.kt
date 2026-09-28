@@ -78,10 +78,8 @@ object AppModule {
     fun provideMcpOAuthManager(
         @ApplicationContext context: Context,
         settingsStore: SettingsStore,
-        @ApplicationScope appScope: CoroutineScope,
     ): McpOAuthManager = McpOAuthManager(
         context = context,
-        settingsStore = settingsStore,
-        appScope = appScope,
+        settingsStore = settingsStore
     )
 }

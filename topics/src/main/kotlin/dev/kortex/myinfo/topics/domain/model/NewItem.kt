@@ -10,12 +10,14 @@ sealed interface NewItem {
 
     /**
      * A link, article or video. It goes into the Links library too, unless the address is
-     * already saved there, in which case the topic points at that link instead.
+     * already saved there, in which case the topic points at that link instead. [tags] become
+     * the link's whole tag set in Links; null leaves its tags as they are.
      */
     data class Link(
         val url: String,
         val title: String? = null,
         override val type: ItemType = ItemType.Link,
+        val tags: List<String>? = null,
     ) : NewItem {
         init {
             require(type.isLink) { "$type is not a link type" }

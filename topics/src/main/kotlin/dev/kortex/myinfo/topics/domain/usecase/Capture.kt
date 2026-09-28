@@ -12,6 +12,7 @@ import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicSaveResult
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
+import kotlinx.coroutines.flow.Flow
 
 /**
  * The types quick capture can save as. A picked file is a doc or an image, or the invoice behind
@@ -37,6 +38,11 @@ fun defaultCaptureType(detection: Detection, file: PickedFile? = null, email: Sa
 /** Title and Links status of an address, for the quick-capture sheet to show before saving. */
 class LookUpLink(private val linkCatalog: LinkCatalog) {
     suspend operator fun invoke(url: String): LinkLookup = linkCatalog.lookUp(url)
+}
+
+/** Every tag in Links, for the quick-capture sheet to offer on a link. */
+class ObserveLinkTags(private val linkCatalog: LinkCatalog) {
+    operator fun invoke(): Flow<List<String>> = linkCatalog.observeTagNames()
 }
 
 /**
@@ -75,7 +81,7 @@ class CaptureItem(
         return when (type) {
             ItemType.Note -> if (text.isBlank()) null else NewItem.Note(text)
             ItemType.Link, ItemType.Article, ItemType.Video ->
-                NewItem.Link(checkNotNull(detection.url), title.ifBlank { null }, type)
+                NewItem.Link(checkNotNull(detection.url), title.ifBlank { null }, type, tags)
             ItemType.Doc -> NewItem.Doc(
                 title = docTitle(),
                 file = checkNotNull(file).file,

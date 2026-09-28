@@ -1,6 +1,5 @@
 package dev.kortex.app.data.auth
 
-import android.accounts.Account
 import android.accounts.AccountManager
 import android.app.Activity
 import android.content.Context
@@ -14,29 +13,14 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * Manages Gmail OAuth2 access tokens using Android's built-in [AccountManager].
- *
- * The flow:
- * 1. Call [pickGoogleAccount] to get a chooser Intent → launch it from the Activity.
- * 2. The result gives you the chosen account email → persist it in [SettingsStore].
- * 3. Call [getToken] with that email to obtain (or refresh) an OAuth2 token
- *    with the `gmail.readonly` scope.
- *
- * On the **first call** per account, Android may return a
- * [KEY_INTENT][AccountManager.KEY_INTENT] that must be launched for the user to
- * grant consent. The caller should handle this Intent (see [AuthResult.NeedsConsent]).
  */
-class GmailAuthManager(private val context: Context) {
-
+class GmailAuthManager(context: Context) {
     private val accountManager: AccountManager = AccountManager.get(context)
 
     companion object {
         /** OAuth2 scope needed for read-only Gmail access (list + get + attachments). */
         const val GMAIL_SCOPE = "oauth2:https://www.googleapis.com/auth/gmail.readonly"
     }
-
-    /** Returns all Google accounts on the device. */
-    fun googleAccounts(): List<Account> =
-        accountManager.getAccountsByType("com.google").toList()
 
     /**
      * Returns an [Intent] that lets the user pick a Google account.

@@ -129,14 +129,24 @@ class FakeFileVault : FileVault {
     }
 }
 
-/** Nothing saved; [findOrSave] hands out fresh ids and [lookUp] answers from [lookups]. */
+/**
+ * Nothing saved; [findOrSave] hands out fresh ids, remembering the tags it was given in
+ * [savedTags], and [lookUp] answers from [lookups]. [tagNames] is what Links' tags are.
+ */
 class FakeLinkCatalog : LinkCatalog {
     private var nextId = 1L
     val lookups = mutableMapOf<String, LinkLookup>()
+    val tagNames = MutableStateFlow<List<String>>(emptyList())
+    val savedTags = mutableMapOf<String, List<String>?>()
 
     override fun observeLinks(): Flow<Map<Long, SavedLink>> = emptyFlow()
 
-    override suspend fun findOrSave(url: String, title: String?): Long = nextId++
+    override fun observeTagNames(): Flow<List<String>> = tagNames
+
+    override suspend fun findOrSave(url: String, title: String?, tags: List<String>?): Long {
+        savedTags[url] = tags
+        return nextId++
+    }
 
     override suspend fun lookUp(url: String): LinkLookup = lookups[url] ?: LinkLookup(title = null, inLinks = false)
 }

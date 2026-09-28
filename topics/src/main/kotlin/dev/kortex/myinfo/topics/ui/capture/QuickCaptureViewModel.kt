@@ -22,6 +22,7 @@ import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.MoneyAmount
+import dev.kortex.myinfo.topics.domain.usecase.ObserveLinkTags
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
 import dev.kortex.myinfo.topics.domain.usecase.SearchEmails
 import dev.kortex.myinfo.topics.ui.common.TopicChoice
@@ -35,6 +36,7 @@ class QuickCaptureViewModel @AssistedInject constructor(
     @Assisted initialTopicId: Long,
     @TopicsScope private val appScope: CoroutineScope,
     observeTopics: ObserveTopics,
+    observeLinkTags: ObserveLinkTags,
     private val detectItemType: DetectItemType,
     private val lookUpLink: LookUpLink,
     private val keepPickedFile: KeepPickedFile,
@@ -62,9 +64,12 @@ class QuickCaptureViewModel @AssistedInject constructor(
                 selectedTopicId = selectedTopicId?.takeIf { id -> overviews.any { it.topic.id == id } },
             )
         }
+        observeLinkTags().reduceInto { tags -> copy(tagChoices = tags) }
     }
 
     override fun handleIntent(intent: QuickCaptureIntent) {
+        // Moving on from a half-typed tag means keeping it, whatever the user moved on to.
+        if (currentState.addingTag && intent !is QuickCaptureIntent.NewTagNameChanged) addPendingTag()
         when (intent) {
             is QuickCaptureIntent.TextChanged -> onTextChanged(intent.text)
             is QuickCaptureIntent.ChooseType -> setState { copy(chosenType = intent.type, error = null) }
@@ -88,6 +93,18 @@ class QuickCaptureViewModel @AssistedInject constructor(
             QuickCaptureIntent.CloseDueDate -> setState { copy(pickingDueDate = false) }
             is QuickCaptureIntent.SetDueDate -> setState { copy(billDueAtMillis = intent.atMillis, pickingDueDate = false) }
             is QuickCaptureIntent.SetPaid -> setState { copy(billPaid = intent.paid) }
+            is QuickCaptureIntent.ToggleTag -> setState {
+                val picked = if (isPicked(intent.tag)) {
+                    pickedTags.filterNot { it.equals(intent.tag, ignoreCase = true) }
+                } else {
+                    pickedTags + intent.tag
+                }
+                copy(pickedTags = picked, tagsTouched = true)
+            }
+            QuickCaptureIntent.ShowAllTags -> setState { copy(showingAllTags = true) }
+            QuickCaptureIntent.StartNewTag -> setState { copy(addingTag = true) }
+            is QuickCaptureIntent.NewTagNameChanged -> setState { copy(newTagName = intent.name) }
+            QuickCaptureIntent.AddTag -> addPendingTag()
             // Every error is about the old target: the item already in it, or the new topic's name.
             is QuickCaptureIntent.SelectTopic -> setState { copy(selectedTopicId = intent.topicId, creatingTopic = false, error = null) }
             QuickCaptureIntent.StartNewTopic -> setState { copy(creatingTopic = true, error = null) }
@@ -106,6 +123,15 @@ class QuickCaptureViewModel @AssistedInject constructor(
         appScope.launch { discardPickedFile(orphan) }
     }
 
+    /** Adds the tag being typed, if it has a name, and closes its field either way. */
+    private fun addPendingTag() = setState {
+        val name = newTagName.trim()
+        // A name the user already has is that tag, spelled the way Links has it.
+        val tag = tagChoices.firstOrNull { it.equals(name, ignoreCase = true) } ?: name
+        val closed = copy(addingTag = false, newTagName = "")
+        if (name.isEmpty() || isPicked(tag)) closed else closed.copy(pickedTags = pickedTags + tag, tagsTouched = true)
+    }
+
     private fun onTextChanged(text: String) {
         val detection = detectItemType(text)
         val addressChanged = detection.url != currentState.detection.url
@@ -116,6 +142,8 @@ class QuickCaptureViewModel @AssistedInject constructor(
                 error = error?.takeUnless { it == CaptureError.AlreadyInTopic || it == CaptureError.BillTitleBlank },
                 lookup = if (addressChanged) null else lookup,
                 lookingUp = if (addressChanged) detection.url != null else lookingUp,
+                // The old address's suggestions don't fit the new one; the user's own picks still do.
+                pickedTags = if (addressChanged && !tagsTouched) emptyList() else pickedTags,
             )
         }
         if (!addressChanged) return
@@ -125,7 +153,10 @@ class QuickCaptureViewModel @AssistedInject constructor(
             // Typing an address shouldn't read a page per keystroke.
             delay(LOOKUP_DEBOUNCE_MS)
             val lookup = lookUpLink(url)
-            setState { if (detection.url == url) copy(lookup = lookup, lookingUp = false) else this }
+            setState {
+                if (detection.url != url) return@setState this
+                copy(lookup = lookup, lookingUp = false, pickedTags = if (tagsTouched) pickedTags else lookup.tags)
+            }
         }
     }
 
@@ -187,6 +218,7 @@ class QuickCaptureViewModel @AssistedInject constructor(
             title = intent.title.trim(),
             file = state.file,
             email = state.email,
+            tags = state.tagsToSave,
             bill = if (state.type == ItemType.Bill) {
                 BillFields(
                     amount = intent.billAmount,

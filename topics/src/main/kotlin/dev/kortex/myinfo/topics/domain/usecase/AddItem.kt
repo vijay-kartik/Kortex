@@ -22,7 +22,14 @@ class AddItem(
 
     private fun NewItem.cleaned(): NewItem? = when (this) {
         is NewItem.Note -> text.trim().ifEmpty { null }?.let { copy(text = it) }
-        is NewItem.Link -> WebAddress.parse(url)?.let { copy(url = it.toString(), title = title.trimToNull()) }
+        is NewItem.Link -> WebAddress.parse(url)?.let {
+            copy(
+                url = it.toString(),
+                title = title.trimToNull(),
+                // Tag names are case-insensitive in Links, so "Travel" and "travel" are one tag.
+                tags = tags?.mapNotNull { tag -> tag.trimToNull() }?.distinctBy { tag -> tag.lowercase() },
+            )
+        }
         is NewItem.Doc -> title.trim().ifEmpty { null }?.let { copy(title = it) }
         is NewItem.Image -> copy(caption = caption.trimToNull())
         // The mailbox wrote these fields, not the user: there is nothing to tidy, and an email

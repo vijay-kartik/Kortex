@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +26,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DatePicker
@@ -50,6 +52,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -230,9 +235,13 @@ internal fun QuickCaptureContent(
         EmailPicker(state, onIntent)
         return
     }
+    val focusManager = LocalFocusManager.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // A tap on the sheet itself, not on anything in it, lets go of the field being typed
+            // in; for a new tag's field, that adds the tag.
+            .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } }
             .verticalScroll(rememberScrollState())
             .padding(start = 18.dp, end = 18.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -290,6 +299,10 @@ internal fun QuickCaptureContent(
                 textColor = Ink,
                 singleLine = true,
             )
+        }
+
+        if (state.showTagFields) {
+            TagsBlock(state, onIntent)
         }
 
         if (state.showBillFields) {
@@ -588,6 +601,109 @@ private fun AttachButton(label: String, onClick: () -> Unit) {
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 9.dp),
     )
+}
+
+/**
+ * A link's tags in Links, as toggles: the ones that fit the page (or the saved link's own)
+ * picked from the start, then the rest of the user's tags, and "+ Tag" to name a new one.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TagsBlock(state: QuickCaptureState, onIntent: (QuickCaptureIntent) -> Unit) {
+    Label("TAGS", Modifier.padding(top = 8.dp))
+    tagsHint(state)?.let { Text(it, style = HintStyle, color = Muted) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        state.tagsOnOffer.forEach { tag ->
+            SmallChip(
+                label = tag,
+                selected = state.isPicked(tag),
+                accent = Synapse,
+                role = Role.Checkbox,
+                onClick = { onIntent(QuickCaptureIntent.ToggleTag(tag)) },
+            )
+        }
+        if (state.hiddenTagCount > 0) {
+            SmallChip(
+                label = "+ ${state.hiddenTagCount} MORE",
+                selected = false,
+                accent = Synapse,
+                spokenLabel = "Show ${state.hiddenTagCount} more tags",
+                onClick = { onIntent(QuickCaptureIntent.ShowAllTags) },
+            )
+        }
+        if (state.addingTag) {
+            NewTagField(
+                name = state.newTagName,
+                onNameChange = { onIntent(QuickCaptureIntent.NewTagNameChanged(it)) },
+                onAdd = { onIntent(QuickCaptureIntent.AddTag) },
+            )
+        } else {
+            Text(
+                "+ TAG",
+                style = MetaStyle.copy(letterSpacing = 0.sp),
+                color = Muted,
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .semantics { contentDescription = "New tag" }
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(Well)
+                    .dashedBorder(EdgeStrong, cornerRadius = 7.dp)
+                    .clickable(role = Role.Button) { onIntent(QuickCaptureIntent.StartNewTag) }
+                    .padding(horizontal = 11.dp, vertical = 7.dp),
+            )
+        }
+    }
+}
+
+/**
+ * A new tag's name, typed in place of "+ Tag". Done adds it, and so does letting go of the field
+ * (a tap elsewhere); adding it blank just closes it.
+ */
+@Composable
+private fun NewTagField(name: String, onNameChange: (String) -> Unit, onAdd: () -> Unit) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    // Only a field that had focus can lose it; the first report, before focus arrives, isn't a loss.
+    var hadFocus by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(7.dp)
+    val textStyle = MetaStyle.copy(letterSpacing = 0.sp)
+    BasicTextField(
+        value = name,
+        onValueChange = onNameChange,
+        singleLine = true,
+        textStyle = textStyle.copy(color = Synapse),
+        cursorBrush = SolidColor(Synapse),
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { onAdd() }),
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .widthIn(min = 96.dp)
+            .focusRequester(focusRequester)
+            .onFocusChanged { focus ->
+                if (hadFocus && !focus.isFocused) onAdd()
+                hadFocus = focus.isFocused
+            },
+        decorationBox = { innerTextField ->
+            Box(
+                Modifier
+                    .clip(shape)
+                    .background(SynapseDim)
+                    .border(1.dp, Synapse, shape)
+                    .padding(horizontal = 11.dp, vertical = 7.dp),
+            ) {
+                if (name.isEmpty()) Text("tag name", style = textStyle, color = Muted)
+                innerTextField()
+            }
+        },
+    )
+}
+
+/** What the tags row says above its chips, when there's something worth saying. */
+private fun tagsHint(state: QuickCaptureState): String? = when {
+    state.lookingUp && !state.tagsTouched -> "Reading the page for tags that fit…"
+    state.lookup?.inLinks == true -> "This link's tags in Links — changes apply there too."
+    state.tagsOnOffer.isEmpty() -> "No tags yet. Add one to find this link by it in Links."
+    else -> null
 }
 
 /** A bill's own fields: what it costs, when it's due, and whether it's been paid already. */

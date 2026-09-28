@@ -19,6 +19,7 @@ import dev.kortex.myinfo.topics.domain.usecase.DetectItemType
 import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
+import dev.kortex.myinfo.topics.domain.usecase.ObserveLinkTags
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
 import dev.kortex.myinfo.topics.domain.usecase.SearchEmails
 import dev.kortex.myinfo.topics.ui.capture.CaptureError
@@ -98,6 +99,107 @@ class QuickCaptureViewModelTest {
         advanceUntilIdle()
         assertEquals(LinkLookup("Check if you need a visa", inLinks = true), viewModel.state.value.lookup)
         assertFalse(viewModel.state.value.lookingUp)
+    }
+
+    // ── A link's tags ─────────────────────────────────────────────
+
+    @Test
+    fun `the page's suggested tags start picked and are saved with the link`() = runTest(dispatcher) {
+        catalog.tagNames.value = listOf("fashion", "travel", "work")
+        catalog.lookups["https://salty.co.in/caps"] = LinkLookup(title = "Caps", inLinks = false, tags = listOf("fashion"))
+
+        viewModel.onIntent(QuickCaptureIntent.TextChanged("salty.co.in/caps"))
+        advanceUntilIdle()
+        val state = viewModel.state.value
+        assertTrue(state.showTagFields)
+        assertEquals(listOf("fashion"), state.pickedTags)
+        // Suggestions lead; the rest of the user's tags follow.
+        assertEquals(listOf("fashion", "travel", "work"), state.tagsOnOffer)
+
+        viewModel.onIntent(QuickCaptureIntent.ToggleTag("travel"))
+        viewModel.onIntent(save(text = "salty.co.in/caps"))
+        viewModel.effects.first()
+
+        assertEquals(listOf("fashion", "travel"), (repository.items.single() as NewItem.Link).tags)
+    }
+
+    @Test
+    fun `a new tag takes an existing tag's spelling, and a blank one just closes the field`() {
+        catalog.tagNames.value = listOf("Travel")
+        viewModel.onIntent(QuickCaptureIntent.TextChanged("gov.uk/visa"))
+
+        typeTag(" travel ")
+        viewModel.onIntent(QuickCaptureIntent.AddTag)
+        assertEquals(listOf("Travel"), viewModel.state.value.pickedTags)
+        assertFalse(viewModel.state.value.addingTag)
+
+        typeTag("visas")
+        viewModel.onIntent(QuickCaptureIntent.AddTag)
+        typeTag("  ")
+        viewModel.onIntent(QuickCaptureIntent.AddTag)
+        assertEquals(listOf("Travel", "visas"), viewModel.state.value.pickedTags)
+        // A tag named here is listed last, where it was typed.
+        assertEquals(listOf("Travel", "visas"), viewModel.state.value.tagsOnOffer)
+    }
+
+    @Test
+    fun `tapping on to something else adds the tag being typed`() {
+        catalog.tagNames.value = listOf("travel")
+        viewModel.onIntent(QuickCaptureIntent.TextChanged("gov.uk/visa"))
+
+        typeTag("visas")
+        viewModel.onIntent(QuickCaptureIntent.ToggleTag("travel"))
+
+        assertEquals(listOf("visas", "travel"), viewModel.state.value.pickedTags)
+        assertFalse(viewModel.state.value.addingTag)
+        assertEquals("", viewModel.state.value.newTagName)
+    }
+
+    @Test
+    fun `a tag still being typed is saved with the link`() = runTest(dispatcher) {
+        viewModel.onIntent(QuickCaptureIntent.TextChanged("gov.uk/visa"))
+        typeTag("visas")
+        viewModel.onIntent(save(text = "gov.uk/visa"))
+        viewModel.effects.first()
+
+        assertEquals(listOf("visas"), (repository.items.single() as NewItem.Link).tags)
+    }
+
+    private fun typeTag(name: String) {
+        viewModel.onIntent(QuickCaptureIntent.StartNewTag)
+        viewModel.onIntent(QuickCaptureIntent.NewTagNameChanged(name))
+    }
+
+    @Test
+    fun `a lookup that lands late doesn't undo the user's picks`() = runTest(dispatcher) {
+        catalog.lookups["https://gov.uk/visa"] = LinkLookup(title = null, inLinks = false, tags = listOf("travel"))
+
+        viewModel.onIntent(QuickCaptureIntent.TextChanged("gov.uk/visa"))
+        viewModel.onIntent(QuickCaptureIntent.ToggleTag("work"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("work"), viewModel.state.value.pickedTags)
+    }
+
+    @Test
+    fun `a link saved before its lookup is in leaves its tags alone`() = runTest(dispatcher) {
+        viewModel.onIntent(QuickCaptureIntent.TextChanged("gov.uk/visa"))
+        viewModel.onIntent(save(text = "gov.uk/visa"))
+        viewModel.effects.first()
+
+        assertNull((repository.items.single() as NewItem.Link).tags)
+    }
+
+    @Test
+    fun `only the first few tags show until asked for the rest`() {
+        catalog.tagNames.value = (1..12).map { "tag$it" }
+        viewModel.onIntent(QuickCaptureIntent.TextChanged("gov.uk/visa"))
+        assertEquals(8, viewModel.state.value.tagsOnOffer.size)
+        assertEquals(4, viewModel.state.value.hiddenTagCount)
+
+        viewModel.onIntent(QuickCaptureIntent.ShowAllTags)
+        assertEquals(12, viewModel.state.value.tagsOnOffer.size)
+        assertEquals(0, viewModel.state.value.hiddenTagCount)
     }
 
     @Test
@@ -337,6 +439,7 @@ class QuickCaptureViewModelTest {
             initialTopicId = 1,
             appScope = CoroutineScope(dispatcher),
             observeTopics = ObserveTopics(repository),
+            observeLinkTags = ObserveLinkTags(catalog),
             detectItemType = detect,
             lookUpLink = LookUpLink(catalog),
             keepPickedFile = KeepPickedFile(vault),

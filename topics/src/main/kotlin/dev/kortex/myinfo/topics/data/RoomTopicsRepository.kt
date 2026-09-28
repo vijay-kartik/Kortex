@@ -66,7 +66,7 @@ class RoomTopicsRepository(
 
     override suspend fun addItem(topicId: Long, item: NewItem, nowMillis: Long): Long? {
         // Saved to Links first: a link already there is reused, not duplicated.
-        val linkId = (item as? NewItem.Link)?.let { linkCatalog.findOrSave(it.url, it.title) }
+        val linkId = (item as? NewItem.Link)?.let { linkCatalog.findOrSave(it.url, it.title, it.tags) }
         return dao.addItem(item.toEntity(topicId, linkId, nowMillis), nowMillis).takeIf { it != -1L }
     }
 

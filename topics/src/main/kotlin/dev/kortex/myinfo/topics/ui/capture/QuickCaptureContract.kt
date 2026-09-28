@@ -38,6 +38,21 @@ data class QuickCaptureState(
     /** For [Detection.url]; null until the lookup finishes. */
     val lookup: LinkLookup? = null,
     val lookingUp: Boolean = false,
+    /** Every tag in Links, offered on a link. */
+    val tagChoices: List<String> = emptyList(),
+    /** The link's tags as they'll be saved: the lookup's until the user changes them. */
+    val pickedTags: List<String> = emptyList(),
+    /** The user picked or dropped a tag, so a lookup no longer replaces [pickedTags]. */
+    val tagsTouched: Boolean = false,
+    /** Every tag is on show, not just the first few. */
+    val showingAllTags: Boolean = false,
+    /** "+ Tag" is open: a new tag's name is being typed. */
+    val addingTag: Boolean = false,
+    /**
+     * The new tag's name as typed. Held here rather than in the sheet, unlike the other typed
+     * fields, because whatever the user does next adds it: it is a pick they've half made.
+     */
+    val newTagName: String = "",
     val billCurrency: String = MoneyAmount.defaultCurrency(),
     val billDueAtMillis: Long? = null,
     val billPaid: Boolean = false,
@@ -77,7 +92,41 @@ data class QuickCaptureState(
         ItemType.Note, ItemType.Email -> false
     }
 
+    /** A link carries its Links tags; every other type has none. */
+    val showTagFields: Boolean = type.isLink && detection.url != null
+
+    /**
+     * The tags as the sheet lists them: the lookup's and the user's picks first, then the rest
+     * of Links' tags (only the first few, unless [showingAllTags]), and last the tags the user
+     * named here, so one just added shows where it was typed.
+     */
+    private val knownTags: List<String> =
+        (lookup?.tags.orEmpty() + pickedTags + tagChoices).distinctBy { it.lowercase() }
+    private val typedTags: List<String> = pickedTags.filterNot { picked ->
+        (lookup?.tags.orEmpty() + tagChoices).any { it.equals(picked, ignoreCase = true) }
+    }
+    private val leadingTagCount: Int =
+        (lookup?.tags.orEmpty() + pickedTags).distinctBy { it.lowercase() }.size - typedTags.size
+    private val listedTags: List<String> = knownTags - typedTags.toSet()
+    private val shownTagCount: Int =
+        if (showingAllTags) listedTags.size else maxOf(leadingTagCount, TAGS_SHOWN_FOLDED).coerceAtMost(listedTags.size)
+    val tagsOnOffer: List<String> = listedTags.take(shownTagCount) + typedTags
+    val hiddenTagCount: Int = listedTags.size - shownTagCount
+
+    fun isPicked(tag: String): Boolean = pickedTags.any { it.equals(tag, ignoreCase = true) }
+
+    /**
+     * The tags to save with a link, or null to leave a saved link's alone: before the lookup is
+     * in and while the user hasn't touched them, the sheet doesn't know the link's tags yet.
+     */
+    val tagsToSave: List<String>? = pickedTags.takeIf { tagsTouched || lookup != null }
+
     val canSave: Boolean = hasContent && !saving && !attaching && (creatingTopic || selectedTopicId != null)
+
+    private companion object {
+        /** Enough to pick from at a glance; the rest wait behind "+ N more". */
+        const val TAGS_SHOWN_FOLDED = 8
+    }
 }
 
 enum class CaptureError {
@@ -113,6 +162,18 @@ sealed interface QuickCaptureIntent {
     data object CloseDueDate : QuickCaptureIntent
     data class SetDueDate(val atMillis: Long?) : QuickCaptureIntent
     data class SetPaid(val paid: Boolean) : QuickCaptureIntent
+
+    // ── A link's tags ──
+    data class ToggleTag(val tag: String) : QuickCaptureIntent
+    data object ShowAllTags : QuickCaptureIntent
+    data object StartNewTag : QuickCaptureIntent
+    data class NewTagNameChanged(val name: String) : QuickCaptureIntent
+
+    /**
+     * Adds the tag being typed; a blank name just closes the field. Any other intent does the
+     * same first, so a tag isn't lost by tapping on to something else.
+     */
+    data object AddTag : QuickCaptureIntent
 
     data class SelectTopic(val topicId: Long) : QuickCaptureIntent
     data object StartNewTopic : QuickCaptureIntent

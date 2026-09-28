@@ -146,7 +146,7 @@ it starts only after onboarding has restored the library.
 
 ## Cloud Functions (`functions/`)
 
-Three callable functions (region `asia-south1`, Node 22, TypeScript) write straight into
+Four callable functions (region `asia-south1`, Node 22, TypeScript) write straight into
 `users/{uid}/**` for clients without the app's database: the browser extension, shortcuts,
 the agent. They write the same documents as the app's push, so the phone picks them up live (or on its
 next sync). Each needs a signed-in Firebase user and works only on that user's records.
@@ -155,7 +155,8 @@ next sync). Each needs a signed-in Firebase user and works only on that user's r
 |---|---|---|
 | `addLink` | `{ url, title?, tags?, imageUrl? }` | `{ linkUid, created }`; `created: false` when the page is already saved (left untouched) |
 | `createTopic` | `{ name, purpose?, pinned? }` | `{ topicUid }`; `already-exists` when the name is taken, ignoring case |
-| `addTopicItem` | `{ topicUid, item: { type, … }, pinned? }` | `{ itemUid, linkUid? }` |
+| `addTopicItem` | `{ topicUid \| topicName, item: { type, … }, pinned? }` | `{ itemUid, topicUid, linkUid? }`; `topicName` matches ignoring case |
+| `listTopics` | nothing | `{ topics: [{ topicUid, name, pinned }], names }`, pinned first, then by name |
 
 `addTopicItem` takes every `ItemType` except the file-backed ones, checked by the app's `AddItem`
 rules:
@@ -173,11 +174,11 @@ rules:
 item's `file` only names a path on the device that added it. `functions/src/linkKey.ts` ports
 `linkUrlKey`/`linkUid` and is tested against the same vectors as `LinkUrlKeyTest`/`LinkUidTest`.
 
-**Personal API keys** reach the same three actions from anywhere without a Firebase sign-in
+**Personal API keys** reach the same four actions from anywhere without a Firebase sign-in
 (scripts, iOS Shortcuts, Tasker, another server):
 
 ```
-POST https://asia-south1-kortex-a24b7.cloudfunctions.net/api/{addLink|createTopic|addTopicItem}
+POST https://asia-south1-kortex-a24b7.cloudfunctions.net/api/{addLink|createTopic|addTopicItem|listTopics}
 Authorization: Bearer kx_…
 Content-Type: application/json
 

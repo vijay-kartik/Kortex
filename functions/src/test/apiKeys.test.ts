@@ -35,6 +35,7 @@ test("the api refuses what it can answer without the database", async () => {
   assert.equal((await handleApi(request("GET", "/addLink"))).status, 405);
   assert.equal((await handleApi(request("POST", "/deleteEverything", { authorization: "Bearer kx_a" }))).status, 404);
   assert.equal((await handleApi(request("POST", "/toString", { authorization: "Bearer kx_a" }))).status, 404);
+  assert.equal((await handleApi(request("POST", "/listTopics"))).status, 401);
   const noKey = await handleApi(request("POST", "/addLink"));
   assert.equal(noKey.status, 401);
   assert.deepEqual((noKey.body as { error: { status: string } }).error.status, "unauthenticated");

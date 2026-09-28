@@ -1,11 +1,11 @@
 import type { Request } from "firebase-functions/v2/https";
 import { HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions/v2";
-import { Action, addLink, addTopicItem, createTopic } from "./actions";
+import { Action, addLink, addTopicItem, createTopic, listTopics } from "./actions";
 import { bearerKey, userForApiKey } from "./apiKeys";
 
 /** What `api` can do, by path: `POST /api/addLink` runs [addLink]. */
-export const API_ROUTES: Record<string, Action> = { addLink, createTopic, addTopicItem };
+export const API_ROUTES: Record<string, Action> = { addLink, createTopic, addTopicItem, listTopics };
 
 interface ApiResponse {
   status: number;
@@ -30,10 +30,12 @@ export async function handleApi(req: Pick<Request, "method" | "path" | "body" | 
     if (key === null) throw new HttpsError("unauthenticated", "Send your API key as Authorization: Bearer kx_…");
     const userUid = await userForApiKey(key);
 
-    if (typeof req.body !== "object" || req.body === null) {
+    // No body at all is fine for an action that takes nothing (listTopics).
+    const body = req.body === undefined || req.body === null || req.body === "" ? {} : req.body;
+    if (typeof body !== "object" || Buffer.isBuffer(body)) {
       throw new HttpsError("invalid-argument", "Send a JSON body with Content-Type: application/json.");
     }
-    return { status: 200, body: await action(userUid, req.body) };
+    return { status: 200, body: await action(userUid, body) };
   } catch (e) {
     return errorResponse(e);
   }

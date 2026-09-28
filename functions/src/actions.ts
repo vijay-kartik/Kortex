@@ -61,7 +61,7 @@ export async function createTopic(userUid: string, data: unknown) {
   const topics = userDoc(userUid).collection("topics");
   return getFirestore().runTransaction(async (tx) => {
     const live = await tx.get(topics.where("deleted", "==", false).select("name"));
-    const taken = live.docs.some((doc) => String(doc.get("name") ?? "").toLowerCase() === name.toLowerCase());
+    const taken = live.docs.some((doc) => sameName(doc.get("name"), name));
     if (taken) throw new HttpsError("already-exists", `A topic named "${name}" already exists.`);
 
     const ref = topics.doc(randomUUID());
@@ -73,7 +73,8 @@ export async function createTopic(userUid: string, data: unknown) {
 /**
  * Adds an item to a topic: a Note, Link, Article, Video, Bill or Email.
  *
- * Request: `{ topicUid, item: { type, ... }, pinned? }`, where `item` carries:
+ * Request: `{ topicUid | topicName, item: { type, ... }, pinned? }`. `topicName` matches ignoring
+ * case, for callers that only know what the user sees (a shortcut's topic picker). `item` carries:
  * - Note: `text`
  * - Link / Article / Video: `url`, `title?`; Article `readingMinutes?`, `done?` (read);
  *   Video `durationSeconds?`, `done?` (watched). The link is saved to the Links library too,
@@ -86,22 +87,34 @@ export async function createTopic(userUid: string, data: unknown) {
  * Doc and Image items, and a bill's invoice, are refused with `failed-precondition`: they need
  * files, which wait on Cloud Storage.
  *
- * Response: `{ itemUid, linkUid? }`. Throws `not-found` for a missing or deleted topic and
+ * Response: `{ itemUid, topicUid, linkUid? }`. Throws `not-found` for a missing or deleted topic and
  * `already-exists` when the topic already holds the link.
  */
 export async function addTopicItem(userUid: string, data: unknown) {
   const input = Input.of(data);
-  const topicUid = input.string("topicUid", 128);
+  const givenUid = input.optionalString("topicUid", 128);
+  const givenName = givenUid === null ? input.optionalString("topicName", MAX_TOPIC_NAME) : null;
+  if (givenUid === null && givenName === null) throw invalid("topicUid or topicName is required.");
   const pinned = input.boolean("pinned", false);
   const item = parseNewItem(input.object("item"));
 
   const user = userDoc(userUid);
-  const topicRef = user.collection("topics").doc(topicUid);
+  const topics = user.collection("topics");
   const itemRef = user.collection("topicItems").doc(randomUUID());
 
   return getFirestore().runTransaction(async (tx) => {
     // Every read comes before the first write, as a transaction requires.
-    if (!isLive(await tx.get(topicRef))) throw new HttpsError("not-found", "That topic doesn't exist.");
+    let topicRef: DocumentReference;
+    if (givenUid !== null) {
+      topicRef = topics.doc(givenUid);
+      if (!isLive(await tx.get(topicRef))) throw new HttpsError("not-found", "That topic doesn't exist.");
+    } else {
+      const live = await tx.get(topics.where("deleted", "==", false).select("name"));
+      const match = live.docs.find((doc) => sameName(doc.get("name"), givenName!));
+      if (!match) throw new HttpsError("not-found", `No topic is named "${givenName}".`);
+      topicRef = match.ref;
+    }
+    const topicUid = topicRef.id;
 
     const nowMillis = Date.now();
     const serverTime = FieldValue.serverTimestamp();
@@ -129,8 +142,23 @@ export async function addTopicItem(userUid: string, data: unknown) {
     if (newLink !== null) tx.set(newLink.ref, newLink.doc);
     tx.create(itemRef, itemDoc({ topicUid, type: item.type, fields: item.fields, linkUid: uid, pinned, nowMillis, serverTime }));
     tx.update(topicRef, touchedTopic(nowMillis, serverTime));
-    return uid === null ? { itemUid: itemRef.id } : { itemUid: itemRef.id, linkUid: uid };
+    return uid === null ? { itemUid: itemRef.id, topicUid } : { itemUid: itemRef.id, topicUid, linkUid: uid };
   });
+}
+
+/**
+ * The user's topics, pinned first, then by name.
+ *
+ * Request: nothing. Response: `{ topics: [{ topicUid, name, pinned }], names: [name] }`; `names` is
+ * the same order, ready for a picker such as a shortcut's "Choose from List".
+ */
+export async function listTopics(userUid: string) {
+  const live = await userDoc(userUid).collection("topics").where("deleted", "==", false).select("name", "pinned").get();
+  const topics = live.docs
+    .map((doc) => ({ topicUid: doc.id, name: String(doc.get("name") ?? ""), pinned: doc.get("pinned") === true }))
+    .filter((topic) => topic.name.length > 0)
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return { topics, names: topics.map((topic) => topic.name) };
 }
 
 function userDoc(userUid: string): DocumentReference {
@@ -140,6 +168,11 @@ function userDoc(userUid: string): DocumentReference {
 /** Exists and isn't soft-deleted. */
 function isLive(snapshot: FirebaseFirestore.DocumentSnapshot): boolean {
   return snapshot.exists && snapshot.get("deleted") !== true;
+}
+
+/** Topic names are unique ignoring case, as in the app. */
+function sameName(stored: unknown, name: string): boolean {
+  return String(stored ?? "").toLowerCase() === name.toLowerCase();
 }
 
 function webAddress(text: string, field: string): string {

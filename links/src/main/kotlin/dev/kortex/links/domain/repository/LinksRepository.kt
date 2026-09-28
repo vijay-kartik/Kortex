@@ -24,4 +24,6 @@ sealed interface SaveLinkResult {
     data class Saved(val linkId: Long) : SaveLinkResult
     /** The address was saved between the form's live check and the insert. */
     data object AlreadySaved : SaveLinkResult
+    /** Nothing was saved; the cause is logged. */
+    data object Failed : SaveLinkResult
 }

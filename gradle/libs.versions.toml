@@ -90,6 +90,9 @@ litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "
 litert-gpu = { group = "com.google.ai.edge.litert", name = "litert-gpu", version.ref = "litert"}
 mediapipe-tasks-text = { module = "com.google.mediapipe:tasks-text", version.ref = "mediapipe" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+# YouTube's official IFrame player in a WebView (docs/TOPIC_VIDEOS_PLAN.md). 13.x sends the embed
+# origin YouTube now requires; it brings lifecycle-runtime 2.9.
+youtube-player = { module = "com.pierfrancescosoffritti.androidyoutubeplayer:core", version = "13.0.0" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

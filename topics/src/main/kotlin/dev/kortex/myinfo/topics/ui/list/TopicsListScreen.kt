@@ -70,13 +70,18 @@ import dev.kortex.myinfo.topics.ui.search.TopicSearchState
 import dev.kortex.myinfo.topics.ui.search.TopicSearchViewModel
 import dev.kortex.myinfo.topics.ui.search.searchSummary
 
-/** Connects [TopicsListScreen] to its ViewModel and hands navigation to the host. */
+/**
+ * Connects [TopicsListScreen] to its ViewModel and hands navigation to the host. [onPlayVideo]
+ * opens a topic with one of its videos already playing, for a video found by search; a host
+ * without it opens the topic.
+ */
 @Composable
 fun TopicsListRoute(
     searchField: TopBarSearch,
     onOpenTopic: (Long) -> Unit,
     onCreateTopic: () -> Unit,
     modifier: Modifier = Modifier,
+    onPlayVideo: (topicId: Long, itemId: Long) -> Unit = { topicId, _ -> onOpenTopic(topicId) },
     viewModel: TopicsListViewModel = hiltViewModel(),
     searchViewModel: TopicSearchViewModel = hiltViewModel(),
 ) {
@@ -90,7 +95,10 @@ fun TopicsListRoute(
     }
     ObserveEffects(searchViewModel.effects) { effect ->
         when (effect) {
-            is TopicSearchEffect.OpenTopic -> onOpenTopic(effect.topicId)
+            is TopicSearchEffect.OpenTopic -> when (val video = effect.playing) {
+                null -> onOpenTopic(effect.topicId)
+                else -> onPlayVideo(effect.topicId, video)
+            }
         }
     }
     TopicsListScreen(

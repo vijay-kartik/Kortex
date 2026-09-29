@@ -42,6 +42,7 @@ internal object TopicSyncSchema {
         "topicId", "type", "title", "text", "linkId", "filePath", "mimeType", "pageCount", "amountMinor", "currency",
         "issuedAtMillis", "dueAtMillis", "durationSeconds", "readingMinutes", "done", "pinned",
         "messageId", "threadId", "rfc822MessageId", "fromAddress", "accountEmail", "sentAtMillis",
+        "resumeSeconds", "seenRanges", "lastPlayedAtMillis", "embedBlocked",
     )
 
     /** Must match [SyncTombstoneEntity] and [SyncControlEntity], as Room creates them on a fresh install. */
@@ -74,16 +75,7 @@ internal object TopicSyncSchema {
             """.trimIndent(),
         )
         db.execSQL(deleteTrigger("sync_topics_deleted", "topics", KIND_TOPIC))
-        db.execSQL(
-            """
-            CREATE TRIGGER IF NOT EXISTS sync_topic_items_updated
-            AFTER UPDATE OF ${ITEM_COLUMNS.joinToString()} ON topic_items
-            WHEN $TRACKING AND (${changed(ITEM_COLUMNS)})
-            BEGIN
-                UPDATE topic_items SET dirty = dirty + 1, updatedAtMillis = $NOW_MILLIS WHERE id = NEW.id;
-            END
-            """.trimIndent(),
-        )
+        db.execSQL(itemUpdateTrigger())
         // Also fires for items a topic's delete cascades to, so each of them is pushed as deleted too.
         db.execSQL(deleteTrigger("sync_topic_items_deleted", "topic_items", KIND_ITEM))
         // The summary rides on its topic's document. Saving one replaces the row, which fires the insert.
@@ -99,6 +91,22 @@ internal object TopicSyncSchema {
             )
         }
     }
+
+    /** For a migration that adds item columns: the trigger names the columns it watches, so it's made again. */
+    fun recreateItemUpdateTrigger(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP TRIGGER IF EXISTS sync_topic_items_updated")
+        db.execSQL(itemUpdateTrigger())
+    }
+
+    private fun itemUpdateTrigger() =
+        """
+        CREATE TRIGGER IF NOT EXISTS sync_topic_items_updated
+        AFTER UPDATE OF ${ITEM_COLUMNS.joinToString()} ON topic_items
+        WHEN $TRACKING AND (${changed(ITEM_COLUMNS)})
+        BEGIN
+            UPDATE topic_items SET dirty = dirty + 1, updatedAtMillis = $NOW_MILLIS WHERE id = NEW.id;
+        END
+        """.trimIndent()
 
     private fun deleteTrigger(name: String, table: String, kind: String) =
         """

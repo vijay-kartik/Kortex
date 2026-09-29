@@ -14,7 +14,9 @@ import dev.kortex.myinfo.topics.data.local.TopicDao
 import dev.kortex.myinfo.topics.data.local.TopicSyncDao
 import dev.kortex.myinfo.topics.data.local.TopicsDatabase
 import dev.kortex.myinfo.topics.domain.port.AttachmentCache
+import dev.kortex.myinfo.topics.data.net.AndroidConnectivity
 import dev.kortex.myinfo.topics.domain.port.Clock
+import dev.kortex.myinfo.topics.domain.port.Connectivity
 import dev.kortex.myinfo.topics.domain.port.EmailDirectory
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
@@ -31,6 +33,7 @@ import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.FetchEmailAttachment
 import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
+import dev.kortex.myinfo.topics.domain.usecase.MarkEmbedBlocked
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveLinkTags
 import dev.kortex.myinfo.topics.domain.usecase.ObserveSearchCorpus
@@ -39,6 +42,7 @@ import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSuggestions
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
 import dev.kortex.myinfo.topics.domain.usecase.ReadEmail
+import dev.kortex.myinfo.topics.domain.usecase.RecordVideoProgress
 import dev.kortex.myinfo.topics.domain.usecase.SearchEmails
 import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
@@ -67,6 +71,7 @@ object TopicsModule {
                 TopicsDatabase.MIGRATION_2_3,
                 TopicsDatabase.MIGRATION_3_4,
                 TopicsDatabase.MIGRATION_4_5,
+                TopicsDatabase.MIGRATION_5_6,
             )
             .addCallback(TopicsDatabase.SYNC_ON_CREATE)
             .build()
@@ -98,6 +103,10 @@ object TopicsModule {
 
     @Provides
     fun provideClock(): Clock = Clock.System
+
+    @Provides
+    @Singleton
+    fun provideConnectivity(@ApplicationContext context: Context): Connectivity = AndroidConnectivity(context)
 
     @Provides
     fun provideObserveTopics(repository: TopicsRepository) = ObserveTopics(repository)
@@ -147,6 +156,12 @@ object TopicsModule {
 
     @Provides
     fun provideSetItemDone(repository: TopicsRepository, clock: Clock) = SetItemDone(repository, clock)
+
+    @Provides
+    fun provideRecordVideoProgress(repository: TopicsRepository, clock: Clock) = RecordVideoProgress(repository, clock)
+
+    @Provides
+    fun provideMarkEmbedBlocked(repository: TopicsRepository, clock: Clock) = MarkEmbedBlocked(repository, clock)
 
     @Provides
     fun provideSetItemsPinned(repository: TopicsRepository, clock: Clock) = SetItemsPinned(repository, clock)

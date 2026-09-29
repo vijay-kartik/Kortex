@@ -11,6 +11,7 @@ import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
 import dev.kortex.myinfo.topics.domain.model.TopicSummary
+import dev.kortex.myinfo.topics.domain.model.VideoRecord
 import dev.kortex.myinfo.topics.domain.port.AttachmentCache
 import dev.kortex.myinfo.topics.domain.port.AttachmentDownload
 import dev.kortex.myinfo.topics.domain.port.EmailAttachment
@@ -90,6 +91,17 @@ class FakeTopicsRepository : TopicsRepository {
 
     override suspend fun setItemDone(itemId: Long, done: Boolean, nowMillis: Long) {
         this.done[itemId] = done
+        videos[itemId]?.let { videos[itemId] = it.copy(watched = done) }
+    }
+
+    /** Videos by item id, as [updateVideo] reads and writes them; a manual [setItemDone] ticks them too. */
+    val videos = mutableMapOf<Long, VideoRecord>()
+
+    override suspend fun updateVideo(itemId: Long, nowMillis: Long, change: (VideoRecord) -> VideoRecord): Pair<VideoRecord, VideoRecord>? {
+        val before = videos[itemId] ?: return null
+        val after = change(before)
+        videos[itemId] = after
+        return before to after
     }
 
     override suspend fun setItemsPinned(itemIds: Collection<Long>, pinned: Boolean, nowMillis: Long) {

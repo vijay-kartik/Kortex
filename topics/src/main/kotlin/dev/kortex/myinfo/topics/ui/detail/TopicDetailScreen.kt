@@ -1,9 +1,5 @@
 package dev.kortex.myinfo.topics.ui.detail
 
-import android.content.ActivityNotFoundException
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
@@ -113,11 +109,14 @@ import dev.kortex.myinfo.topics.domain.model.FeedGroup
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.SavedLink
+import dev.kortex.myinfo.topics.domain.model.SeenRange
+import dev.kortex.myinfo.topics.domain.model.SeenRanges
 import dev.kortex.myinfo.topics.domain.model.TimePeriod
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDetail
 import dev.kortex.myinfo.topics.domain.model.TopicItem
 import dev.kortex.myinfo.topics.domain.model.TopicViewMode
+import dev.kortex.myinfo.topics.domain.model.VideoProgress
 import dev.kortex.myinfo.topics.domain.model.storedFile
 import dev.kortex.myinfo.topics.ui.capture.QuickCaptureSheet
 import dev.kortex.myinfo.topics.ui.common.BodyStyle
@@ -129,24 +128,31 @@ import dev.kortex.myinfo.topics.ui.common.TopicChoice
 import dev.kortex.myinfo.topics.ui.common.TrayLabelStyle
 import dev.kortex.myinfo.topics.ui.common.noun
 import dev.kortex.myinfo.topics.ui.common.openFile
+import dev.kortex.myinfo.topics.ui.common.openUrl
+import dev.kortex.myinfo.topics.ui.common.shareText
 import dev.kortex.myinfo.topics.ui.common.updatedLabel
 import dev.kortex.myinfo.topics.ui.email.EmailReaderRoute
+import dev.kortex.myinfo.topics.ui.player.VideoPlayerRoute
 import kotlinx.coroutines.launch
 import java.io.File
 
 /**
  * Full-screen topic detail, with quick capture for adding to it. [onClose] leaves, and is also
- * called when the topic is deleted. Each topic gets its own ViewModel.
+ * called when the topic is deleted. Each topic gets its own ViewModel. [playing] opens it with
+ * that video already in the player over the feed, as a search hit does (Figma: Topic videos 2l);
+ * back from the player lands on the feed.
  */
 @Composable
 fun TopicDetailRoute(
     topicId: Long,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    playing: Long? = null,
 ) {
-    ScopedViewModelStore(key = "topic-$topicId") {
+    // Keyed on the video too, so asking for one to play is never answered by a feed already open.
+    ScopedViewModelStore(key = "topic-$topicId" + playing?.let { "-play-$it" }.orEmpty()) {
         val viewModel = hiltViewModel<TopicDetailViewModel, TopicDetailViewModel.Factory>(
-            creationCallback = { factory -> factory.create(topicId) },
+            creationCallback = { factory -> factory.create(topicId, playing) },
         )
         TopicDetailContent(viewModel, onClose, modifier)
     }
@@ -190,6 +196,14 @@ private fun TopicDetailContent(
     Box(modifier.fillMaxSize()) {
         TopicDetailScreen(state = state, onIntent = viewModel::onIntent, onBack = onClose, snackbars = snackbars)
         EmailReaderLayer(state.reading, onClose = { viewModel.onIntent(TopicDetailIntent.CloseEmail) })
+        state.detail?.topic?.id?.let { topicId ->
+            VideoPlayerLayer(
+                topicId = topicId,
+                itemId = state.playing,
+                onClose = { viewModel.onIntent(TopicDetailIntent.ClosePlayer) },
+                onPlay = { viewModel.onIntent(TopicDetailIntent.OpenItem(it)) },
+            )
+        }
     }
 
     val topicId = state.detail?.topic?.id
@@ -222,6 +236,26 @@ private fun EmailReaderLayer(email: SavedEmail?, onClose: () -> Unit) {
     }
 }
 
+/**
+ * The video player, pushed over the feed like the email reader, so back returns to the feed where
+ * it was. Playing another video from Up next swaps what's inside rather than stacking a second one.
+ */
+@Composable
+private fun VideoPlayerLayer(topicId: Long, itemId: Long?, onClose: () -> Unit, onPlay: (TopicItem.Video) -> Unit) {
+    var shown by remember { mutableStateOf(itemId) }
+    SideEffect { if (itemId != null) shown = itemId }
+    AnimatedVisibility(
+        visible = itemId != null,
+        enter = slideInHorizontally(tween(READER_ENTER_MS, easing = EmphasizedDecelerate)) { it / READER_SLIDE_FRACTION } +
+            fadeIn(tween(READER_ENTER_MS, easing = EmphasizedDecelerate)),
+        exit = slideOutHorizontally(tween(READER_EXIT_MS, easing = StandardEasing)) { it / READER_SLIDE_FRACTION } +
+            fadeOut(tween(READER_EXIT_MS, easing = StandardEasing)),
+        label = "video player",
+    ) {
+        (itemId ?: shown)?.let { VideoPlayerRoute(topicId, it, onClose = onClose, onPlay = onPlay) }
+    }
+}
+
 private const val READER_ENTER_MS = 300
 private const val READER_EXIT_MS = 200
 
@@ -237,6 +271,9 @@ fun TopicDetailScreen(
     snackbars: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val detail = state.detail
+    // In a type's view, back (and the bar's ‹) returns to the whole topic before it leaves it.
+    val backToAll = state.typeView != null
+    BackHandler(enabled = backToAll && !state.selecting) { onIntent(TopicDetailIntent.SelectFilter(null)) }
     // Selection takes over the screen: its own bar, its own actions, and back gets out of it.
     BackHandler(enabled = state.selecting) { onIntent(TopicDetailIntent.ClearSelection) }
 
@@ -265,9 +302,11 @@ fun TopicDetailScreen(
                     )
                 } else {
                     DetailTopBar(
+                        // A type's view names the topic up here, as its big title is the type (Figma: Topic videos 2b).
+                        title = if (backToAll) detail?.topic?.name?.uppercase().orEmpty() else "MY INFO / TOPICS",
                         pinned = detail?.topic?.pinned == true,
                         menuEnabled = detail != null,
-                        onBack = onBack,
+                        onBack = if (backToAll) ({ onIntent(TopicDetailIntent.SelectFilter(null)) }) else onBack,
                         onSetPinned = { onIntent(TopicDetailIntent.SetPinned(it)) },
                         onDelete = { onIntent(TopicDetailIntent.AskDelete) },
                     )
@@ -275,24 +314,41 @@ fun TopicDetailScreen(
             }
         },
         bottomBar = {
-            AnimatedVisibility(
-                visible = state.selecting,
-                enter = slideInVertically(tween(BAR_ENTER_MS, easing = EmphasizedDecelerate)) { it } + fadeIn(tween(BAR_ENTER_MS)),
-                exit = slideOutVertically(tween(BAR_EXIT_MS, easing = StandardEasing)) { it } + fadeOut(tween(BAR_EXIT_MS)),
-                label = "selection actions",
-            ) {
-                SelectionActionBar(
-                    pinned = bars.selectionPinned,
-                    canMove = bars.canMoveSelection,
-                    onPin = { onIntent(TopicDetailIntent.PinSelection) },
-                    onMove = { onIntent(TopicDetailIntent.AskMoveSelection) },
-                    onDelete = { onIntent(TopicDetailIntent.AskDeleteSelection) },
-                )
+            Box {
+                AnimatedVisibility(
+                    visible = state.selecting,
+                    enter = slideInVertically(tween(BAR_ENTER_MS, easing = EmphasizedDecelerate)) { it } + fadeIn(tween(BAR_ENTER_MS)),
+                    exit = slideOutVertically(tween(BAR_EXIT_MS, easing = StandardEasing)) { it } + fadeOut(tween(BAR_EXIT_MS)),
+                    label = "selection actions",
+                ) {
+                    SelectionActionBar(
+                        pinned = bars.selectionPinned,
+                        canMove = bars.canMoveSelection,
+                        // SELECT opens selection with nothing picked: nothing to act on until something is.
+                        enabled = bars.selection.isNotEmpty(),
+                        doneLabel = bars.selectionDoneStatus?.let { status ->
+                            if (bars.selectionDone) "Mark un${status.done}" else "Mark ${status.done}"
+                        },
+                        onMarkDone = { onIntent(TopicDetailIntent.MarkSelectionDone) },
+                        onPin = { onIntent(TopicDetailIntent.PinSelection) },
+                        onMove = { onIntent(TopicDetailIntent.AskMoveSelection) },
+                        onDelete = { onIntent(TopicDetailIntent.AskDeleteSelection) },
+                    )
+                }
+                AnimatedVisibility(
+                    visible = backToAll && !state.selecting && state.typeItems.isNotEmpty(),
+                    enter = fadeIn(tween(BAR_ENTER_MS)),
+                    exit = fadeOut(tween(BAR_EXIT_MS)),
+                    label = "select hint",
+                ) {
+                    SelectHintBar(onSelect = { onIntent(TopicDetailIntent.EnterSelectionMode) })
+                }
             }
         },
         floatingActionButton = {
             AnimatedVisibility(
-                visible = detail != null && detail.items.isNotEmpty() && !state.selecting,
+                // Adding is the topic's, not a type view's: the hint bar sits where the button would.
+                visible = detail != null && detail.items.isNotEmpty() && !state.selecting && !backToAll,
                 enter = scaleIn(tween(BAR_ENTER_MS, easing = EmphasizedDecelerate)) + fadeIn(tween(BAR_ENTER_MS)),
                 exit = scaleOut(tween(BAR_EXIT_MS, easing = StandardEasing)) + fadeOut(tween(BAR_EXIT_MS)),
                 label = "add button",
@@ -363,6 +419,8 @@ private fun DetailFeed(
 ) {
     // Stamped by the ViewModel with the feed, so its groups and ages agree with each other.
     val nowMillis = state.nowMillis
+    // A picked type gets its own view (Figma: Topic videos 2b): the topic-wide parts wait for ALL.
+    val type = state.typeView
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         // Extra bottom room so the FAB never covers the last card.
@@ -370,23 +428,29 @@ private fun DetailFeed(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "header") {
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.padding(top = 5.dp)) {
-                Text(
-                    detail.topic.name,
-                    style = HeroTitleStyle.copy(lineHeight = 29.sp),
-                    color = Ink,
-                    modifier = Modifier.semantics { heading() },
-                )
-                Text(metaLine(detail, nowMillis), style = MetaStyle.copy(letterSpacing = 1.2.sp), color = Muted)
+            if (type != null) {
+                TypeViewHeader(state, type)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.padding(top = 5.dp)) {
+                    Text(
+                        detail.topic.name,
+                        style = HeroTitleStyle.copy(lineHeight = 29.sp),
+                        color = Ink,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Text(metaLine(detail, nowMillis), style = MetaStyle.copy(letterSpacing = 1.2.sp), color = Muted)
+                }
             }
         }
-        item(key = "actions") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 2.dp)) {
-                ActionButton("+ Add", primary = true, onClick = { onIntent(TopicDetailIntent.Add) }, modifier = Modifier.weight(1f))
-                ActionButton("Share", primary = false, onClick = { onIntent(TopicDetailIntent.Share) }, modifier = Modifier.weight(1f))
+        if (type == null) {
+            item(key = "actions") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 2.dp)) {
+                    ActionButton("+ Add", primary = true, onClick = { onIntent(TopicDetailIntent.Add) }, modifier = Modifier.weight(1f))
+                    ActionButton("Share", primary = false, onClick = { onIntent(TopicDetailIntent.Share) }, modifier = Modifier.weight(1f))
+                }
             }
         }
-        if (state.showSummaryCard) {
+        if (state.showSummaryCard && type == null) {
             item(key = "summary") {
                 SummaryCard(
                     summary = state.summary,
@@ -403,14 +467,18 @@ private fun DetailFeed(
         if (detail.items.isEmpty()) {
             item(key = "empty") { EmptyTopic(onAdd = { onIntent(TopicDetailIntent.Add) }) }
         } else {
-            detail.bills?.let { bills ->
-                item(key = "bills") { BillsCard(bills, nowMillis, Modifier.padding(top = 2.dp)) }
-            }
-            item(key = "modes") {
-                ViewModeSwitch(state.mode, onSelect = { onIntent(TopicDetailIntent.SelectMode(it)) })
-            }
-            item(key = "filters") {
-                FilterChips(state, onSelect = { onIntent(TopicDetailIntent.SelectFilter(it)) })
+            if (type == null) {
+                detail.bills?.let { bills ->
+                    item(key = "bills") { BillsCard(bills, nowMillis, Modifier.padding(top = 2.dp)) }
+                }
+                item(key = "modes") {
+                    ViewModeSwitch(state.mode, onSelect = { onIntent(TopicDetailIntent.SelectMode(it)) })
+                }
+                item(key = "filters") {
+                    FilterChips(state, onSelect = { onIntent(TopicDetailIntent.SelectFilter(it)) })
+                }
+            } else {
+                item(key = "type-chips") { TypeChips(state, type, onIntent) }
             }
             state.sections.forEach { section ->
                 // Feed is one unbroken run of cards, so it gets no heading at all.
@@ -420,34 +488,58 @@ private fun DetailFeed(
                     }
                 }
                 items(section.items, key = { it.id }) { item ->
-                    TopicItemCard(
-                        item = item,
-                        nowMillis = nowMillis,
-                        onClick = if (item.opens()) ({ onIntent(TopicDetailIntent.OpenItem(item)) }) else null,
-                        onSetDone = { done -> onIntent(TopicDetailIntent.SetItemDone(item, done)) },
-                        clickLabel = if (item is TopicItem.Note) "Copy note" else "Open item",
-                        onLongPress = {
-                            if (state.selecting) {
-                                onIntent(TopicDetailIntent.ToggleSelection(item.id))
-                            } else {
-                                onIntent(TopicDetailIntent.StartSelection(item.id))
-                            }
-                        },
-                        selecting = state.selecting,
-                        selected = item.id in state.selection,
-                        modifier = Modifier.animateItem(),
-                    )
+                    val onLongPress = {
+                        if (state.selecting) {
+                            onIntent(TopicDetailIntent.ToggleSelection(item.id))
+                        } else {
+                            onIntent(TopicDetailIntent.StartSelection(item.id))
+                        }
+                    }
+                    // Videos get compact rows in their own view; every other type keeps its card.
+                    if (type == ItemType.Video && item is TopicItem.Video) {
+                        VideoRow(
+                            video = item,
+                            nowMillis = nowMillis,
+                            onClick = { onIntent(TopicDetailIntent.OpenItem(item)) },
+                            onLongPress = onLongPress,
+                            selecting = state.selecting,
+                            selected = item.id in state.selection,
+                            modifier = Modifier.animateItem(),
+                        )
+                    } else {
+                        TopicItemCard(
+                            item = item,
+                            nowMillis = nowMillis,
+                            onClick = if (item.opens()) ({ onIntent(TopicDetailIntent.OpenItem(item)) }) else null,
+                            onSetDone = { done -> onIntent(TopicDetailIntent.SetItemDone(item, done)) },
+                            clickLabel = if (item is TopicItem.Note) "Copy note" else "Open item",
+                            onLongPress = onLongPress,
+                            selecting = state.selecting,
+                            selected = item.id in state.selection,
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
                 }
             }
             if (state.items.isEmpty()) {
                 item(key = "none") {
-                    val type = state.activeFilter
+                    val done = state.statusFilter?.status?.done
                     Text(
-                        if (type == null) "Nothing here." else "No ${type.noun(2)} yet.",
+                        when {
+                            type == null -> "Nothing here."
+                            // The chip is hiding them all: say so, rather than that there are none.
+                            state.showsOnlyUndone && done != null && state.hiddenDoneCount > 0 -> "All ${type.noun(2)} $done."
+                            else -> "No ${type.noun(2)} yet."
+                        },
                         style = BodyStyle,
                         color = Muted,
                         modifier = Modifier.padding(top = 4.dp),
                     )
+                }
+            }
+            if (type != null && state.showsOnlyUndone && state.hiddenDoneCount > 0) {
+                item(key = "hidden-done") {
+                    HiddenDoneRow(state, type, onShow = { onIntent(TopicDetailIntent.ToggleOnlyUndone) })
                 }
             }
         }
@@ -548,11 +640,18 @@ private fun SelectionTopBar(count: Int, allSelected: Boolean, onClear: () -> Uni
     }
 }
 
-/** Move, Pin and Delete for the selection, along the bottom (Figma: Topics 1e). */
+/**
+ * Move, Pin and Delete for the selection, along the bottom (Figma: Topics 1e). [doneLabel] adds
+ * Mark watched (read, paid) when every picked item is one type that can be done with (Figma: Topic
+ * videos 2d).
+ */
 @Composable
 private fun SelectionActionBar(
     pinned: Boolean,
     canMove: Boolean,
+    enabled: Boolean,
+    doneLabel: String?,
+    onMarkDone: () -> Unit,
     onPin: () -> Unit,
     onMove: () -> Unit,
     onDelete: () -> Unit,
@@ -567,9 +666,13 @@ private fun SelectionActionBar(
         ) {
             SelectionAction(R.drawable.ic_open, "Move", Synapse, Ink, enabled = canMove, onClick = onMove)
             VerticalDivider(thickness = 1.dp, color = Edge)
-            SelectionAction(R.drawable.ic_pin, if (pinned) "Unpin" else "Pin", Synapse, Ink, onClick = onPin)
+            SelectionAction(R.drawable.ic_pin, if (pinned) "Unpin" else "Pin", Synapse, Ink, enabled = enabled, onClick = onPin)
             VerticalDivider(thickness = 1.dp, color = Edge)
-            SelectionAction(R.drawable.ic_trash, "Delete", Alarm, Alarm, onClick = onDelete)
+            if (doneLabel != null) {
+                SelectionAction(R.drawable.ic_check, doneLabel, Synapse, Synapse, onClick = onMarkDone)
+                VerticalDivider(thickness = 1.dp, color = Edge)
+            }
+            SelectionAction(R.drawable.ic_trash, "Delete", Alarm, Alarm, enabled = enabled, onClick = onDelete)
         }
     }
 }
@@ -593,7 +696,14 @@ private fun RowScope.SelectionAction(
     ) {
         val alpha = if (enabled) 1f else DISABLED_ALPHA
         Icon(painterResource(icon), contentDescription = null, tint = iconTint.copy(alpha = alpha), modifier = Modifier.size(20.dp))
-        Text(label, style = TrayLabelStyle, color = labelColor.copy(alpha = alpha))
+        // Centred, so a label that wraps at a large text size ("Mark watched") stays under its icon.
+        Text(
+            label,
+            style = TrayLabelStyle,
+            color = labelColor.copy(alpha = alpha),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
     }
 }
 
@@ -687,6 +797,7 @@ private val SEGMENT_HEIGHT = 44.dp
 
 @Composable
 private fun DetailTopBar(
+    title: String,
     pinned: Boolean,
     menuEnabled: Boolean,
     onBack: () -> Unit,
@@ -702,10 +813,14 @@ private fun DetailTopBar(
     ) {
         BarGlyph("‹", "Back", onBack, Modifier.align(Alignment.CenterStart))
         Text(
-            "MY INFO / TOPICS",
+            title,
             style = MetaStyle.copy(letterSpacing = 1.2.sp),
             color = Muted,
-            modifier = Modifier.align(Alignment.Center),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 56.dp),
         )
         Box(Modifier.align(Alignment.CenterEnd)) {
             BarGlyph("⋯", "Topic options", onClick = { if (menuEnabled) menuOpen = true })
@@ -853,23 +968,6 @@ private fun metaLine(detail: TopicDetail, nowMillis: Long): String {
     return "$count ${if (count == 1) "ITEM" else "ITEMS"} · ${updatedLabel(detail.topic.updatedAtMillis, nowMillis)}"
 }
 
-/** @return false when the phone has no browser to open it with. */
-private fun Context.openUrl(url: String): Boolean = try {
-    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    true
-} catch (e: ActivityNotFoundException) {
-    false
-}
-
-
-private fun Context.shareText(subject: String, text: String) {
-    val send = Intent(Intent.ACTION_SEND)
-        .setType("text/plain")
-        .putExtra(Intent.EXTRA_SUBJECT, subject)
-        .putExtra(Intent.EXTRA_TEXT, text)
-    startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-}
-
 // ── Previews ──────────────────────────────────────────────────────
 
 @Preview
@@ -889,6 +987,33 @@ private fun TopicDetailPreview() {
     KortexTheme {
         TopicDetailScreen(
             state = TopicDetailState(detail = TopicDetail(topic, items), nowMillis = now),
+            onIntent = {},
+            onBack = {},
+        )
+    }
+}
+
+/** A topic's videos in their own view, unwatched only (Figma: Topic videos 2c). */
+@Preview
+@Composable
+private fun TopicDetailVideosPreview() {
+    val now = System.currentTimeMillis()
+    val topic = Topic(1, "Trip to Dubai", purpose = null, pinned = false, emptySet(), 0, now)
+    fun video(id: Long, title: String, length: Int, ago: Long, watched: Boolean = false) = TopicItem.Video(
+        id, 1, now - ago, SavedLink(id, "https://youtu.be/dQw4w9WgXc$id", title, thumbnailPath = null),
+        durationSeconds = length, watched = watched,
+    )
+    val items = listOf(
+        video(1, "Dubai in 3 days — what's actually worth it", 842, 2 * 3_600_000).copy(
+            progress = VideoProgress(320, SeenRanges.Empty + SeenRange(0, 320), lastPlayedAtMillis = now),
+        ),
+        video(2, "Metro vs taxi — getting around cheap", 521, 86_400_000),
+        video(3, "Desert safari: which operator we picked", 1_315, 3 * 86_400_000),
+        video(4, "Souk haggling, honestly", 310, 7 * 86_400_000, watched = true),
+    )
+    KortexTheme {
+        TopicDetailScreen(
+            state = TopicDetailState(detail = TopicDetail(topic, items), filter = ItemType.Video, onlyUndone = true, nowMillis = now),
             onIntent = {},
             onBack = {},
         )

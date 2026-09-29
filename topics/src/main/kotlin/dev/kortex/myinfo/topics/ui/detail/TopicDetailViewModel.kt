@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
 
 @HiltViewModel(assistedFactory = TopicDetailViewModel.Factory::class)
 class TopicDetailViewModel @AssistedInject constructor(
-    @Assisted private val topicId: Long,
+    @Assisted("topicId") private val topicId: Long,
     observeTopic: ObserveTopic,
     observeTopics: ObserveTopics,
     private val clock: Clock,
@@ -40,11 +40,13 @@ class TopicDetailViewModel @AssistedInject constructor(
     private val deleteTopic: DeleteTopic,
     observeTopicSummary: ObserveTopicSummary,
     private val summarizeTopic: SummarizeTopic,
-) : MviViewModel<TopicDetailState, TopicDetailIntent, TopicDetailEffect>(TopicDetailState()) {
+    /** A video to open the topic playing, as a search hit does; null opens the feed. */
+    @Assisted("playing") playing: Long? = null,
+) : MviViewModel<TopicDetailState, TopicDetailIntent, TopicDetailEffect>(TopicDetailState(playing = playing)) {
 
     @AssistedFactory
     interface Factory {
-        fun create(topicId: Long): TopicDetailViewModel
+        fun create(@Assisted("topicId") topicId: Long, @Assisted("playing") playing: Long?): TopicDetailViewModel
     }
 
     private var closing = false
@@ -76,14 +78,20 @@ class TopicDetailViewModel @AssistedInject constructor(
     override fun handleIntent(intent: TopicDetailIntent) {
         when (intent) {
             // Filtering hides items, and a selection the user can't see isn't one they can judge.
-            is TopicDetailIntent.SelectFilter -> setState { copy(filter = intent.type, selected = emptySet()) }
+            // Each type's view opens showing everything; the status chip is per visit.
+            is TopicDetailIntent.SelectFilter -> setState {
+                copy(filter = intent.type, selected = emptySet(), selectionMode = false, onlyUndone = false)
+            }
+            TopicDetailIntent.ToggleOnlyUndone -> setState { copy(onlyUndone = !onlyUndone) }
             is TopicDetailIntent.SelectMode -> setState { copy(mode = intent.mode, nowMillis = clock.nowMillis()) }
             is TopicDetailIntent.OpenItem -> open(intent.item)
             TopicDetailIntent.CloseEmail -> setState { copy(reading = null) }
+            TopicDetailIntent.ClosePlayer -> setState { copy(playing = null) }
             is TopicDetailIntent.SetItemDone -> viewModelScope.launch { setItemDone(intent.item.id, intent.done) }
             TopicDetailIntent.Summarize -> summarize()
 
             is TopicDetailIntent.StartSelection -> setState { copy(selected = selected + intent.itemId) }
+            TopicDetailIntent.EnterSelectionMode -> setState { copy(selectionMode = true) }
             is TopicDetailIntent.ToggleSelection -> setState {
                 copy(selected = if (intent.itemId in selected) selected - intent.itemId else selected + intent.itemId)
             }
@@ -93,6 +101,13 @@ class TopicDetailViewModel @AssistedInject constructor(
                 val pinned = !state.selectionPinned
                 setItemsPinned(ids, pinned)
                 report(ids.size, if (pinned) "Pinned" else "Unpinned")
+            }
+            TopicDetailIntent.MarkSelectionDone -> withSelection { ids, state ->
+                val status = state.selectionDoneStatus ?: return@withSelection
+                val done = !state.selectionDone
+                // Marking by hand keeps what the player recorded; unmarking a video leaves its progress too.
+                ids.forEach { setItemDone(it, done) }
+                report(ids.size, "Marked ${if (done) status.done else "un${status.done}"}")
             }
             TopicDetailIntent.AskMoveSelection -> setState { copy(movingSelection = true) }
             TopicDetailIntent.CancelMoveSelection -> setState { copy(movingSelection = false) }
@@ -149,7 +164,9 @@ class TopicDetailViewModel @AssistedInject constructor(
         viewModelScope.launch { action(ids, state) }
     }
 
-    private fun clearSelection() = setState { copy(selected = emptySet(), movingSelection = false, confirmingSelectionDelete = false) }
+    private fun clearSelection() = setState {
+        copy(selected = emptySet(), selectionMode = false, movingSelection = false, confirmingSelectionDelete = false)
+    }
 
     /** "3 items pinned", "1 item deleted". */
     private fun report(count: Int, verb: String) =
@@ -189,14 +206,19 @@ class TopicDetailViewModel @AssistedInject constructor(
 
     /**
      * What tapping an item does: a link opens in the browser, a kept file in whatever opens its
-     * type, an email in the reader over the feed, and a note — which has nowhere to open — copies
-     * its text.
+     * type, an email in the reader over the feed, a YouTube video in the player over the feed, and
+     * a note — which has nowhere to open — copies its text.
      */
     private fun open(item: TopicItem) {
         when (item) {
             is TopicItem.Link -> sendEffect(TopicDetailEffect.OpenUrl(item.link.url))
             is TopicItem.Article -> sendEffect(TopicDetailEffect.OpenUrl(item.link.url))
-            is TopicItem.Video -> sendEffect(TopicDetailEffect.OpenUrl(item.link.url))
+            // Other hosts, and videos whose uploader keeps them on YouTube, open where they live.
+            is TopicItem.Video -> if (item.playsInApp) {
+                setState { copy(playing = item.id) }
+            } else {
+                sendEffect(TopicDetailEffect.OpenUrl(item.link.url))
+            }
             // A bill opens its invoice when it has one; without one there is nothing to show yet.
             is TopicItem.Doc, is TopicItem.Image, is TopicItem.Bill ->
                 item.storedFile?.let { sendEffect(TopicDetailEffect.OpenFile(it)) }

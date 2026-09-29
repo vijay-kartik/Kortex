@@ -1,5 +1,7 @@
 package dev.kortex.myinfo.topics.domain.model
 
+import dev.kortex.myinfo.topics.domain.usecase.YouTubeVideoId
+
 /** Something kept in a topic. Link-backed items carry the [SavedLink] they point at. */
 sealed interface TopicItem {
     val id: Long
@@ -50,8 +52,17 @@ sealed interface TopicItem {
         val durationSeconds: Int?,
         val watched: Boolean,
         override val pinned: Boolean = false,
+        /** Null until it is played in the app. */
+        val progress: VideoProgress? = null,
+        /** The uploader doesn't allow playing it outside YouTube; taps go straight there. */
+        val embedBlocked: Boolean = false,
     ) : TopicItem {
         override val type get() = ItemType.Video
+
+        val record: VideoRecord get() = VideoRecord(durationSeconds, watched, progress, embedBlocked)
+
+        /** A YouTube video its uploader lets other apps play; anything else opens outside the app. */
+        val playsInApp: Boolean get() = !embedBlocked && YouTubeVideoId.parse(link.url) != null
     }
 
     data class Doc(

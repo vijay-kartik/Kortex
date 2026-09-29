@@ -6,6 +6,7 @@ import dev.kortex.mvi.MviViewModel
 import dev.kortex.myinfo.topics.domain.model.SearchCorpus
 import dev.kortex.myinfo.topics.domain.model.SearchResults
 import dev.kortex.myinfo.topics.domain.model.SearchScope
+import dev.kortex.myinfo.topics.domain.model.TopicItem
 import dev.kortex.myinfo.topics.domain.usecase.ObserveSearchCorpus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -41,6 +42,13 @@ class TopicSearchViewModel @Inject constructor(
                 rerun(currentState.query, intent.scope)
             }
             is TopicSearchIntent.OpenTopic -> sendEffect(TopicSearchEffect.OpenTopic(intent.topicId))
+            // Other videos keep opening the topic: tapping them there sends them to YouTube, as ever.
+            is TopicSearchIntent.OpenHit -> sendEffect(
+                TopicSearchEffect.OpenTopic(
+                    intent.topicId,
+                    playing = (intent.item as? TopicItem.Video)?.takeIf { it.playsInApp }?.id,
+                ),
+            )
         }
     }
 

@@ -54,6 +54,7 @@ import dev.kortex.myinfo.topics.domain.model.done
 import dev.kortex.myinfo.topics.ui.common.LocalThumbnail
 import dev.kortex.myinfo.topics.ui.common.MetaStyle
 import dev.kortex.myinfo.topics.ui.common.TypeBadge
+import dev.kortex.myinfo.topics.ui.common.VideoThumbnail
 import dev.kortex.myinfo.topics.ui.common.accent
 import dev.kortex.myinfo.topics.ui.common.ageLabel
 import dev.kortex.myinfo.topics.ui.common.dueLabel
@@ -61,6 +62,7 @@ import dev.kortex.myinfo.topics.ui.common.formatDate
 import dev.kortex.myinfo.topics.ui.common.formatDuration
 import dev.kortex.myinfo.topics.ui.common.formatMoney
 import dev.kortex.myinfo.topics.ui.common.hostOf
+import dev.kortex.myinfo.topics.ui.common.resume
 
 /**
  * One item in a topic's feed (Figma: Topics 1b). Anything with a picture leads with it; the rest
@@ -80,57 +82,24 @@ internal fun TopicItemCard(
     selecting: Boolean = false,
     selected: Boolean = false,
 ) {
-    val view = LocalView.current
-    val currentOnLongPress by rememberUpdatedState(onLongPress)
-    val currentOnClick by rememberUpdatedState(onClick)
-    // Held aside: inside the semantics block, `selected` is the property being set, not this flag.
-    val isSelected = selected
     val shape = ItemShape
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(if (isSelected) SynapseDim else Panel)
+            .background(if (selected) SynapseDim else Panel)
             .border(
-                width = if (isSelected) 1.5.dp else 1.dp,
-                color = if (isSelected) Synapse else Edge,
+                width = if (selected) 1.5.dp else 1.dp,
+                color = if (selected) Synapse else Edge,
                 shape = shape,
             )
-            .pointerInput(selecting) {
-                detectTapGestures(
-                    onLongPress = {
-                        if (!selecting) {
-                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                            currentOnLongPress()
-                        }
-                    },
-                    // In selection mode every card is tappable, even ones with nowhere to open.
-                    onTap = { if (selecting) currentOnLongPress() else currentOnClick?.invoke() },
-                )
-            }
-            .semantics {
-                if (selecting) {
-                    // Qualified: the bare name is this composable's parameter, not the property.
-                    this.selected = isSelected
-                    onClick(label = if (isSelected) "Deselect item" else "Select item") {
-                        currentOnLongPress()
-                        true
-                    }
-                } else {
-                    currentOnClick?.let { open ->
-                        onClick(label = clickLabel) {
-                            open()
-                            true
-                        }
-                    }
-                    onLongClick(label = "Select item") {
-                        currentOnLongPress()
-                        true
-                    }
-                }
-            },
+            .itemGestures(selecting, selected, clickLabel, onClick, onLongPress),
     ) {
-        media(item)?.let { (path, corner) -> MediaHeader(path, corner) }
+        if (item is TopicItem.Video && item.link.thumbnailPath != null) {
+            VideoThumbnail(item, Modifier.fillMaxWidth().height(MEDIA_HEIGHT), cornerRadius = 0)
+        } else {
+            media(item)?.let { (path, corner) -> MediaHeader(path, corner) }
+        }
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -147,6 +116,57 @@ internal fun TopicItemCard(
                     item.done?.let { done -> DoneChip(item, done, onSetDone, Modifier.padding(end = 10.dp)) }
                 }
                 Text(ageLabel(item.addedAtMillis, nowMillis), style = MetaStyle, color = Muted)
+            }
+        }
+    }
+}
+
+/**
+ * What an item in the feed does under a finger and under TalkBack: tap opens, long-press picks it
+ * out; in selection mode a tap picks it out or puts it back. Cards and the type views' rows share
+ * it, so both behave alike.
+ */
+@Composable
+internal fun Modifier.itemGestures(
+    selecting: Boolean,
+    selected: Boolean,
+    clickLabel: String,
+    onClick: (() -> Unit)?,
+    onLongPress: () -> Unit,
+): Modifier {
+    val view = LocalView.current
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val currentOnClick by rememberUpdatedState(onClick)
+    // Held aside: inside the semantics block, `selected` is the property being set, not this flag.
+    val isSelected = selected
+    return pointerInput(selecting) {
+        detectTapGestures(
+            onLongPress = {
+                if (!selecting) {
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    currentOnLongPress()
+                }
+            },
+            // In selection mode every item is tappable, even ones with nowhere to open.
+            onTap = { if (selecting) currentOnLongPress() else currentOnClick?.invoke() },
+        )
+    }.semantics {
+        if (selecting) {
+            this.selected = isSelected
+            onClick(label = if (isSelected) "Deselect item" else "Select item") {
+                currentOnLongPress()
+                true
+            }
+        } else {
+            currentOnClick?.let { open ->
+                onClick(label = clickLabel) {
+                    open()
+                    true
+                }
+            }
+            onLongClick(label = "Select item") {
+                currentOnLongPress()
+                true
             }
         }
     }
@@ -274,9 +294,9 @@ private fun MediaHeader(path: String, corner: String?) {
     }
 }
 
-/** The picture an item leads with, and what goes in its corner. */
+/** The picture an item leads with, and what goes in its corner. A video's is [VideoThumbnail], which shows more. */
 private fun media(item: TopicItem): Pair<String, String?>? = when (item) {
-    is TopicItem.Video -> item.link.thumbnailPath?.let { it to item.durationSeconds?.let(::formatDuration) }
+    is TopicItem.Video -> null
     is TopicItem.Link -> item.link.thumbnailPath?.let { it to null }
     is TopicItem.Article -> item.link.thumbnailPath?.let { it to null }
     is TopicItem.Image -> item.file.path to null
@@ -288,13 +308,22 @@ private fun typeLabel(item: TopicItem): String = when (item) {
     is TopicItem.Note -> "NOTE"
     is TopicItem.Link -> "LINK"
     is TopicItem.Article -> listOfNotNull("ARTICLE", item.readingMinutes?.let { "$it MIN" }).joinToString(" · ")
-    // The length rides on the thumbnail when there is one; without one this is the only place for it.
-    is TopicItem.Video -> listOfNotNull("VIDEO", item.durationSeconds?.takeIf { item.link.thumbnailPath == null }?.let(::formatDuration))
-        .joinToString(" · ")
+    is TopicItem.Video -> videoLabel(item)
     is TopicItem.Doc -> listOfNotNull("DOC", item.pageCount?.let { if (it == 1) "1 PAGE" else "$it PAGES" }).joinToString(" · ")
     is TopicItem.Image -> "IMAGE"
     is TopicItem.Bill -> if (item.file != null) "BILL · INVOICE" else "BILL"
     is TopicItem.Email -> "EMAIL"
+}
+
+/**
+ * "VIDEO · 8:42 LEFT" while half-watched (Figma: Topic videos 2a), "VIDEO · OPENS YOUTUBE ↗" once
+ * the uploader turned out to keep it on YouTube. The length rides on the thumbnail when there is
+ * one; without one this is the only place for it.
+ */
+internal fun videoLabel(video: TopicItem.Video): String {
+    val length = video.durationSeconds?.takeIf { video.link.thumbnailPath == null }?.let(::formatDuration)
+    val state = if (video.embedBlocked) "OPENS YOUTUBE ↗" else video.resume?.let { "${formatDuration(it.secondsLeft)} LEFT" }
+    return listOfNotNull("VIDEO", length, state).joinToString(" · ")
 }
 
 /** What being done means for this item, as the chip says it once and as an action. */

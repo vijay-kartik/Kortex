@@ -107,8 +107,8 @@ fun RootScreen(
                 }
                 Overlay.NewTopic -> NewTopicRoute(onClose = state::closeOverlay, onCreated = state::openTopic)
                 // Keyed so opening another topic starts that topic's screen rather than reusing this one.
-                is Overlay.Topic -> key(overlay.topicId) {
-                    TopicDetailRoute(topicId = overlay.topicId, onClose = state::closeOverlay)
+                is Overlay.Topic -> key(overlay.topicId, overlay.playing) {
+                    TopicDetailRoute(topicId = overlay.topicId, playing = overlay.playing, onClose = state::closeOverlay)
                 }
             }
         },
@@ -129,6 +129,7 @@ fun RootScreen(
                     search = topicsSearch,
                     onCreateTopic = state::openNewTopic,
                     onOpenTopic = state::openTopic,
+                    onPlayVideo = state::openVideo,
                 )
             }
         },

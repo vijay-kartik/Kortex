@@ -7,11 +7,14 @@ import dev.kortex.myinfo.topics.data.local.TopicSummaryEntity
 import dev.kortex.myinfo.topics.data.local.toColumn
 import dev.kortex.myinfo.topics.data.local.toDomain
 import dev.kortex.myinfo.topics.data.local.toEntity
+import dev.kortex.myinfo.topics.data.local.videoRecord
+import dev.kortex.myinfo.topics.data.local.withVideoRecord
 import dev.kortex.myinfo.topics.domain.model.NewItem
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
 import dev.kortex.myinfo.topics.domain.model.TopicSummary
+import dev.kortex.myinfo.topics.domain.model.VideoRecord
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import dev.kortex.myinfo.topics.domain.repository.TopicsRepository
@@ -71,6 +74,14 @@ class RoomTopicsRepository(
     }
 
     override suspend fun setItemDone(itemId: Long, done: Boolean, nowMillis: Long) = dao.setDone(itemId, done, nowMillis)
+
+    override suspend fun updateVideo(
+        itemId: Long,
+        nowMillis: Long,
+        change: (VideoRecord) -> VideoRecord,
+    ): Pair<VideoRecord, VideoRecord>? =
+        dao.updateVideo(itemId, nowMillis) { row -> row.withVideoRecord(change(row.videoRecord())) }
+            ?.let { (before, after) -> before.videoRecord() to after.videoRecord() }
 
     override suspend fun setItemsPinned(itemIds: Collection<Long>, pinned: Boolean, nowMillis: Long) =
         dao.setItemsPinned(itemIds, pinned, nowMillis)

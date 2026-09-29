@@ -72,6 +72,34 @@ class TopicDocsTest {
     }
 
     @Test
+    fun `a played video reads back with its progress`() {
+        val item = TopicItemEntity(
+            topicId = 3, type = "Video", addedAtMillis = 5_000, linkId = 8, durationSeconds = 1_380,
+            resumeSeconds = 320, seenRanges = "0-190,300-320", lastPlayedAtMillis = 5_500, embedBlocked = true,
+            updatedAtMillis = 6_000,
+        )
+        val remote = remoteTopicItem(item.uid, itemDoc(item, topicUid = "topic-1", linkUid = "link-1", serverTime = "ts"))!!
+
+        assertEquals(1_380, remote.durationSeconds)
+        assertEquals(320, remote.resumeSeconds)
+        assertEquals("0-190,300-320", remote.seenRanges)
+        assertEquals(5_500L, remote.lastPlayedAtMillis)
+        assertTrue(remote.embedBlocked)
+    }
+
+    @Test
+    fun `an item from before video progress reads as never played`() {
+        val remote = remoteTopicItem(
+            "i",
+            mapOf(ItemFields.TOPIC_UID to "t", ItemFields.TYPE to "Video", ItemFields.ADDED_AT to 10L, ItemFields.UPDATED_AT to 20L),
+        )!!
+        assertNull(remote.resumeSeconds)
+        assertNull(remote.seenRanges)
+        assertNull(remote.lastPlayedAtMillis)
+        assertFalse(remote.embedBlocked)
+    }
+
+    @Test
     fun `a delete reads as a delete without topic, type or name`() {
         val topicDelete = remoteTopic("t", deletedDoc(deletedAtMillis = 7_000, serverTime = "ts"))!!
         assertTrue(topicDelete.deleted)

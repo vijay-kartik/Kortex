@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * One per opening of the form: [CreateLinkRoute] scopes it, so nothing carries over from a
@@ -48,7 +49,7 @@ class CreateLinkViewModel @Inject constructor(
             .reduceInto { copy(alreadySaved = it) }
         // Typing and undoing within the debounce changes nothing, and a read already running goes on;
         // a newer address cancels the older read, and no stale result can land after it.
-        typedUrl.debounce(URL_DEBOUNCE_MS)
+        typedUrl.debounce(URL_DEBOUNCE_MS.milliseconds)
             .map { it.trim() }
             .distinctUntilChanged()
             .flatMapLatest { analyzeLink(it) }

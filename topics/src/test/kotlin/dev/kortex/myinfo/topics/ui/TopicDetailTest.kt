@@ -99,12 +99,111 @@ class TopicDetailTest {
     }
 
     @Test
-    fun `tapping a link opens it`() = runTest {
+    fun `tapping a link opens it, as does a video that can't play here`() = runTest {
         val viewModel = viewModel()
 
         viewModel.onIntent(TopicDetailIntent.OpenItem(video))
 
         assertEquals(TopicDetailEffect.OpenUrl("https://youtu.be/a"), viewModel.effects.first())
+    }
+
+    @Test
+    fun `tapping a YouTube video plays it over the feed, and back closes the player`() = runTest {
+        val youTube = video.copy(link = link(1, "https://youtu.be/dQw4w9WgXcQ", "Dubai in 3 days"))
+        val viewModel = viewModel(listOf(youTube, note))
+
+        viewModel.onIntent(TopicDetailIntent.OpenItem(youTube))
+        assertEquals(1L, viewModel.state.value.playing)
+
+        viewModel.onIntent(TopicDetailIntent.ClosePlayer)
+        assertNull(viewModel.state.value.playing)
+    }
+
+    @Test
+    fun `the status chip toggles, and picking another type starts that view afresh`() = runTest {
+        val viewModel = viewModel()
+        viewModel.onIntent(TopicDetailIntent.SelectFilter(ItemType.Video))
+
+        viewModel.onIntent(TopicDetailIntent.ToggleOnlyUndone)
+        assertTrue(viewModel.state.value.showsOnlyUndone)
+
+        viewModel.onIntent(TopicDetailIntent.EnterSelectionMode)
+        viewModel.onIntent(TopicDetailIntent.SelectFilter(null))
+        assertFalse(viewModel.state.value.onlyUndone)
+        assertFalse(viewModel.state.value.selecting)
+    }
+
+    @Test
+    fun `SELECT enters selection with nothing picked, and leaving clears it`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onIntent(TopicDetailIntent.EnterSelectionMode)
+        assertTrue(viewModel.state.value.selecting)
+        assertTrue(viewModel.state.value.selection.isEmpty())
+
+        viewModel.onIntent(TopicDetailIntent.ToggleSelection(note.id))
+        viewModel.onIntent(TopicDetailIntent.ToggleSelection(note.id))
+        assertTrue("unpicking the last one stays in selection mode", viewModel.state.value.selecting)
+
+        viewModel.onIntent(TopicDetailIntent.ClearSelection)
+        assertFalse(viewModel.state.value.selecting)
+    }
+
+    @Test
+    fun `picked videos can be marked watched together, and back once all of them are`() = runTest {
+        val other = video.copy(id = 4, link = link(4, "https://youtu.be/b", "Metro vs taxi"))
+        val viewModel = viewModel(listOf(video, other, note))
+        viewModel.onIntent(TopicDetailIntent.StartSelection(video.id))
+        viewModel.onIntent(TopicDetailIntent.ToggleSelection(other.id))
+        assertEquals("watched", viewModel.state.value.selectionDoneStatus?.done)
+        assertFalse(viewModel.state.value.selectionDone)
+
+        viewModel.onIntent(TopicDetailIntent.MarkSelectionDone)
+
+        assertEquals(mapOf(1L to true, 4L to true), repository.done)
+        assertEquals(TopicDetailEffect.ShowMessage("2 items marked watched"), viewModel.effects.first())
+        assertFalse("acting on the selection leaves selection mode", viewModel.state.value.selecting)
+
+        repository.observedItems.value = listOf(video.copy(watched = true), other.copy(watched = true), note)
+        viewModel.onIntent(TopicDetailIntent.SelectFilter(ItemType.Video))
+        viewModel.onIntent(TopicDetailIntent.SelectAll)
+        assertTrue(viewModel.state.value.selectionDone)
+
+        viewModel.onIntent(TopicDetailIntent.MarkSelectionDone)
+        assertEquals(mapOf(1L to false, 4L to false), repository.done)
+    }
+
+    @Test
+    fun `a mixed selection, or one of notes, has nothing to mark done`() = runTest {
+        val viewModel = viewModel()
+
+        viewModel.onIntent(TopicDetailIntent.SelectAll)
+        assertNull(viewModel.state.value.selectionDoneStatus)
+
+        viewModel.onIntent(TopicDetailIntent.ClearSelection)
+        viewModel.onIntent(TopicDetailIntent.StartSelection(note.id))
+        assertNull(viewModel.state.value.selectionDoneStatus)
+    }
+
+    @Test
+    fun `opened from a search hit, the topic starts with its video playing, and back lands on the feed`() = runTest {
+        val viewModel = viewModel(playing = video.id)
+        assertEquals(video.id, viewModel.state.value.playing)
+
+        viewModel.onIntent(TopicDetailIntent.ClosePlayer)
+        assertNull(viewModel.state.value.playing)
+        assertEquals(listOf(video, note), viewModel.state.value.items)
+    }
+
+    @Test
+    fun `a video its uploader keeps on YouTube opens there`() = runTest {
+        val blocked = video.copy(link = link(1, "https://youtu.be/dQw4w9WgXcQ", "Dubai in 3 days"), embedBlocked = true)
+        val viewModel = viewModel(listOf(blocked, note))
+
+        viewModel.onIntent(TopicDetailIntent.OpenItem(blocked))
+
+        assertEquals(TopicDetailEffect.OpenUrl("https://youtu.be/dQw4w9WgXcQ"), viewModel.effects.first())
+        assertNull(viewModel.state.value.playing)
     }
 
     @Test
@@ -397,7 +496,7 @@ class TopicDetailTest {
         assertEquals("You're planning 3 days in Dubai.", viewModel.state.value.summary?.text)
     }
 
-    private fun viewModel(items: List<TopicItem> = listOf(video, note)): TopicDetailViewModel {
+    private fun viewModel(items: List<TopicItem> = listOf(video, note), playing: Long? = null): TopicDetailViewModel {
         repository.observedTopics.value = repository.observedTopics.value.ifEmpty { listOf(topic) }
         repository.observedItems.value = items
         return TopicDetailViewModel(
@@ -413,6 +512,7 @@ class TopicDetailTest {
             deleteTopic = DeleteTopic(repository),
             observeTopicSummary = ObserveTopicSummary(repository),
             summarizeTopic = SummarizeTopic(repository, summarizer, Clock { NOW }),
+            playing = playing,
         )
     }
 

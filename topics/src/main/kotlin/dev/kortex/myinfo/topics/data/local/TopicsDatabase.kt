@@ -86,6 +86,13 @@ data class TopicItemEntity(
     val fromAddress: String? = null,
     val accountEmail: String? = null,
     val sentAtMillis: Long? = null,
+    /** Video, played in the app: where it stopped, in seconds. */
+    val resumeSeconds: Int? = null,
+    /** Video: the stretches seen, as [dev.kortex.myinfo.topics.domain.model.SeenRanges.encode] writes them. */
+    val seenRanges: String? = null,
+    val lastPlayedAtMillis: Long? = null,
+    /** Video: the uploader doesn't allow playing it outside YouTube. */
+    @ColumnInfo(defaultValue = "0") val embedBlocked: Boolean = false,
     /** The item's document id in the cloud. */
     val uid: String = UUID.randomUUID().toString(),
     /** Local changes not yet pushed, counted as on [TopicEntity.dirty]. */
@@ -120,7 +127,7 @@ data class TopicSummaryEntity(
         SyncTombstoneEntity::class,
         SyncControlEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class TopicsDatabase : RoomDatabase() {
@@ -159,6 +166,21 @@ abstract class TopicsDatabase : RoomDatabase() {
                 TopicSyncSchema.createTables(db)
                 TopicSyncSchema.seedControl(db)
                 TopicSyncSchema.createTriggers(db)
+            }
+        }
+
+        /**
+         * In-app video playback (docs/TOPIC_VIDEOS_PLAN.md): resume point, seen stretches, last
+         * played, and whether the video can be embedded at all. No video has been played yet. The
+         * item trigger is made again so the new columns sync; adding them marks nothing dirty.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE topic_items ADD COLUMN resumeSeconds INTEGER")
+                db.execSQL("ALTER TABLE topic_items ADD COLUMN seenRanges TEXT")
+                db.execSQL("ALTER TABLE topic_items ADD COLUMN lastPlayedAtMillis INTEGER")
+                db.execSQL("ALTER TABLE topic_items ADD COLUMN embedBlocked INTEGER NOT NULL DEFAULT 0")
+                TopicSyncSchema.recreateItemUpdateTrigger(db)
             }
         }
 

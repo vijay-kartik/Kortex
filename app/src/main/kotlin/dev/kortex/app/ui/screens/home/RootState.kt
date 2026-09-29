@@ -21,8 +21,8 @@ sealed interface Overlay {
     /** New-topic form, opened from the Topics tab. */
     data object NewTopic : Overlay
 
-    /** One topic's feed. */
-    data class Topic(val topicId: Long) : Overlay
+    /** One topic's feed; with [playing], one of its videos in the player over it (a search hit). */
+    data class Topic(val topicId: Long, val playing: Long? = null) : Overlay
 }
 
 /**
@@ -92,6 +92,11 @@ class RootState(
         overlay = Overlay.Topic(topicId)
     }
 
+    /** A topic with one of its videos already playing; back from the player lands on the topic. */
+    fun openVideo(topicId: Long, itemId: Long) {
+        overlay = Overlay.Topic(topicId, playing = itemId)
+    }
+
     fun closeOverlay() {
         overlay = Overlay.None
     }
@@ -121,7 +126,8 @@ class RootState(
                     },
                     when (overlay) {
                         is Overlay.CreateLink -> overlay.url
-                        is Overlay.Topic -> overlay.topicId.toString()
+                        // "7", or "7/42" with a video playing.
+                        is Overlay.Topic -> listOfNotNull(overlay.topicId, overlay.playing).joinToString("/")
                         else -> ""
                     },
                     when (chat) {
@@ -144,7 +150,7 @@ class RootState(
                         SETTINGS -> Overlay.Settings
                         CREATE_LINK -> Overlay.CreateLink(saved[2])
                         NEW_TOPIC -> Overlay.NewTopic
-                        TOPIC -> Overlay.Topic(saved[2].toLong())
+                        TOPIC -> Overlay.Topic(saved[2].substringBefore('/').toLong(), saved[2].substringAfter('/', "").toLongOrNull())
                         else -> Overlay.None
                     },
                     pendingChatRequest = when (saved[3]) {

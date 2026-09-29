@@ -1,6 +1,7 @@
 package dev.kortex.myinfo.topics.ui
 
 import dev.kortex.myinfo.topics.domain.FakeTopicsRepository
+import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.model.SearchScope
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicItem
@@ -128,6 +129,31 @@ class TopicSearchViewModelTest {
 
         assertEquals(TopicSearchEffect.OpenTopic(2), viewModel.effects.first())
     }
+
+    @Test
+    fun `a video hit that plays here opens its topic with the player on it`() = runTest(dispatcher) {
+        val video = video(7, "https://youtu.be/dQw4w9WgXcQ")
+
+        viewModel.onIntent(TopicSearchIntent.OpenHit(1, video))
+
+        assertEquals(TopicSearchEffect.OpenTopic(1, playing = 7), viewModel.effects.first())
+    }
+
+    @Test
+    fun `other hits, and videos that can't play here, open the topic`() = runTest(dispatcher) {
+        viewModel.onIntent(TopicSearchIntent.OpenHit(1, metroNote))
+        assertEquals(TopicSearchEffect.OpenTopic(1), viewModel.effects.first())
+
+        viewModel.onIntent(TopicSearchIntent.OpenHit(1, video(8, "https://vimeo.com/123456")))
+        assertEquals(TopicSearchEffect.OpenTopic(1), viewModel.effects.first())
+
+        viewModel.onIntent(TopicSearchIntent.OpenHit(1, video(9, "https://youtu.be/dQw4w9WgXcQ").copy(embedBlocked = true)))
+        assertEquals(TopicSearchEffect.OpenTopic(1), viewModel.effects.first())
+    }
+
+    private fun video(id: Long, url: String) = TopicItem.Video(
+        id, 1, addedAtMillis = 0, SavedLink(id, url, "Dubai in 3 days", thumbnailPath = null), durationSeconds = null, watched = false,
+    )
 
     private fun topic(id: Long, name: String) =
         Topic(id, name, purpose = null, pinned = false, sections = emptySet(), createdAtMillis = 0, updatedAtMillis = 0)

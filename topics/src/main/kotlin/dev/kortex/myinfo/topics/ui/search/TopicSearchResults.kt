@@ -72,7 +72,11 @@ internal fun TopicSearchResults(
 ) {
     Column(modifier) {
         ScopeChips(state, onSelect = { onIntent(TopicSearchIntent.SelectScope(it)) })
-        SearchResultsList(state, onOpenTopic = { onIntent(TopicSearchIntent.OpenTopic(it)) })
+        SearchResultsList(
+            state,
+            onOpenTopic = { onIntent(TopicSearchIntent.OpenTopic(it)) },
+            onOpenHit = { topicId, item -> onIntent(TopicSearchIntent.OpenHit(topicId, item)) },
+        )
     }
 }
 
@@ -111,7 +115,7 @@ private fun ScopeChips(state: TopicSearchState, onSelect: (SearchScope) -> Unit)
 }
 
 @Composable
-private fun SearchResultsList(state: TopicSearchState, onOpenTopic: (Long) -> Unit) {
+private fun SearchResultsList(state: TopicSearchState, onOpenTopic: (Long) -> Unit, onOpenHit: (Long, TopicItem) -> Unit) {
     if (state.noResults) {
         Text(
             "Nothing in your topics matches “${state.query}”.",
@@ -133,7 +137,7 @@ private fun SearchResultsList(state: TopicSearchState, onOpenTopic: (Long) -> Un
                 TopicResultHeader(group, onClick = { onOpenTopic(group.topic.id) }, modifier = Modifier.animateItem())
             }
             items(group.hits, key = { it.item.id }) { hit ->
-                HitRow(hit, onClick = { onOpenTopic(group.topic.id) }, modifier = Modifier.animateItem())
+                HitRow(hit, onClick = { onOpenHit(group.topic.id, hit.item) }, modifier = Modifier.animateItem())
             }
         }
     }
@@ -178,7 +182,12 @@ private fun HitRow(hit: SearchHit, onClick: () -> Unit, modifier: Modifier = Mod
             .clip(RowShape)
             .background(Panel)
             .border(1.dp, Edge, RowShape)
-            .clickable(onClickLabel = "Open the topic this is in", role = Role.Button, onClick = onClick)
+            .clickable(
+                // A video that plays here opens playing; anything else opens the topic it sits in.
+                onClickLabel = if ((hit.item as? TopicItem.Video)?.playsInApp == true) "Play" else "Open the topic this is in",
+                role = Role.Button,
+                onClick = onClick,
+            )
             .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(11.dp),

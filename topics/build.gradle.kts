@@ -65,6 +65,9 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
+    // In-app video playback through YouTube's official embed
+    implementation(libs.youtube.player)
+
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     androidTestImplementation(libs.androidx.espresso.core)

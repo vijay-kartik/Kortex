@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The video player checks for a connection before it streams (docs/TOPIC_VIDEOS_PLAN.md). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Android 11+ package visibility: the email reader's "Open Gmail" launches Gmail by its
          package name. Without this the launch intent can't be found. -->
     <queries>

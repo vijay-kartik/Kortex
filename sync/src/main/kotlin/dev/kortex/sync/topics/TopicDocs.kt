@@ -56,6 +56,11 @@ internal object ItemFields {
     const val FROM_ADDRESS = "fromAddress"
     const val ACCOUNT_EMAIL = "accountEmail"
     const val SENT_AT = "sentAt"
+    /** Video, played in the app: where it stopped, what was seen ("0-190,300-320", seconds), when. */
+    const val RESUME_SECONDS = "resumeSeconds"
+    const val SEEN_RANGES = "seenRanges"
+    const val LAST_PLAYED_AT = "lastPlayedAt"
+    const val EMBED_BLOCKED = "embedBlocked"
     const val UPDATED_AT = "updatedAt"
     const val DELETED = "deleted"
 }
@@ -112,6 +117,10 @@ internal fun itemDoc(item: TopicItemEntity, topicUid: String, linkUid: String?, 
     ItemFields.FROM_ADDRESS to item.fromAddress,
     ItemFields.ACCOUNT_EMAIL to item.accountEmail,
     ItemFields.SENT_AT to item.sentAtMillis,
+    ItemFields.RESUME_SECONDS to item.resumeSeconds,
+    ItemFields.SEEN_RANGES to item.seenRanges,
+    ItemFields.LAST_PLAYED_AT to item.lastPlayedAtMillis,
+    ItemFields.EMBED_BLOCKED to item.embedBlocked,
     ItemFields.UPDATED_AT to item.updatedAtMillis,
     SERVER_UPDATED_AT to serverTime,
     ItemFields.DELETED to false,
@@ -191,6 +200,10 @@ internal fun remoteTopicItem(uid: String, data: Map<String, Any?>): RemoteTopicI
         fromAddress = data.string(ItemFields.FROM_ADDRESS),
         accountEmail = data.string(ItemFields.ACCOUNT_EMAIL),
         sentAtMillis = data.long(ItemFields.SENT_AT),
+        resumeSeconds = data.long(ItemFields.RESUME_SECONDS)?.toInt(),
+        seenRanges = data.string(ItemFields.SEEN_RANGES),
+        lastPlayedAtMillis = data.long(ItemFields.LAST_PLAYED_AT),
+        embedBlocked = data[ItemFields.EMBED_BLOCKED] as? Boolean ?: false,
         updatedAtMillis = updatedAt,
         deleted = deleted,
     )

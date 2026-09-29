@@ -5,6 +5,7 @@ import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
 import dev.kortex.myinfo.topics.domain.model.TopicSummary
+import dev.kortex.myinfo.topics.domain.model.VideoRecord
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -42,6 +43,16 @@ interface TopicsRepository {
      * nothing to be done with, and are left alone.
      */
     suspend fun setItemDone(itemId: Long, done: Boolean, nowMillis: Long)
+
+    /**
+     * Applies [change] to the video's playback record and saves the result, in one transaction so
+     * two saves can't lose each other's stretches. A change to its watched flag counts as a change
+     * to the topic, as in [setItemDone]; playback alone doesn't, so the topic doesn't climb Recent
+     * every few seconds while playing.
+     *
+     * @return the record before and after, or null when the item is gone or isn't a video.
+     */
+    suspend fun updateVideo(itemId: Long, nowMillis: Long, change: (VideoRecord) -> VideoRecord): Pair<VideoRecord, VideoRecord>?
 
     /** Pinned items stay at the top of their topic whichever way its feed is arranged. */
     suspend fun setItemsPinned(itemIds: Collection<Long>, pinned: Boolean, nowMillis: Long)

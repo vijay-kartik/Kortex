@@ -5,10 +5,13 @@ import dev.kortex.myinfo.topics.domain.model.Money
 import dev.kortex.myinfo.topics.domain.model.NewItem
 import dev.kortex.myinfo.topics.domain.model.SavedEmail
 import dev.kortex.myinfo.topics.domain.model.SavedLink
+import dev.kortex.myinfo.topics.domain.model.SeenRanges
 import dev.kortex.myinfo.topics.domain.model.StoredFile
 import dev.kortex.myinfo.topics.domain.model.Topic
 import dev.kortex.myinfo.topics.domain.model.TopicDraft
 import dev.kortex.myinfo.topics.domain.model.TopicItem
+import dev.kortex.myinfo.topics.domain.model.VideoProgress
+import dev.kortex.myinfo.topics.domain.model.VideoRecord
 
 internal fun TopicEntity.toDomain() = Topic(
     id = id,
@@ -68,6 +71,28 @@ internal fun NewItem.toEntity(topicId: Long, linkId: Long?, nowMillis: Long): To
     }
 }
 
+/** A video row's playback record. Progress is null until any of it has been saved. */
+internal fun TopicItemEntity.videoRecord() = VideoRecord(
+    durationSeconds = durationSeconds,
+    watched = done,
+    progress = if (resumeSeconds == null && seenRanges == null && lastPlayedAtMillis == null) {
+        null
+    } else {
+        VideoProgress(resumeSeconds ?: 0, SeenRanges.decode(seenRanges), lastPlayedAtMillis)
+    },
+    embedBlocked = embedBlocked,
+)
+
+/** [record] written over this row's playback columns. */
+internal fun TopicItemEntity.withVideoRecord(record: VideoRecord) = copy(
+    durationSeconds = record.durationSeconds,
+    done = record.watched,
+    resumeSeconds = record.progress?.resumeSeconds,
+    seenRanges = record.progress?.seen?.encode(),
+    lastPlayedAtMillis = record.progress?.lastPlayedAtMillis,
+    embedBlocked = record.embedBlocked,
+)
+
 /**
  * Null when the row can't be shown: its link is no longer in [links], its type is unknown to this
  * build, or a column its type needs is missing.
@@ -80,7 +105,12 @@ internal fun TopicItemEntity.toDomain(links: Map<Long, SavedLink>): TopicItem? {
         ItemType.Note -> TopicItem.Note(id, topicId, addedAtMillis, text ?: return null, pinned)
         ItemType.Link -> TopicItem.Link(id, topicId, addedAtMillis, link ?: return null, pinned)
         ItemType.Article -> TopicItem.Article(id, topicId, addedAtMillis, link ?: return null, readingMinutes, read = done, pinned = pinned)
-        ItemType.Video -> TopicItem.Video(id, topicId, addedAtMillis, link ?: return null, durationSeconds, watched = done, pinned = pinned)
+        ItemType.Video -> videoRecord().let { record ->
+            TopicItem.Video(
+                id, topicId, addedAtMillis, link ?: return null, record.durationSeconds, record.watched,
+                pinned = pinned, progress = record.progress, embedBlocked = record.embedBlocked,
+            )
+        }
         ItemType.Doc -> TopicItem.Doc(id, topicId, addedAtMillis, title ?: return null, file ?: return null, pageCount, pinned)
         ItemType.Image -> TopicItem.Image(id, topicId, addedAtMillis, file ?: return null, caption = text, pinned = pinned)
         ItemType.Email -> TopicItem.Email(

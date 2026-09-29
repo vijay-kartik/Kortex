@@ -53,6 +53,7 @@ users/{uid}/topicItems/{itemUid}
   topicUid, type, addedAt, title?, text?, linkUid?, file?: { devicePath, mimeType },
   pageCount?, amountMinor?, currency?, issuedAt?, dueAt?, durationSeconds?, readingMinutes?,
   done, pinned, messageId?, threadId?, rfc822MessageId?, fromAddress?, accountEmail?, sentAt?,
+  resumeSeconds?, seenRanges?, lastPlayedAt?, embedBlocked (videos, docs/TOPIC_VIDEOS_PLAN.md),
   updatedAt, serverUpdatedAt, deleted
 Storage (not built; see "Records only"): users/{uid}/topic-files/{itemUid}{ext}
 ```

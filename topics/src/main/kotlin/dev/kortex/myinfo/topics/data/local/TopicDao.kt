@@ -125,6 +125,44 @@ abstract class TopicDao {
         touch(topicIds, nowMillis)
     }
 
+    @Query("SELECT * FROM topic_items WHERE id = :id AND type = 'Video'")
+    abstract suspend fun getVideo(id: Long): TopicItemEntity?
+
+    @Query(
+        "UPDATE topic_items SET durationSeconds = :durationSeconds, done = :done, resumeSeconds = :resumeSeconds, " +
+            "seenRanges = :seenRanges, lastPlayedAtMillis = :lastPlayedAtMillis, embedBlocked = :embedBlocked WHERE id = :id",
+    )
+    abstract suspend fun setPlayback(
+        id: Long,
+        durationSeconds: Int?,
+        done: Boolean,
+        resumeSeconds: Int?,
+        seenRanges: String?,
+        lastPlayedAtMillis: Long?,
+        embedBlocked: Boolean,
+    )
+
+    /**
+     * Rewrites a video's playback columns with what [change] makes of them. Its topic counts as
+     * changed only when the watched flag moved. @return the row before and after, or null when
+     * there is no such video.
+     */
+    @Transaction
+    open suspend fun updateVideo(
+        id: Long,
+        nowMillis: Long,
+        change: (TopicItemEntity) -> TopicItemEntity,
+    ): Pair<TopicItemEntity, TopicItemEntity>? {
+        val before = getVideo(id) ?: return null
+        val after = change(before)
+        if (after == before) return before to after
+        setPlayback(
+            id, after.durationSeconds, after.done, after.resumeSeconds, after.seenRanges, after.lastPlayedAtMillis, after.embedBlocked,
+        )
+        if (after.done != before.done) touch(listOf(before.topicId), nowMillis)
+        return before to after
+    }
+
     /** Marks the item done and its topic changed; a type with nothing to be done leaves both. */
     @Transaction
     open suspend fun setDone(id: Long, done: Boolean, nowMillis: Long) {

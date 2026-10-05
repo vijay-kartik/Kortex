@@ -26,7 +26,9 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +54,9 @@ import dev.kortex.design.anim.EmphasizedAccelerate
 import dev.kortex.design.anim.EmphasizedDecelerate
 import dev.kortex.design.anim.StandardEasing
 import dev.kortex.design.rememberTopBarSearch
+import dev.kortex.finance.ui.FinanceOverlay
+import dev.kortex.finance.ui.FinanceSection
+import dev.kortex.finance.ui.FinancesScreen
 import dev.kortex.links.ui.CreateLinkScreen
 import dev.kortex.links.ui.LinksScreen
 import dev.kortex.myinfo.topics.ui.TopicsScreen
@@ -71,6 +76,8 @@ fun RootScreen(
     // Held here, not in the tabs, so a query survives switching away and opening a topic from its results.
     val linksSearch = rememberTopBarSearch()
     val topicsSearch = rememberTopBarSearch()
+    // Which of Dashboard / Expenses / Accounts / Cards the Finances tab shows; the top bar names it.
+    var financeSection by rememberSaveable { mutableStateOf(FinanceSection.Dashboard) }
 
     EntryRequestEffect(entryRequest, state, onEntryRequestHandled)
 
@@ -79,6 +86,7 @@ fun RootScreen(
 
     RootContent(
         state = state,
+        tabTitle = { tab -> if (tab == KortexTab.Finances) financeSection.title else tab.label },
         tabSearch = { tab ->
             when (tab) {
                 KortexTab.Links -> linksSearch
@@ -110,6 +118,8 @@ fun RootScreen(
                 is Overlay.Topic -> key(overlay.topicId, overlay.playing) {
                     TopicDetailRoute(topicId = overlay.topicId, playing = overlay.playing, onClose = state::closeOverlay)
                 }
+                // Each Finance screen registers its own BackHandler, which pops it.
+                is Overlay.Finance -> FinanceOverlay(stack = overlay.stack, onNavigate = state::pushFinance, onBack = state::popFinance)
             }
         },
         tabContent = { tab ->
@@ -131,6 +141,11 @@ fun RootScreen(
                     onOpenTopic = state::openTopic,
                     onPlayVideo = state::openVideo,
                 )
+                KortexTab.Finances -> FinancesScreen(
+                    section = financeSection,
+                    onSectionChange = { financeSection = it },
+                    onNavigate = state::pushFinance,
+                )
             }
         },
     )
@@ -139,12 +154,13 @@ fun RootScreen(
 /**
  * Stateless home shell (Figma: Home Navigation): the top bar, the full-width [menu] sliding over the
  * tabs, and the switch between the tabbed UI and a full-screen [Overlay]. Screen bodies come from
- * [overlayContent] and [tabContent]; a tab gets the bar's search from [tabSearch], or puts
- * [tabActions] in its place.
+ * [overlayContent] and [tabContent]; a tab gets the bar's title from [tabTitle], its search from
+ * [tabSearch], or puts [tabActions] in its place.
  */
 @Composable
 fun RootContent(
     state: RootState,
+    tabTitle: (KortexTab) -> String = { it.label },
     tabSearch: (KortexTab) -> TopBarSearch?,
     tabActions: @Composable (KortexTab) -> Unit,
     menu: @Composable () -> Unit,
@@ -154,6 +170,9 @@ fun RootContent(
     AnimatedContent(
         targetState = state.overlay,
         transitionSpec = { overlayTransition() },
+        // One key for every Finance stack, so pushing a screen updates the open overlay instead of
+        // replacing it, which would drop the screens beneath along with their ViewModels.
+        contentKey = { if (it is Overlay.Finance) Overlay.Finance::class else it },
         label = "overlay",
     ) { overlay ->
         when (overlay) {
@@ -161,14 +180,15 @@ fun RootContent(
                 // A fresh tab starts at its top, so the hairline starts hidden.
                 val scroll = remember(state.selected) { ScrolledUnder() }
                 val search = tabSearch(state.selected)
+                val title = tabTitle(state.selected)
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     topBar = {
                         KortexTopBar(
-                            title = state.selected.label,
+                            title = title,
                             onMenuClick = state::openMenu,
                             search = search,
-                            searchHint = "Search ${state.selected.label.lowercase()}",
+                            searchHint = "Search ${title.lowercase()}",
                             scrolledUnder = scroll.scrolledUnder,
                             action = { tabActions(state.selected) },
                         )
@@ -212,14 +232,14 @@ private const val MENU_OPEN_MS = 320
 private const val MENU_CLOSE_MS = 250
 
 /**
- * How one screen gives way to the next. The Topics screens push in from the end and fall back the
- * same way, and one Topics screen replacing another (a new topic opening once saved) crossfades.
+ * How one screen gives way to the next. The Topics and Finance screens push in from the end and
+ * fall back the same way, and one replacing another (a new topic opening once saved) crossfades.
  * Every other overlay keeps switching instantly, as it always has.
  */
 private fun AnimatedContentTransitionScope<Overlay>.overlayTransition(): ContentTransform {
     val from = initialState
     val to = targetState
-    if (!from.isTopics && !to.isTopics) return EnterTransition.None togetherWith ExitTransition.None
+    if (!from.isPushed && !to.isPushed) return EnterTransition.None togetherWith ExitTransition.None
     return when {
         from == Overlay.None -> (
             slideInHorizontally(tween(OVERLAY_ENTER_MS, easing = EmphasizedDecelerate)) { it / OVERLAY_SLIDE_FRACTION } +
@@ -237,10 +257,10 @@ private fun AnimatedContentTransitionScope<Overlay>.overlayTransition(): Content
     }
 }
 
-/** The full-screen Topics screens: the new-topic form and a topic's feed. */
-private val Overlay.isTopics: Boolean
+/** The screens that push in: the new-topic form, a topic's feed, and the Finance screens. */
+private val Overlay.isPushed: Boolean
     get() = when (this) {
-        Overlay.NewTopic, is Overlay.Topic -> true
+        Overlay.NewTopic, is Overlay.Topic, is Overlay.Finance -> true
         else -> false
     }
 

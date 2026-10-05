@@ -15,8 +15,11 @@ import dev.kortex.finance.domain.repository.FinanceRepository
 import dev.kortex.finance.domain.usecase.AddAccount
 import dev.kortex.finance.domain.usecase.AddCategory
 import dev.kortex.finance.domain.usecase.AddTransaction
+import dev.kortex.finance.domain.usecase.DeleteAccount
 import dev.kortex.finance.domain.usecase.DeleteCategory
+import dev.kortex.finance.domain.usecase.DeleteTransaction
 import dev.kortex.finance.domain.usecase.ObserveFinance
+import dev.kortex.finance.domain.usecase.UpdateAccount
 import dev.kortex.finance.domain.usecase.UpdateCategory
 import javax.inject.Singleton
 
@@ -59,4 +62,13 @@ object FinanceModule {
 
     @Provides
     fun provideDeleteCategory(repository: FinanceRepository) = DeleteCategory(repository)
+
+    @Provides
+    fun provideUpdateAccount(repository: FinanceRepository) = UpdateAccount(repository)
+
+    @Provides
+    fun provideDeleteAccount(repository: FinanceRepository) = DeleteAccount(repository)
+
+    @Provides
+    fun provideDeleteTransaction(repository: FinanceRepository) = DeleteTransaction(repository)
 }

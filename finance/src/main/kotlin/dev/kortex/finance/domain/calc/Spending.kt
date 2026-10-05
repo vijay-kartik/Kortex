@@ -76,6 +76,21 @@ object Spending {
         )
     }
 
+    /**
+     * Spending so far by the end of each day of [month], days 1…[throughDay] (Pace vs last month).
+     * [throughDay] is clamped to the month's length.
+     */
+    fun cumulativeByDay(transactions: List<Transaction>, month: YearMonth, throughDay: Int = month.lengthOfMonth()): List<Long> {
+        val days = throughDay.coerceIn(0, month.lengthOfMonth())
+        val perDay = LongArray(days)
+        expenses(transactions, month.atDay(1), month.atEndOfMonth()).forEach { tx ->
+            val index = tx.occurredOn.dayOfMonth - 1
+            if (index < days) perDay[index] += tx.amountMinor
+        }
+        var running = 0L
+        return perDay.map { running += it; running }
+    }
+
     /** "At this pace, month ends near ₹3,290": spent so far ÷ days gone × days in the month. */
     fun projectedMonthEndMinor(transactions: List<Transaction>, today: LocalDate): Long {
         val spent = spentMinor(transactions, today.withDayOfMonth(1), today)

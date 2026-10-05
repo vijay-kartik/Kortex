@@ -13,7 +13,8 @@ enum class KortexTab(val label: String, val category: TabCategory) {
     History("History", TabCategory.Agent),
     Runs("Runs", TabCategory.Agent),
     Links("Links", TabCategory.MyInfo),
-    Topics("Topics", TabCategory.MyInfo);
+    Topics("Topics", TabCategory.MyInfo),
+    Finances("Finances", TabCategory.MyInfo);
 
     companion object {
         fun of(category: TabCategory): List<KortexTab> = entries.filter { it.category == category }

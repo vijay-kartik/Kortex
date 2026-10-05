@@ -283,4 +283,5 @@ private val KortexTab.icon: Int
         KortexTab.Runs -> R.drawable.ic_timeline
         KortexTab.Links -> R.drawable.ic_link
         KortexTab.Topics -> R.drawable.ic_layers
+        KortexTab.Finances -> dev.kortex.finance.R.drawable.ic_fin_wallet
     }

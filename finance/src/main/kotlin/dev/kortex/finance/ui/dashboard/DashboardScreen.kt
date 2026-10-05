@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.design.Alarm
@@ -135,7 +138,14 @@ private fun Tile(label: String, value: String, caption: String, captionColor: Co
     FinanceCard(modifier, onClick = onClick, padding = 14.dp) {
         SectionLabel(label)
         Spacer(Modifier.height(8.dp))
-        Text(value, style = MaterialTheme.typography.titleLarge, color = Ink, maxLines = 1)
+        // Shrinks to fit rather than cutting off: ₹4,07,288.81 must never read as ₹4,07,288.8.
+        val valueStyle = MaterialTheme.typography.titleLarge.copy(color = Ink)
+        BasicText(
+            value,
+            style = valueStyle,
+            maxLines = 1,
+            autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = valueStyle.fontSize, stepSize = 0.5.sp),
+        )
         Spacer(Modifier.height(6.dp))
         Text(caption, style = MaterialTheme.typography.bodySmall, color = captionColor)
     }

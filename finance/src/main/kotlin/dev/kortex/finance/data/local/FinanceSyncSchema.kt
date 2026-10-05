@@ -15,6 +15,7 @@ object FinanceSyncSchema {
     const val KIND_RECURRING = "finRecurring"
     const val KIND_STATEMENT = "finStatement"
     const val KIND_MERCHANT = "finMerchant"
+    const val KIND_SECRET = "finSecret"
 
     private class Tracked(val table: String, val kind: String, val columns: List<String>, val extraWhen: String? = null)
 
@@ -47,6 +48,7 @@ object FinanceSyncSchema {
             listOf("cardUid", "periodStart", "statementOn", "dueOn", "totalDueMinor", "minDueMinor", "source"),
         ),
         Tracked("merchants", KIND_MERCHANT, listOf("payeeKey", "displayName", "categoryUid")),
+        Tracked("secrets", KIND_SECRET, listOf("cipherText", "keyVersion")),
     )
 
     internal fun seedControl(db: SupportSQLiteDatabase) {
@@ -65,8 +67,9 @@ object FinanceSyncSchema {
         }
     }
 
-    internal fun createTriggers(db: SupportSQLiteDatabase) {
-        TRACKED.forEach { tracked ->
+    /** All tables' triggers, or only [tables]' (a migration adding a table). */
+    internal fun createTriggers(db: SupportSQLiteDatabase, tables: Set<String>? = null) {
+        TRACKED.filter { tables == null || it.table in tables }.forEach { tracked ->
             val extraNew = tracked.extraWhen?.let { " AND NEW.$it" }.orEmpty()
             val extraOld = tracked.extraWhen?.let { " AND OLD.$it" }.orEmpty()
             db.execSQL(

@@ -7,10 +7,15 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.kortex.finance.agent.FinanceAgent
 import dev.kortex.finance.data.RoomFinanceRepository
 import dev.kortex.finance.data.local.FinanceDao
 import dev.kortex.finance.data.local.FinanceDatabase
 import dev.kortex.finance.data.local.FinanceSyncDao
+import dev.kortex.finance.data.secure.KeystoreSecretBox
+import dev.kortex.finance.domain.port.FinanceKeySource
+import dev.kortex.finance.domain.port.SecretBox
+import dev.kortex.finance.domain.usecase.RevealNumber
 import dev.kortex.finance.domain.port.Clock
 import dev.kortex.finance.domain.repository.FinanceRepository
 import dev.kortex.finance.domain.usecase.AddAccount
@@ -46,6 +51,7 @@ object FinanceModule {
     fun provideDatabase(@ApplicationContext context: Context): FinanceDatabase =
         Room.databaseBuilder(context, FinanceDatabase::class.java, "finance.db")
             .addCallback(FinanceDatabase.CALLBACK)
+            .addMigrations(FinanceDatabase.MIGRATION_1_2)
             .build()
 
     @Provides
@@ -65,8 +71,16 @@ object FinanceModule {
     @Provides
     fun provideObserveFinance(repository: FinanceRepository) = ObserveFinance(repository)
 
+    /** FinanceKeySource (the `financeKey` function) is bound by the app, from `:sync`. */
     @Provides
-    fun provideAddAccount(repository: FinanceRepository, clock: Clock) = AddAccount(repository, clock)
+    @Singleton
+    fun provideSecretBox(@ApplicationContext context: Context, keys: FinanceKeySource): SecretBox = KeystoreSecretBox(context, keys)
+
+    @Provides
+    fun provideRevealNumber(repository: FinanceRepository, secrets: SecretBox) = RevealNumber(repository, secrets)
+
+    @Provides
+    fun provideAddAccount(repository: FinanceRepository, clock: Clock, secrets: SecretBox) = AddAccount(repository, clock, secrets)
 
     @Provides
     fun provideAddTransaction(repository: FinanceRepository, clock: Clock) = AddTransaction(repository, clock)
@@ -81,7 +95,7 @@ object FinanceModule {
     fun provideDeleteCategory(repository: FinanceRepository) = DeleteCategory(repository)
 
     @Provides
-    fun provideUpdateAccount(repository: FinanceRepository) = UpdateAccount(repository)
+    fun provideUpdateAccount(repository: FinanceRepository, secrets: SecretBox) = UpdateAccount(repository, secrets)
 
     @Provides
     fun provideDeleteAccount(repository: FinanceRepository) = DeleteAccount(repository)
@@ -128,4 +142,9 @@ object FinanceModule {
 
     @Provides
     fun provideAttachReceipt(repository: FinanceRepository) = AttachReceipt(repository)
+
+    /** What the agent's finance tools do; the tools themselves are defined in the app. */
+    @Provides
+    fun provideFinanceAgent(observeFinance: ObserveFinance, addTransaction: AddTransaction, markPaid: MarkPaid, clock: Clock) =
+        FinanceAgent(observeFinance, addTransaction, markPaid, clock)
 }

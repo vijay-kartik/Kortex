@@ -2,6 +2,7 @@ package dev.kortex.finance.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
@@ -12,10 +13,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RecurringEntity::class,
         CardStatementEntity::class,
         MerchantEntity::class,
+        SecretEntity::class,
         SyncTombstoneEntity::class,
         SyncControlEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class FinanceDatabase : RoomDatabase() {
@@ -38,6 +40,17 @@ abstract class FinanceDatabase : RoomDatabase() {
 
             override fun onOpen(db: SupportSQLiteDatabase) {
                 FinanceSyncSchema.seedBuiltInCategories(db)
+            }
+        }
+
+        /** Phase 6: encrypted full numbers. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `secrets` (`uid` TEXT NOT NULL, `cipherText` TEXT NOT NULL, " +
+                        "`keyVersion` INTEGER NOT NULL, `updatedAtMillis` INTEGER NOT NULL, `dirty` INTEGER NOT NULL, PRIMARY KEY(`uid`))",
+                )
+                FinanceSyncSchema.createTriggers(db, setOf("secrets"))
             }
         }
     }

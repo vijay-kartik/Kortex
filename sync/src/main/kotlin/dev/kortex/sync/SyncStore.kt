@@ -23,6 +23,7 @@ internal enum class SyncCollection(val path: String) {
     FinRecurring("finRecurring"),
     FinMerchants("finMerchants"),
     FinTransactions("finTransactions"),
+    FinSecrets("finSecrets"),
 }
 
 /**

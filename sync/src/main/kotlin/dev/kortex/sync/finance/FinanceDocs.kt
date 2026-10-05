@@ -6,6 +6,7 @@ import dev.kortex.finance.data.local.CategoryEntity
 import dev.kortex.finance.data.local.MerchantEntity
 import dev.kortex.finance.data.local.RecurringEntity
 import dev.kortex.finance.data.local.RemoteRow
+import dev.kortex.finance.data.local.SecretEntity
 import dev.kortex.finance.data.local.TransactionEntity
 import dev.kortex.finance.domain.model.AccountKind
 import dev.kortex.finance.domain.model.BankType
@@ -128,6 +129,18 @@ internal fun merchantDoc(m: MerchantEntity, serverTime: Any): Map<String, Any?> 
     "displayName" to m.displayName,
     "categoryUid" to m.categoryUid,
     FinFields.UPDATED_AT to m.updatedAtMillis,
+    SERVER_UPDATED_AT to serverTime,
+    FinFields.DELETED to false,
+)
+
+/**
+ * An account's full number: cipher text and the key version that sealed it, nothing else. A
+ * separate collection, so lists and the browser extension never read it.
+ */
+internal fun secretDoc(s: SecretEntity, serverTime: Any): Map<String, Any?> = mapOf(
+    "cipherText" to s.cipherText,
+    "keyVersion" to s.keyVersion,
+    FinFields.UPDATED_AT to s.updatedAtMillis,
     SERVER_UPDATED_AT to serverTime,
     FinFields.DELETED to false,
 )
@@ -277,6 +290,16 @@ internal fun remoteMerchant(uid: String, d: Map<String, Any?>): RemoteRow<Mercha
         payeeKey = d.text("payeeKey") ?: return@read null,
         displayName = d.text("displayName") ?: return@read null,
         categoryUid = d.text("categoryUid"),
+        updatedAtMillis = updatedAt,
+        dirty = 0,
+    )
+}
+
+internal fun remoteSecret(uid: String, d: Map<String, Any?>): RemoteRow<SecretEntity>? = read(uid, d) { updatedAt ->
+    SecretEntity(
+        uid = uid,
+        cipherText = d.text("cipherText") ?: return@read null,
+        keyVersion = d.long("keyVersion")?.toInt() ?: return@read null,
         updatedAtMillis = updatedAt,
         dirty = 0,
     )

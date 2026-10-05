@@ -12,6 +12,7 @@ import dev.kortex.app.data.auth.McpOAuthManager
 import dev.kortex.app.data.local.ChatSessionDao
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.app.data.settings.asLlmProviderSettings
+import dev.kortex.app.domain.agent.financeTools
 import dev.kortex.app.domain.agent.AgentBootstrap
 import dev.kortex.app.domain.share.ShareAgentRunner
 import dev.kortex.core.gmail.gmailTool
@@ -34,6 +35,7 @@ import dev.kortex.graph_storage.PredicateVocabulary
 import dev.kortex.graph_tools.KnowledgeExtractionTool
 import dev.kortex.graph_tools.MemoryTool
 import dev.kortex.graph_tools.SaveItineraryTool
+import dev.kortex.finance.agent.FinanceAgent
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,11 +79,13 @@ object AgentModule {
         embedder: EmbeddingProvider,
         settingsStore: SettingsStore,
         gmailAuth: GmailAuthManager,
+        finance: FinanceAgent,
     ): ToolRegistry = ToolRegistry(
         defaultTools() +
             MemoryTool(graphRepository, graphBuilder, embedder) +
             KnowledgeExtractionTool(graphBuilder, embedder, predicateVocabulary) +
             SaveItineraryTool() +
+            financeTools(finance) +
             reminderTool(context) +
             calendarEventTool(context) +
             gmailTool(

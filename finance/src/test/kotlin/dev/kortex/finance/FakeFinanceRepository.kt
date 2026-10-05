@@ -7,6 +7,7 @@ import dev.kortex.finance.domain.model.Category
 import dev.kortex.finance.domain.model.Merchant
 import dev.kortex.finance.domain.model.Recurring
 import dev.kortex.finance.domain.model.Transaction
+import dev.kortex.finance.domain.port.SealedSecret
 import dev.kortex.finance.domain.repository.FinanceRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +41,19 @@ class FakeFinanceRepository : FinanceRepository {
     }
 
     override suspend fun updateAccount(account: Account) = accounts.update { list -> list.map { if (it.uid == account.uid) account else it } }
-    override suspend fun deleteAccount(uid: String) = accounts.update { list -> list.filterNot { it.uid == uid } }
+    val secrets = MutableStateFlow<Map<String, SealedSecret>>(emptyMap())
+
+    override suspend fun deleteAccount(uid: String) {
+        accounts.update { list -> list.filterNot { it.uid == uid } }
+        secrets.update { it - uid }
+    }
+
+    override suspend fun saveSecret(accountUid: String, secret: SealedSecret) {
+        secrets.update { it + (accountUid to secret) }
+        accounts.update { list -> list.map { if (it.uid == accountUid) it.copy(hasSecret = true) else it } }
+    }
+
+    override suspend fun getSecret(accountUid: String) = secrets.value[accountUid]
 
     override suspend fun addTransaction(transaction: Transaction, merchant: Merchant?) {
         transactions.update { it + transaction }

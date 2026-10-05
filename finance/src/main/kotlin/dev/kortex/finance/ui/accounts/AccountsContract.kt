@@ -89,6 +89,8 @@ data class CardUi(
     val uid: String,
     val name: String,
     val last4: String?,
+    /** A full number is kept, encrypted, and can be revealed. */
+    val hasSecret: Boolean = false,
     val holder: String?,
     val expiry: String?,
     val network: String?,
@@ -103,12 +105,21 @@ data class CardUi(
     val dueDay: String?,
 )
 
-data class CardsState(val loading: Boolean = true, val cards: List<CardUi> = emptyList())
+data class CardsState(
+    val loading: Boolean = true,
+    val cards: List<CardUi> = emptyList(),
+    /** Full numbers shown after the screen lock, by card uid; each hides again after a while. */
+    val revealed: Map<String, String> = emptyMap(),
+)
 
 sealed interface CardsIntent {
     data object AddCard : CardsIntent
     data class Edit(val uid: String) : CardsIntent
     data class PayBill(val statementUid: String) : CardsIntent
+
+    /** The screen lock was passed: show this card's full number. */
+    data class Reveal(val uid: String) : CardsIntent
+    data class Hide(val uid: String) : CardsIntent
 }
 
 sealed interface CardsEffect {
@@ -127,6 +138,7 @@ object CardsUi {
                     uid = card.uid,
                     name = card.name,
                     last4 = card.last4,
+                    hasSecret = card.hasSecret,
                     holder = card.holder,
                     expiry = card.expiry,
                     network = card.network,

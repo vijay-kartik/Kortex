@@ -13,12 +13,14 @@ import dev.kortex.app.data.security.AppLockStore
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.app.domain.security.AppLock
 import dev.kortex.finance.data.local.FinanceSyncDao
+import dev.kortex.finance.domain.port.FinanceKeySource
 import dev.kortex.links.data.LinkSyncDao
 import dev.kortex.links.images.LinkImageStore
 import dev.kortex.myinfo.topics.data.local.TopicSyncDao
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.sync.CloudAccount
 import dev.kortex.sync.CloudSync
+import dev.kortex.sync.finance.FinanceKeyClient
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -64,6 +66,11 @@ object AppModule {
         topicFiles: FileVault,
         financeSyncDao: FinanceSyncDao,
     ): CloudSync = CloudSync(context, account, linkSyncDao, linkImages, topicSyncDao, topicFiles, financeSyncDao)
+
+    /** The data key for encrypted full card and account numbers, from the `financeKey` function. */
+    @Provides
+    @Singleton
+    fun provideFinanceKeySource(account: CloudAccount): FinanceKeySource = FinanceKeyClient(account)
 
     /** Biometric app lock: one lock state shared by every activity. */
     @Provides

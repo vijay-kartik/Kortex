@@ -7,7 +7,17 @@ import dev.kortex.finance.domain.usecase.ObserveFinance
 import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.mvi.MviViewModel
 import javax.inject.Inject
+import androidx.lifecycle.viewModelScope
+import dev.kortex.finance.domain.usecase.RevealNumber
+import dev.kortex.finance.ui.common.FinanceNotice
+import dev.kortex.finance.ui.common.FinanceNotices
+import dev.kortex.finance.ui.common.ScreenLock
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 @HiltViewModel
 class AccountsViewModel @Inject constructor(
@@ -32,10 +42,14 @@ class AccountsViewModel @Inject constructor(
 class CardsViewModel @Inject constructor(
     observeFinance: ObserveFinance,
     clock: Clock,
+    private val revealNumber: RevealNumber,
+    private val notices: FinanceNotices,
 ) : MviViewModel<CardsState, CardsIntent, CardsEffect>(CardsState()) {
 
+    private val revealed = MutableStateFlow<Map<String, String>>(emptyMap())
+
     init {
-        observeFinance().map { CardsUi.build(it, clock.today()) }.reduceInto { it }
+        combine(observeFinance(), revealed) { snapshot, shown -> CardsUi.build(snapshot, clock.today()).copy(revealed = shown) }.reduceInto { it }
     }
 
     override fun handleIntent(intent: CardsIntent) {
@@ -43,7 +57,22 @@ class CardsViewModel @Inject constructor(
             CardsIntent.AddCard -> FinanceRoute.AddAccount(AccountKind.CREDIT_CARD)
             is CardsIntent.Edit -> FinanceRoute.EditAccount(intent.uid)
             is CardsIntent.PayBill -> FinanceRoute.PayBill(intent.statementUid)
+            is CardsIntent.Reveal -> return reveal(intent.uid)
+            is CardsIntent.Hide -> return revealed.update { it - intent.uid }
         }
         sendEffect(CardsEffect.Navigate(route))
+    }
+
+    private fun reveal(uid: String) {
+        viewModelScope.launch {
+            val number = revealNumber(uid)
+            if (number == null) {
+                notices.post(FinanceNotice("Couldn’t show the full number. Check you’re signed in and online, then try again."))
+                return@launch
+            }
+            revealed.update { it + (uid to number) }
+            delay(ScreenLock.SHOW_MILLIS)
+            revealed.update { it - uid }
+        }
     }
 }

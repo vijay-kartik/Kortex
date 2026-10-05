@@ -1,17 +1,20 @@
 package dev.kortex.finance.domain.usecase
 
 import dev.kortex.finance.domain.model.AccountKind
+import dev.kortex.finance.domain.port.SecretBox
 import dev.kortex.finance.domain.repository.FinanceRepository
 
 /**
  * Saves Edit account (Figma: Edit account — bank / card). The kind can't change, and there is no
  * balance to change: [AccountDraft.openingMinor] is ignored, as balances only move with entries.
  */
-class UpdateAccount(private val repository: FinanceRepository) {
+class UpdateAccount(private val repository: FinanceRepository, private val secrets: SecretBox = SecretBox.None) {
     suspend operator fun invoke(uid: String, draft: AccountDraft): AccountSaveResult {
         val account = repository.getAccount(uid) ?: return AccountSaveResult.NotFound
         val name = draft.name.trim().ifEmpty { return AccountSaveResult.BlankName }
-        val last4 = draft.last4?.trim()?.ifEmpty { null }
+        val number = AccountNumbers.clean(draft.fullNumber)
+        if (number == AccountNumbers.INVALID) return AccountSaveResult.InvalidNumber
+        val last4 = number?.takeLast(4) ?: draft.last4?.trim()?.ifEmpty { null }
         if (last4 != null && (last4.length != 4 || !last4.all { it.isDigit() })) return AccountSaveResult.InvalidLast4
         if (listOfNotNull(draft.statementDay, draft.dueDay).any { it !in 1..31 }) return AccountSaveResult.InvalidDay
         if ((draft.creditLimitMinor ?: 0) < 0) return AccountSaveResult.InvalidAmount
@@ -32,7 +35,8 @@ class UpdateAccount(private val repository: FinanceRepository) {
                 colorToken = draft.colorToken ?: account.colorToken,
             ),
         )
-        return AccountSaveResult.Saved(uid)
+        // A new full number replaces the one kept; leaving the field empty keeps it.
+        return AccountSaveResult.Saved(uid, number?.let { AccountNumbers.keep(repository, secrets, uid, it) })
     }
 }
 

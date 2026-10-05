@@ -85,6 +85,9 @@ dependencies {
     implementation(project(":sync"))
 
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    // App Check: `financeKey` only answers this app, attested by Play Integrity (debug builds use the debug provider).
+    implementation(libs.firebase.appcheck.playintegrity)
+    debugImplementation(libs.firebase.appcheck.debug)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)

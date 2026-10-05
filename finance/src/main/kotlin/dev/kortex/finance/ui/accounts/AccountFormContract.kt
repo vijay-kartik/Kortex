@@ -43,6 +43,10 @@ data class AccountFormState(
     /** Set when filled in from an SMS (Paste SMS 09): the bank it named and the "Avl Lmt" it showed. */
     val fromSmsBank: String? = null,
     val smsAvailableLimitMinor: Long? = null,
+    /** On edit: a full number is kept, encrypted. */
+    val hasSecret: Boolean = false,
+    /** Shown for a while after the screen lock was passed. */
+    val revealedNumber: String? = null,
 ) {
     val editing: Boolean get() = editUid != null
     val fromSms: Boolean get() = fromSmsBank != null || smsAvailableLimitMinor != null
@@ -52,7 +56,12 @@ data class AccountFormState(
     /** Null with the error to show when a field can't be read. */
     fun toDraft(): Pair<AccountDraft?, String?> {
         val digits = number.filter { it.isDigit() }
-        val last4 = if (digits.isEmpty()) savedLast4 else if (digits.length < 4) return null to "Enter at least the last 4 digits." else digits.takeLast(4)
+        // Just the last 4, or the full number: anything in between is a typo.
+        if (digits.isNotEmpty() && digits.length != 4 && digits.length !in 8..19) {
+            return null to "Enter the full number, or just the last 4 digits."
+        }
+        val last4 = if (digits.isEmpty()) savedLast4 else digits.takeLast(4)
+        val fullNumber = digits.takeIf { it.length >= 8 }
         fun day(text: String): Int? = text.trim().takeIf { it.isNotEmpty() }?.toIntOrNull()
         if (statementDay.isNotBlank() && day(statementDay) == null || dueDay.isNotBlank() && day(dueDay) == null) {
             return null to "Statement and due dates are days of the month, 1–31."
@@ -75,6 +84,7 @@ data class AccountFormState(
             statementDay = day(statementDay),
             dueDay = day(dueDay),
             openingMinor = openingMinor,
+            fullNumber = fullNumber,
         ) to null
     }
 
@@ -108,6 +118,7 @@ data class AccountFormState(
             dueDay = account.dueDay?.toString().orEmpty(),
             creditLimit = account.creditLimitMinor?.let(FinanceFormat::amountInput).orEmpty(),
             balanceMinor = balanceMinor,
+            hasSecret = account.hasSecret,
         )
 
         fun message(result: AccountSaveResult): String? = when (result) {
@@ -118,6 +129,7 @@ data class AccountFormState(
             AccountSaveResult.InvalidAmount -> "Amounts can’t be negative."
             AccountSaveResult.UnknownLinkedAccount -> "That bank account no longer exists."
             AccountSaveResult.NotFound -> "This account was deleted."
+            AccountSaveResult.InvalidNumber -> "Check the number: 8 to 19 digits, ending in the last 4."
         }
     }
 }
@@ -129,6 +141,10 @@ sealed interface AccountFormIntent {
     data object AskDelete : AccountFormIntent
     data object CancelDelete : AccountFormIntent
     data object ConfirmDelete : AccountFormIntent
+
+    /** The screen lock was passed: show the full number. */
+    data object Reveal : AccountFormIntent
+    data object Hide : AccountFormIntent
 }
 
 sealed interface AccountFormEffect {

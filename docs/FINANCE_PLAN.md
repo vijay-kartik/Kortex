@@ -67,7 +67,7 @@ PARTLY_PAID · PAID · OVERDUE) are derived from CARD_PAYMENTs.
 `categoryUid?` (last pick; drives suggestions).
 
 **Secret** (`finSecrets/{accountUid}`) — `cipherText`, `keyVersion`. A separate collection so
-lists and the extension never read it.
+lists and the extension never read it. Locally the `secrets` table (finance.db v2).
 
 **Device only:** `sms_sources` (txUid, sender, body — for re-parsing and the underlines),
 `receipts/{txUid}.jpg` (only if *Keep the receipt photo* is checked), sync state in DataStore,
@@ -180,7 +180,7 @@ validation, dedupe, merchant learning and sync behave the same whichever screen 
 The data key is cached on the phone in Android Keystore-backed storage; a new phone fetches it
 after sign-in.
 
-## Agent tools (`:core-agent`)
+## Agent tools (`:app`, on `:finance`'s `FinanceAgent`)
 
 `add_expense`, `add_income` and `mark_paid` (`RiskLevel.MEDIUM`, confirm before saving);
 `spending_summary { period, category? }`, `find_transactions { query, from?, to? }`,
@@ -278,4 +278,39 @@ after sign-in.
        photo that couldn't be read (Retake).
      - The photo is kept in `files/receipts/` only when "Keep the receipt photo" is checked.
    - **Entry points.** Paste SMS and Scan Receipt tiles sit at the top of Add Expense.
-6. **Secrets** (Tink + `financeKey`), `addTransaction` / `listFinance` + API, agent tools.
+6. **Secrets** (Tink + `financeKey`), `addTransaction` / `listFinance` + API, agent tools. *Done:*
+   - **Full numbers.** Add / Edit account take the full number (8–19 digits), and the account keeps
+     only its last 4 digits.
+     - `KeystoreSecretBox` seals the number with Tink AES-256-GCM, using the account uid as
+       associated data, under the user's data key. The key is fetched once from `financeKey`
+       (`FinanceKeyClient` in `:sync`) and cached on the phone, wrapped by an Android Keystore key.
+     - Room v2 adds the `secrets` table (migration 1 → 2), with change tracking. It syncs as
+       `finSecrets`: `cipherText`, `keyVersion` and nothing else. Deleting an account deletes its
+       secret too.
+     - Without a key (signed out, or offline the first time) the account still saves, and the
+       app says the number wasn't kept.
+   - **Reveal.** Credit Cards › Card details and Edit account have a Show button. It asks for the
+     phone's screen lock (biometrics or PIN), shows the number grouped by 4 for 30 seconds, then
+     hides it. A phone with no screen lock can't reveal numbers.
+   - **Functions** (`functions/src/finance.ts`, `financeDocs.ts`, `financeKey.ts`):
+     - `addTransaction` and `listFinance` are callables and are also on `/api/…` with an API key.
+       An entry's account is given by uid, last 4 digits or name, and its category by uid or name.
+       Its day is taken in `timeZone`, which defaults to Asia/Kolkata. A remembered merchant uses
+       the same `mer_` id as on the phone.
+     - `financeKey` is callable only, with App Check enforced. It creates a 32-byte key per user,
+       wraps it with Cloud KMS bound to the user's uid, and stores it in `financeKeys/{uid}`.
+       When two phones ask at once, both get the same key.
+     - Node tests cover parsing, name matching, merchant ids and the document fields.
+   - **App Check.** Debug builds use the debug provider; release builds use Play Integrity.
+   - **Agent tools.** `FinanceAgent` lives in `:finance` (its logic is tested), and the tools are
+     defined in `:app` (`financeTools`). They're there rather than in `:core-agent`, which doesn't
+     depend on features.
+     - `add_expense`, `add_income` and `mark_paid` are MEDIUM risk, so they're confirmed before
+       anything is saved.
+     - `spending_summary`, `find_transactions` and `list_pending` are LOW risk.
+   - **Setup before deploying:**
+     1. Create a Cloud KMS key, e.g. `projects/{project}/locations/asia-south1/keyRings/kortex/cryptoKeys/finance-keys`.
+     2. Give the functions' service account *Cloud KMS CryptoKey Encrypter/Decrypter* on that key.
+     3. Set `FINANCE_KMS_KEY` to the key's name (in `functions/.env`, or when deploy prompts for it).
+     4. Register the Android app in App Check with Play Integrity, and add the debug token a debug
+        build logs on its first run.

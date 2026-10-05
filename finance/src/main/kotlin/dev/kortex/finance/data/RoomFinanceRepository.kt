@@ -1,6 +1,7 @@
 package dev.kortex.finance.data
 
 import dev.kortex.finance.data.local.FinanceDao
+import dev.kortex.finance.data.local.SecretEntity
 import dev.kortex.finance.data.local.toDomain
 import dev.kortex.finance.data.local.toEntity
 import dev.kortex.finance.domain.model.Account
@@ -10,6 +11,7 @@ import dev.kortex.finance.domain.model.Merchant
 import dev.kortex.finance.domain.model.Recurring
 import dev.kortex.finance.domain.model.Transaction
 import dev.kortex.finance.domain.port.Clock
+import dev.kortex.finance.domain.port.SealedSecret
 import dev.kortex.finance.domain.repository.FinanceRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -49,6 +51,12 @@ class RoomFinanceRepository(
         dao.saveAccount(account.copy(updatedAtMillis = clock.nowMillis()).toEntity())
 
     override suspend fun deleteAccount(uid: String) = dao.deleteAccount(uid)
+
+    override suspend fun saveSecret(accountUid: String, secret: SealedSecret) =
+        dao.saveSecret(SecretEntity(accountUid, secret.cipherText, secret.keyVersion, clock.nowMillis()))
+
+    override suspend fun getSecret(accountUid: String): SealedSecret? =
+        dao.getSecret(accountUid)?.let { SealedSecret(it.cipherText, it.keyVersion) }
 
     override suspend fun addTransaction(transaction: Transaction, merchant: Merchant?) =
         dao.insertTransactionWithMerchant(transaction.toEntity(), merchant?.toEntity())

@@ -52,7 +52,33 @@ abstract class FinanceDao {
 
     /** Its transactions keep naming it (no foreign keys), so history stays intact. */
     @Query("DELETE FROM accounts WHERE uid = :uid")
-    abstract suspend fun deleteAccount(uid: String)
+    abstract suspend fun deleteAccountRow(uid: String)
+
+    @Query("DELETE FROM secrets WHERE uid = :uid")
+    abstract suspend fun deleteSecret(uid: String)
+
+    /** The account and its full number go together; its transactions stay. */
+    @Transaction
+    open suspend fun deleteAccount(uid: String) {
+        deleteSecret(uid)
+        deleteAccountRow(uid)
+    }
+
+    @Query("SELECT * FROM secrets WHERE uid = :uid")
+    abstract suspend fun getSecret(uid: String): SecretEntity?
+
+    @Upsert
+    abstract suspend fun upsertSecret(secret: SecretEntity)
+
+    @Query("UPDATE accounts SET hasSecret = 1 WHERE uid = :uid AND hasSecret = 0")
+    abstract suspend fun markHasSecret(uid: String)
+
+    /** A new secret keeps the stored change count, as the other saves do, and flags the account. */
+    @Transaction
+    open suspend fun saveSecret(secret: SecretEntity) {
+        upsertSecret(secret.copy(dirty = getSecret(secret.uid)?.dirty ?: 1))
+        markHasSecret(secret.uid)
+    }
 
     @Insert
     abstract suspend fun insertTransaction(transaction: TransactionEntity)

@@ -142,6 +142,19 @@ data class MerchantEntity(
     val dirty: Int = 1,
 )
 
+/**
+ * An account's full number, encrypted with the user's data key (docs/FINANCE_PLAN.md › Secret).
+ * Keyed by the account's uid; only cipher text is stored here or synced.
+ */
+@Entity(tableName = "secrets")
+data class SecretEntity(
+    @PrimaryKey val uid: String,
+    val cipherText: String,
+    val keyVersion: Int,
+    val updatedAtMillis: Long,
+    val dirty: Int = 1,
+)
+
 /** A row deleted here and not yet pushed as `deleted: true`. Written by the delete triggers only. */
 @Entity(tableName = "sync_tombstones", primaryKeys = ["kind", "uid"])
 data class SyncTombstoneEntity(

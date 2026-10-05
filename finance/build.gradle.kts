@@ -1,12 +1,13 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
 
-// Finances (docs/FINANCE_PLAN.md): domain, calculators and Room storage. Firebase-free like
-// :links and :topics; finance sync lives in :sync.
+// Finances (docs/FINANCE_PLAN.md): domain, calculators, Room storage and MVI screens.
+// Firebase-free like :links and :topics; finance sync lives in :sync.
 android {
     namespace = "dev.kortex.finance"
     compileSdk = 36
@@ -34,10 +35,24 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    buildFeatures {
+        compose = true
+    }
 }
 
 dependencies {
+    implementation(project(":design"))
+    implementation(project(":mvi"))
+
     implementation(libs.androidx.core.ktx)
+
+    // Compose
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
+    implementation(libs.androidx.activity.compose)
 
     // Room
     implementation(libs.room.runtime)
@@ -47,6 +62,7 @@ dependencies {
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    implementation(libs.hilt.navigation.compose)
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)

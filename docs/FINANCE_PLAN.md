@@ -194,7 +194,16 @@ after sign-in.
    `DeleteCategory`, `ObserveFinance`), Room `FinanceDatabase` v1 with change-tracking triggers,
    `RoomFinanceRepository` and `FinanceModule`. Unit tests use the Figma screens' numbers.
 2. **Screens on Room** — dashboard, expenses (daily / monthly / yearly), monthly report, accounts,
-   cards, add / edit account, add expense / income, categories.
+   cards, add / edit account, add expense / income, categories. *Done:* a Finances tab under
+   My Info, whose floating bottom bar switches between Dashboard, Expenses, Accounts and Cards.
+   The Finance sheets and pushed screens open as one `Overlay.Finance` stack, saved across
+   process death through `FinanceRoute.encode` / `decode`. The screen state comes from pure
+   builders (`DashboardUi`, `ExpensesUi`, `MonthlyReportUi`, `AccountsUi`, `CardsUi`,
+   `CategoriesUi`), and each has tests. A saved entry shows a snackbar with Undo
+   (`FinanceNotices`). `UpdateAccount`, `DeleteAccount` and `DeleteTransaction` were added.
+   Still to come: the Pending tile opens Pending payments in Phase 3, and Paste SMS and Scan
+   receipt arrive in Phase 5. Export PDF on the Monthly report hasn't been started. Card and
+   account numbers keep only their last 4 digits until Phase 6 encrypts the full number.
 3. **Recurring & statement engine**, Pending payments, Mark as paid, Pay card bill, reminders.
 4. **FinanceSync** — Firestore docs, live listeners, onboarding restore.
 5. **Paste SMS** (bank packs + LLM fallback) and **Scan receipt** (ML Kit).

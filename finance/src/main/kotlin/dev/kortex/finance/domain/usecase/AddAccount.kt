@@ -36,6 +36,7 @@ sealed interface AccountSaveResult {
     data object InvalidDay : AccountSaveResult
     data object InvalidAmount : AccountSaveResult
     data object UnknownLinkedAccount : AccountSaveResult
+    data object NotFound : AccountSaveResult
 }
 
 /**

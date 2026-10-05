@@ -9,6 +9,7 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import dev.kortex.app.ui.screens.chat.ChatRequest
+import dev.kortex.finance.ui.FinanceRoute
 
 /** Full-screen layer drawn over the tabbed home UI. At most one is open at a time. */
 sealed interface Overlay {
@@ -23,6 +24,9 @@ sealed interface Overlay {
 
     /** One topic's feed; with [playing], one of its videos in the player over it (a search hit). */
     data class Topic(val topicId: Long, val playing: Long? = null) : Overlay
+
+    /** Finance screens opened from the Finances tab, bottom first; only the last one is drawn. */
+    data class Finance(val stack: List<FinanceRoute>) : Overlay
 }
 
 /**
@@ -97,6 +101,19 @@ class RootState(
         overlay = Overlay.Topic(topicId, playing = itemId)
     }
 
+    /** Opens [route] over the Finances tab, or over the Finance screen already open. */
+    fun pushFinance(route: FinanceRoute) {
+        menuOpen = false
+        val current = (overlay as? Overlay.Finance)?.stack.orEmpty()
+        overlay = Overlay.Finance(current + route)
+    }
+
+    /** Closes the top Finance screen; the last one closing lands back on the tab. */
+    fun popFinance() {
+        val rest = (overlay as? Overlay.Finance)?.stack.orEmpty().dropLast(1)
+        overlay = if (rest.isEmpty()) Overlay.None else Overlay.Finance(rest)
+    }
+
     fun closeOverlay() {
         overlay = Overlay.None
     }
@@ -106,9 +123,11 @@ class RootState(
         private const val CREATE_LINK = "create_link"
         private const val NEW_TOPIC = "new_topic"
         private const val TOPIC = "topic"
+        private const val FINANCE = "finance"
         private const val LOAD_SESSION = "load_session"
         private const val NEW_SESSION = "new_session"
         private const val NEW_SESSION_WITH_DRAFT = "new_session_draft"
+        private const val FINANCE_SEPARATOR = "|"
 
         /** Saved as [selected, overlay kind, overlay value, chat request kind, chat request value, menu open]. */
         val Saver: Saver<RootState, *> = listSaver(
@@ -123,11 +142,13 @@ class RootState(
                         is Overlay.CreateLink -> CREATE_LINK
                         Overlay.NewTopic -> NEW_TOPIC
                         is Overlay.Topic -> TOPIC
+                        is Overlay.Finance -> FINANCE
                     },
                     when (overlay) {
                         is Overlay.CreateLink -> overlay.url
                         // "7", or "7/42" with a video playing.
                         is Overlay.Topic -> listOfNotNull(overlay.topicId, overlay.playing).joinToString("/")
+                        is Overlay.Finance -> overlay.stack.joinToString(FINANCE_SEPARATOR) { it.encode() }
                         else -> ""
                     },
                     when (chat) {
@@ -151,6 +172,8 @@ class RootState(
                         CREATE_LINK -> Overlay.CreateLink(saved[2])
                         NEW_TOPIC -> Overlay.NewTopic
                         TOPIC -> Overlay.Topic(saved[2].substringBefore('/').toLong(), saved[2].substringAfter('/', "").toLongOrNull())
+                        FINANCE -> saved[2].split(FINANCE_SEPARATOR).mapNotNull(FinanceRoute::decode)
+                            .takeIf { it.isNotEmpty() }?.let(Overlay::Finance) ?: Overlay.None
                         else -> Overlay.None
                     },
                     pendingChatRequest = when (saved[3]) {

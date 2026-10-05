@@ -201,6 +201,9 @@ fun SettingsScreen(
                 )
             }
 
+            // ── AI Gateway ───────────────────────────────────────────
+            item { SectionLabel("AI GATEWAY", Modifier.padding(top = 16.dp)) }
+            item { AiGatewaySection() }
 
 
             // ── Native Gmail ─────────────────────────────────────────

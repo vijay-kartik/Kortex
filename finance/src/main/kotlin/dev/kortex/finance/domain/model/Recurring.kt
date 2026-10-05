@@ -34,10 +34,15 @@ data class Recurring(
     val nextDueOn: LocalDate,
     val accountUid: String,
     val categoryUid: String? = null,
-    val remindDaysBefore: Int = 0,
+    /** Days before each due date to post a reminder: 0 on the day, [NO_REMINDER] for none. */
+    val remindDaysBefore: Int = NO_REMINDER,
     /** Auto-debits: each occurrence is recorded on its due day without asking. */
     val autoMarkPaid: Boolean = false,
     val paused: Boolean = false,
     val createdAtMillis: Long,
     val updatedAtMillis: Long = createdAtMillis,
-)
+) {
+    companion object {
+        const val NO_REMINDER = -1
+    }
+}

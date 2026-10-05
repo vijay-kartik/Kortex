@@ -60,28 +60,45 @@ class AddTransaction(
     private val repository: FinanceRepository,
     private val clock: Clock,
 ) {
-    suspend operator fun invoke(draft: TransactionDraft): TransactionSaveResult {
-        if (draft.amountMinor <= 0) return TransactionSaveResult.InvalidAmount
-        if (draft.type == TransactionType.OPENING) return TransactionSaveResult.OpeningNotAllowed
-        draft.uid?.let { uid -> if (repository.getTransaction(uid) != null) return TransactionSaveResult.AlreadySaved(uid) }
-        val account = repository.getAccount(draft.accountUid) ?: return TransactionSaveResult.UnknownAccount
+    suspend operator fun invoke(draft: TransactionDraft): TransactionSaveResult =
+        when (val prepared = prepare(draft)) {
+            is Prepared.Ready -> {
+                repository.addTransaction(prepared.transaction, prepared.merchant)
+                TransactionSaveResult.Saved(prepared.transaction.uid)
+            }
+            is Prepared.Rejected -> prepared.result
+        }
+
+    /** A validated entry and its merchant, not yet saved; or why it can't be. */
+    internal sealed interface Prepared {
+        data class Ready(val transaction: Transaction, val merchant: Merchant?) : Prepared
+        data class Rejected(val result: TransactionSaveResult) : Prepared
+    }
+
+    /** Everything [invoke] does short of saving, for use cases that save more alongside it. */
+    internal suspend fun prepare(draft: TransactionDraft): Prepared {
+        fun reject(result: TransactionSaveResult) = Prepared.Rejected(result)
+        if (draft.amountMinor <= 0) return reject(TransactionSaveResult.InvalidAmount)
+        if (draft.type == TransactionType.OPENING) return reject(TransactionSaveResult.OpeningNotAllowed)
+        draft.uid?.let { uid -> if (repository.getTransaction(uid) != null) return reject(TransactionSaveResult.AlreadySaved(uid)) }
+        val account = repository.getAccount(draft.accountUid) ?: return reject(TransactionSaveResult.UnknownAccount)
 
         val movesBetweenAccounts = draft.type == TransactionType.TRANSFER || draft.type == TransactionType.CARD_PAYMENT
         if (movesBetweenAccounts) {
             val target = draft.toAccountUid?.takeIf { it != account.uid }?.let { repository.getAccount(it) }
-                ?: return TransactionSaveResult.InvalidTarget
+                ?: return reject(TransactionSaveResult.InvalidTarget)
             val valid = when (draft.type) {
                 TransactionType.CARD_PAYMENT -> target.kind == AccountKind.CREDIT_CARD && account.kind != AccountKind.CREDIT_CARD
                 else -> target.kind != AccountKind.CREDIT_CARD && account.kind != AccountKind.CREDIT_CARD
             }
-            if (!valid) return TransactionSaveResult.InvalidTarget
+            if (!valid) return reject(TransactionSaveResult.InvalidTarget)
         } else {
             if (draft.type == TransactionType.INCOME && account.kind == AccountKind.CREDIT_CARD) {
-                return TransactionSaveResult.RefundNotSupported
+                return reject(TransactionSaveResult.RefundNotSupported)
             }
             draft.categoryUid?.let { uid ->
                 val wanted = if (draft.type == TransactionType.INCOME) CategoryKind.INCOME else CategoryKind.EXPENSE
-                if (repository.getCategory(uid)?.kind != wanted) return TransactionSaveResult.WrongCategoryKind
+                if (repository.getCategory(uid)?.kind != wanted) return reject(TransactionSaveResult.WrongCategoryKind)
             }
         }
 
@@ -121,7 +138,6 @@ class AddTransaction(
                 updatedAtMillis = now,
             )
         }
-        repository.addTransaction(transaction, merchant)
-        return TransactionSaveResult.Saved(transaction.uid)
+        return Prepared.Ready(transaction, merchant)
     }
 }

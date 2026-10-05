@@ -24,6 +24,7 @@ class DashboardViewModel @Inject constructor(
             DashboardIntent.AddExpense -> FinanceRoute.AddEntry(income = false)
             DashboardIntent.AddIncome -> FinanceRoute.AddEntry(income = true)
             DashboardIntent.AddAccount -> FinanceRoute.AddAccount(AccountKind.BANK)
+            DashboardIntent.OpenPending -> FinanceRoute.Pending
         }
         sendEffect(DashboardEffect.Navigate(route))
     }

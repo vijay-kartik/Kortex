@@ -291,6 +291,12 @@ private fun EntryRequestEffect(
                 state.closeOverlay()
                 state.openChat(ChatRequest.NewSession(draft = pending.draft))
             }
+            // The Finances tab, with the screen the reminder is about open over it.
+            is EntryRequest.OpenFinance -> {
+                state.closeOverlay()
+                state.openTab(KortexTab.Finances)
+                state.pushFinance(pending.route)
+            }
         }
         onHandled()
     }

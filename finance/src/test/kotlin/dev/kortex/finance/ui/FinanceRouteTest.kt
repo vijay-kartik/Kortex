@@ -18,6 +18,12 @@ class FinanceRouteTest {
         FinanceRoute.Categories,
         FinanceRoute.CategoryForm(),
         FinanceRoute.CategoryForm(uid = "c1", kind = CategoryKind.INCOME),
+        FinanceRoute.Pending,
+        FinanceRoute.Recurring,
+        FinanceRoute.RecurringForm(),
+        FinanceRoute.RecurringForm("r1"),
+        FinanceRoute.MarkPaid("netflix", java.time.LocalDate.of(2026, 10, 3)),
+        FinanceRoute.PayBill("stmt_abc"),
     )
 
     @Test

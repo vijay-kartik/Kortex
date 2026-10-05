@@ -42,6 +42,7 @@ class CardsViewModel @Inject constructor(
         val route = when (intent) {
             CardsIntent.AddCard -> FinanceRoute.AddAccount(AccountKind.CREDIT_CARD)
             is CardsIntent.Edit -> FinanceRoute.EditAccount(intent.uid)
+            is CardsIntent.PayBill -> FinanceRoute.PayBill(intent.statementUid)
         }
         sendEffect(CardsEffect.Navigate(route))
     }

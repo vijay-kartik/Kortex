@@ -1,5 +1,7 @@
 package dev.kortex.app.ui.screens.home
 
+import dev.kortex.finance.ui.FinanceRoute
+
 /**
  * Where a notification tap, launcher shortcut or share asks the app to go. Held as state until
  * [RootScreen] has acted on it, then cleared, so each request is handled exactly once.
@@ -13,4 +15,7 @@ sealed interface EntryRequest {
 
     /** Shared text or "Ask agent" shortcut → new chat with [draft] in the composer, not sent. */
     data class NewChat(val draft: String = "") : EntryRequest
+
+    /** Payment reminder tap → the Finances tab with [route] open over it (Pending payments). */
+    data class OpenFinance(val route: FinanceRoute) : EntryRequest
 }

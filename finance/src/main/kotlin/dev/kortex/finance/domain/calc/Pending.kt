@@ -43,7 +43,7 @@ object Pending {
     const val SOON_DAYS = 7L
 
     /**
-     * Unpaid card bills and every recurring occurrence due within [horizonDays] of [today],
+     * Each card's unpaid latest bill and every recurring occurrence due within [horizonDays] of [today],
      * including overdue ones. A weekly payment can appear several times.
      */
     fun summary(
@@ -54,7 +54,7 @@ object Pending {
         horizonDays: Long = HORIZON_DAYS,
     ): PendingSummary {
         val until = today.plusDays(horizonDays)
-        val bills = statements.mapNotNull { statement ->
+        val bills = latestPerCard(statements).mapNotNull { statement ->
             val unpaid = Statements.unpaidMinor(statement, transactions)
             if (unpaid <= 0 || statement.dueOn.isAfter(until)) return@mapNotNull null
             PendingItem(
@@ -88,6 +88,13 @@ object Pending {
             recurringCount = occurrences.size,
         )
     }
+
+    /**
+     * Each card's latest statement. An older one is never pending on its own: whatever was left
+     * unpaid on it was still owed on the next statement day, so the newer bill includes it.
+     */
+    fun latestPerCard(statements: List<CardStatement>): List<CardStatement> =
+        statements.groupBy { it.cardUid }.values.map { list -> list.maxBy { it.statementOn } }
 
     fun leftAfterPendingMinor(totalBalanceMinor: Long, pending: PendingSummary): Long = totalBalanceMinor - pending.totalMinor
 

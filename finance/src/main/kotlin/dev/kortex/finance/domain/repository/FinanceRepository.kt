@@ -33,6 +33,10 @@ interface FinanceRepository {
 
     suspend fun findMerchant(payeeKey: String): Merchant?
 
+    suspend fun getRecurring(uid: String): Recurring?
+
+    suspend fun getStatement(uid: String): CardStatement?
+
     /** The account and its OPENING entry (when there is one) are saved together. */
     suspend fun addAccount(account: Account, opening: Transaction?)
 
@@ -63,5 +67,23 @@ interface FinanceRepository {
 
     suspend fun deleteRecurring(uid: String)
 
+    /**
+     * Saves [recurring] together with paying one of its occurrences ([payment], with its
+     * [merchant]) or taking a payment back ([removePaymentUid]), as one change: Mark as paid,
+     * Skip and their Undo.
+     */
+    suspend fun saveRecurringChange(
+        recurring: Recurring,
+        payment: Transaction? = null,
+        merchant: Merchant? = null,
+        removePaymentUid: String? = null,
+    )
+
     suspend fun upsertStatement(statement: CardStatement)
+
+    /**
+     * Saves the statements whose uid isn't saved yet and leaves the rest alone, so the engine never
+     * replaces figures an SMS or an edit already set.
+     */
+    suspend fun addStatementsIfAbsent(statements: List<CardStatement>)
 }

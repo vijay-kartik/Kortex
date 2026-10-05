@@ -94,6 +94,7 @@ fun DashboardScreen(state: DashboardState, onIntent: (DashboardIntent) -> Unit, 
                     caption = if (state.pendingCount == 0) "Nothing due · 30 days" else "${state.pendingCount} due · 30 days",
                     captionColor = if (state.pendingCount == 0) Muted else Amber,
                     modifier = Modifier.weight(1f),
+                    onClick = { onIntent(DashboardIntent.OpenPending) },
                 )
             }
         }
@@ -130,8 +131,8 @@ fun DashboardScreen(state: DashboardState, onIntent: (DashboardIntent) -> Unit, 
 }
 
 @Composable
-private fun Tile(label: String, value: String, caption: String, captionColor: Color, modifier: Modifier = Modifier) {
-    FinanceCard(modifier, padding = 14.dp) {
+private fun Tile(label: String, value: String, caption: String, captionColor: Color, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    FinanceCard(modifier, onClick = onClick, padding = 14.dp) {
         SectionLabel(label)
         Spacer(Modifier.height(8.dp))
         Text(value, style = MaterialTheme.typography.titleLarge, color = Ink, maxLines = 1)

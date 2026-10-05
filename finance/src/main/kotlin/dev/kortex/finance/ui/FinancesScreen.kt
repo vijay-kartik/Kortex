@@ -34,6 +34,8 @@ import dev.kortex.finance.ui.entry.AddEntryRoute
 import dev.kortex.finance.ui.expenses.ExpensesRoute
 import dev.kortex.finance.ui.expenses.MonthlyReportRoute
 import dev.kortex.finance.ui.pending.PendingRoute
+import dev.kortex.finance.ui.read.ReceiptEntryRoute
+import dev.kortex.finance.ui.read.SmsEntryRoute
 import dev.kortex.finance.ui.recurring.MarkPaidRoute
 import dev.kortex.finance.ui.recurring.PayBillRoute
 import dev.kortex.finance.ui.recurring.RecurringFormRoute
@@ -104,7 +106,7 @@ fun FinanceOverlay(
 private fun FinanceRouteContent(route: FinanceRoute, onNavigate: (FinanceRoute) -> Unit, onBack: () -> Unit) {
     when (route) {
         is FinanceRoute.AddEntry -> AddEntryRoute(income = route.income, onNavigate = onNavigate, onClose = onBack)
-        is FinanceRoute.AddAccount -> AccountFormRoute(editUid = null, initialKind = route.kind, onClose = onBack)
+        is FinanceRoute.AddAccount -> AccountFormRoute(editUid = null, initialKind = route.kind, onClose = onBack, prefill = route.prefill)
         is FinanceRoute.EditAccount -> AccountFormRoute(editUid = route.uid, initialKind = null, onClose = onBack)
         is FinanceRoute.MonthlyReport -> MonthlyReportRoute(month = route.month, onBack = onBack)
         FinanceRoute.Categories -> CategoriesRoute(onNavigate = onNavigate, onBack = onBack)
@@ -114,6 +116,8 @@ private fun FinanceRouteContent(route: FinanceRoute, onNavigate: (FinanceRoute) 
         is FinanceRoute.RecurringForm -> RecurringFormRoute(uid = route.uid, onNavigate = onNavigate, onClose = onBack)
         is FinanceRoute.MarkPaid -> MarkPaidRoute(recurringUid = route.recurringUid, dueOn = route.dueOn, onClose = onBack)
         is FinanceRoute.PayBill -> PayBillRoute(statementUid = route.statementUid, onClose = onBack)
+        is FinanceRoute.PasteSms -> SmsEntryRoute(text = route.text, onNavigate = onNavigate, onClose = onBack)
+        FinanceRoute.ScanReceipt -> ReceiptEntryRoute(onNavigate = onNavigate, onClose = onBack)
     }
 }
 

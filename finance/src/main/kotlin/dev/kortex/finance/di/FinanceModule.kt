@@ -29,6 +29,11 @@ import dev.kortex.finance.domain.usecase.RunFinanceEngine
 import dev.kortex.finance.domain.usecase.SaveRecurring
 import dev.kortex.finance.domain.usecase.SkipOccurrence
 import dev.kortex.finance.domain.usecase.UndoOccurrence
+import dev.kortex.finance.domain.usecase.AttachReceipt
+import dev.kortex.finance.domain.usecase.ReadReceipt
+import dev.kortex.finance.domain.usecase.ReadSms
+import dev.kortex.finance.domain.usecase.SuggestMerchant
+import dev.kortex.finance.domain.read.FinanceReader
 import javax.inject.Singleton
 
 /** Finance storage and use cases. Domain and data classes carry no DI annotations; they are built here. */
@@ -109,4 +114,18 @@ object FinanceModule {
     @Singleton
     fun provideRunFinanceEngine(repository: FinanceRepository, markPaid: MarkPaid, clock: Clock) =
         RunFinanceEngine(repository, markPaid, clock)
+
+    // FinanceReader (the agent's model) is bound by the app, which owns the LLM settings.
+
+    @Provides
+    fun provideReadSms(reader: FinanceReader, clock: Clock) = ReadSms(reader, clock)
+
+    @Provides
+    fun provideReadReceipt(reader: FinanceReader, clock: Clock) = ReadReceipt(reader, clock)
+
+    @Provides
+    fun provideSuggestMerchant(repository: FinanceRepository, reader: FinanceReader) = SuggestMerchant(repository, reader)
+
+    @Provides
+    fun provideAttachReceipt(repository: FinanceRepository) = AttachReceipt(repository)
 }

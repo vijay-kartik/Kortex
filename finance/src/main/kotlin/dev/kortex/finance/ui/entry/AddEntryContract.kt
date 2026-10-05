@@ -81,10 +81,15 @@ sealed interface AddEntryIntent {
     data object NewCategory : AddEntryIntent
     data object ManageCategories : AddEntryIntent
     data object AddAccount : AddEntryIntent
+    data object PasteSms : AddEntryIntent
+    data object ScanReceipt : AddEntryIntent
     data object Save : AddEntryIntent
 }
 
 sealed interface AddEntryEffect {
     data object Close : AddEntryEffect
     data class Navigate(val route: FinanceRoute) : AddEntryEffect
+
+    /** Close this sheet and open [route] in its place: Paste SMS, Scan receipt. */
+    data class Replace(val route: FinanceRoute) : AddEntryEffect
 }

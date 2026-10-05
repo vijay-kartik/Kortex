@@ -14,7 +14,8 @@ sealed interface FinanceRoute {
     /** Add expense or Add income (Figma: finances-add-expense, finances-add-income). */
     data class AddEntry(val income: Boolean = false) : FinanceRoute
 
-    data class AddAccount(val kind: AccountKind = AccountKind.BANK) : FinanceRoute
+    /** [prefill] carries what an SMS said about a card the phone doesn't know (Figma: Paste SMS 09). */
+    data class AddAccount(val kind: AccountKind = AccountKind.BANK, val prefill: AccountPrefill? = null) : FinanceRoute
 
     data class EditAccount(val uid: String) : FinanceRoute
 
@@ -40,9 +41,15 @@ sealed interface FinanceRoute {
     /** Pay card bill against a statement (Figma: Recurring 04). */
     data class PayBill(val statementUid: String) : FinanceRoute
 
+    /** Paste SMS (Figma: Paste SMS 01–09): [text] when shared from Messages, else the clipboard is read once. */
+    data class PasteSms(val text: String? = null) : FinanceRoute
+
+    /** Scan receipt (Figma: Scan receipt 01–06): opens Android's document scanner straight away. */
+    data object ScanReceipt : FinanceRoute
+
     fun encode(): String = when (this) {
         is AddEntry -> "entry:${if (income) "income" else "expense"}"
-        is AddAccount -> "add-account:${kind.name}"
+        is AddAccount -> "add-account:${kind.name}" + prefill?.let { ":" + Text.encode(it.fields()) }.orEmpty()
         is EditAccount -> "edit-account:$uid"
         is MonthlyReport -> "report:$month"
         Categories -> "categories"
@@ -52,6 +59,8 @@ sealed interface FinanceRoute {
         is RecurringForm -> "recurring-form:${uid.orEmpty()}"
         is MarkPaid -> "mark-paid:$recurringUid:$dueOn"
         is PayBill -> "pay-bill:$statementUid"
+        is PasteSms -> "paste-sms:" + text?.let(Text::encode).orEmpty()
+        ScanReceipt -> "scan-receipt"
     }
 
     companion object {
@@ -60,7 +69,10 @@ sealed interface FinanceRoute {
             return runCatching {
                 when (parts[0]) {
                     "entry" -> AddEntry(income = parts[1] == "income")
-                    "add-account" -> AddAccount(AccountKind.valueOf(parts[1]))
+                    "add-account" -> AddAccount(
+                        AccountKind.valueOf(parts[1]),
+                        parts.getOrNull(2)?.takeIf { it.isNotEmpty() }?.let { AccountPrefill.of(Text.decode(it)) },
+                    )
                     "edit-account" -> EditAccount(parts[1])
                     "report" -> MonthlyReport(YearMonth.parse(parts[1]))
                     "categories" -> Categories
@@ -70,9 +82,40 @@ sealed interface FinanceRoute {
                     "recurring-form" -> RecurringForm(parts[1].ifEmpty { null })
                     "mark-paid" -> MarkPaid(parts[1], LocalDate.parse(parts[2]))
                     "pay-bill" -> PayBill(parts[1])
+                    "paste-sms" -> PasteSms(parts.getOrNull(1)?.takeIf { it.isNotEmpty() }?.let(Text::decode))
+                    "scan-receipt" -> ScanReceipt
                     else -> null
                 }
             }.getOrNull()
         }
     }
+}
+
+/** What Add card is filled in with from an SMS: the name, bank, last 4 and the "Avl Lmt" it showed. */
+data class AccountPrefill(
+    val name: String? = null,
+    val institution: String? = null,
+    val last4: String? = null,
+    val availableLimitMinor: Long? = null,
+) {
+    internal fun fields(): String = listOf(name.orEmpty(), institution.orEmpty(), last4.orEmpty(), availableLimitMinor?.toString().orEmpty())
+        .joinToString(SEPARATOR)
+
+    internal companion object {
+        private const val SEPARATOR = "\u001F"
+
+        fun of(fields: String): AccountPrefill {
+            val parts = fields.split(SEPARATOR)
+            fun at(i: Int) = parts.getOrNull(i)?.takeIf { it.isNotEmpty() }
+            return AccountPrefill(at(0), at(1), at(2), at(3)?.toLongOrNull())
+        }
+    }
+}
+
+/** Free text inside a route: URL-safe Base64, so its colons and pipes don't split the route. */
+private object Text {
+    fun encode(text: String): String =
+        java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(text.toByteArray(Charsets.UTF_8))
+
+    fun decode(text: String): String = String(java.util.Base64.getUrlDecoder().decode(text), Charsets.UTF_8)
 }

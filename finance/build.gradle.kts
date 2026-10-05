@@ -67,6 +67,11 @@ dependencies {
     // Daily payment reminders
     implementation(libs.work.runtime.ktx)
 
+    // Scan receipt
+    implementation(libs.mlkit.document.scanner)
+    implementation(libs.mlkit.text.recognition)
+    implementation(libs.kotlinx.coroutines.play.services)
+
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
 }

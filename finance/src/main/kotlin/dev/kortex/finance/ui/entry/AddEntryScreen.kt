@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,7 +38,9 @@ import dev.kortex.design.InkSoft
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
 import dev.kortex.design.Synapse
+import dev.kortex.finance.R
 import dev.kortex.finance.ui.FinanceRoute
+import dev.kortex.finance.ui.common.IconTile
 import dev.kortex.finance.ui.common.AmountLarge
 import dev.kortex.finance.ui.common.FieldList
 import dev.kortex.finance.ui.common.FieldRow
@@ -66,6 +69,10 @@ fun AddEntryRoute(
         when (effect) {
             AddEntryEffect.Close -> onClose()
             is AddEntryEffect.Navigate -> onNavigate(effect.route)
+            is AddEntryEffect.Replace -> {
+                onClose()
+                onNavigate(effect.route)
+            }
         }
     }
     AddEntryScreen(state, viewModel::onIntent, onClose)
@@ -90,6 +97,7 @@ fun AddEntryScreen(state: AddEntryState, onIntent: (AddEntryIntent) -> Unit, onC
         },
     ) {
         if (state.loading) return@FinanceSheet
+        ReadTiles(state, onIntent)
         InputCard(
             label = if (state.income) "Amount received" else "Amount",
             value = state.amount,
@@ -109,6 +117,34 @@ fun AddEntryScreen(state: AddEntryState, onIntent: (AddEntryIntent) -> Unit, onC
         InputCard("Note", state.note, { onIntent(AddEntryIntent.Note(it)) }, placeholder = "Add a note")
     }
     if (state.datePickerOpen) EntryDatePicker(state.date, onIntent)
+}
+
+/** Paste SMS and Scan Receipt above the manual fields (Figma: finances-add-expense). */
+@Composable
+private fun ReadTiles(state: AddEntryState, onIntent: (AddEntryIntent) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        ReadTile("Paste SMS", "Read a bank SMS", R.drawable.ic_fin_sms, Modifier.weight(1f)) { onIntent(AddEntryIntent.PasteSms) }
+        if (!state.income) {
+            ReadTile("Scan Receipt", "From a photo or image", R.drawable.ic_fin_camera, Modifier.weight(1f)) { onIntent(AddEntryIntent.ScanReceipt) }
+        }
+    }
+    Text(
+        "Or enter manually",
+        style = MaterialTheme.typography.labelLarge,
+        color = Synapse,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun ReadTile(title: String, subtitle: String, icon: Int, modifier: Modifier, onClick: () -> Unit) {
+    dev.kortex.finance.ui.common.FinanceCard(modifier, onClick = onClick, padding = 14.dp) {
+        IconTile(icon, Synapse, size = 36.dp)
+        Spacer(Modifier.height(12.dp))
+        Text(title, style = MaterialTheme.typography.titleSmall, color = Ink)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
+    }
 }
 
 @Composable

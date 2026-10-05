@@ -28,6 +28,8 @@ import dev.kortex.sync.CloudAccount
 import dev.kortex.sync.CloudSync
 import kotlinx.coroutines.CoroutineScope
 import dagger.hilt.android.AndroidEntryPoint
+import dev.kortex.finance.domain.read.SmsKind
+import dev.kortex.finance.domain.read.SmsParser
 import dev.kortex.finance.reminders.FinanceReminders
 import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.links.domain.model.linkDomain
@@ -143,8 +145,8 @@ class MainActivity : FragmentActivity() {
     }
 
     /**
-     * Routes shared text: a single well-formed http(s) link goes to the new-link screen, anything
-     * else is drafted into a new chat (not sent). Returns false, with a toast, when there's no text.
+     * Routes shared text: a single well-formed http(s) link goes to the new-link screen, a bank SMS
+     * to Finances' Paste SMS review, anything else is drafted into a new chat (not sent). Returns false, with a toast, when there's no text.
      */
     private fun acceptShare(intent: Intent): Boolean {
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
@@ -154,6 +156,8 @@ class MainActivity : FragmentActivity() {
                 return false
             }
             text.none(Char::isWhitespace) && linkDomain(text) != null -> entryRequest = EntryRequest.NewLink(text)
+            // A bank SMS shared from Messages opens at its review (Figma: Paste SMS notes › Ways in).
+            SmsParser.classify(text) == SmsKind.TRANSACTION -> entryRequest = EntryRequest.OpenFinance(FinanceRoute.PasteSms(text))
             else -> entryRequest = EntryRequest.NewChat(text)
         }
         return true

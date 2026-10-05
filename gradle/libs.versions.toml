@@ -32,6 +32,9 @@ fragment = "1.8.5"
 credentials = "1.5.0"
 
 [libraries]
+# Scan receipt: Google's document scanner (camera, edges, crop) and on-device text recognition.
+mlkit-document-scanner = { module = "com.google.android.gms:play-services-mlkit-document-scanner", version = "16.0.0-beta1" }
+mlkit-text-recognition = { module = "com.google.android.gms:play-services-mlkit-text-recognition", version = "19.0.1" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }

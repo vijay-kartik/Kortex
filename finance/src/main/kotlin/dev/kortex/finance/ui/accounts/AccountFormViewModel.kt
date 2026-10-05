@@ -9,6 +9,7 @@ import dev.kortex.finance.domain.usecase.AddAccount
 import dev.kortex.finance.domain.usecase.DeleteAccount
 import dev.kortex.finance.domain.usecase.ObserveFinance
 import dev.kortex.finance.domain.usecase.UpdateAccount
+import dev.kortex.finance.ui.AccountPrefill
 import dev.kortex.finance.ui.common.FinanceNotice
 import dev.kortex.finance.ui.common.FinanceNotices
 import dev.kortex.mvi.MviViewModel
@@ -28,11 +29,11 @@ class AccountFormViewModel @Inject constructor(
     private var started = false
 
     /** The route calls this once: [editUid] to edit that account, else a new one of [kind]. */
-    fun start(editUid: String?, kind: AccountKind?) {
+    fun start(editUid: String?, kind: AccountKind?, prefill: AccountPrefill? = null) {
         if (started) return
         started = true
         if (editUid == null) {
-            setState { copy(kind = kind ?: AccountKind.BANK) }
+            setState { prefill?.let { AccountFormState.prefilled(kind ?: AccountKind.CREDIT_CARD, it) } ?: copy(kind = kind ?: AccountKind.BANK) }
             return
         }
         setState { copy(loading = true) }

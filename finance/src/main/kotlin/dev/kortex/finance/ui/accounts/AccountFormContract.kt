@@ -5,6 +5,7 @@ import dev.kortex.finance.domain.model.AccountKind
 import dev.kortex.finance.domain.model.BankType
 import dev.kortex.finance.domain.usecase.AccountDraft
 import dev.kortex.finance.domain.usecase.AccountSaveResult
+import dev.kortex.finance.ui.AccountPrefill
 import dev.kortex.finance.ui.common.FinanceFormat
 
 /** What Delete account shows before it goes (Figma: delete-account-confirm). */
@@ -39,10 +40,14 @@ data class AccountFormState(
     val error: String? = null,
     val saving: Boolean = false,
     val deleteSummary: DeleteSummary? = null,
+    /** Set when filled in from an SMS (Paste SMS 09): the bank it named and the "Avl Lmt" it showed. */
+    val fromSmsBank: String? = null,
+    val smsAvailableLimitMinor: Long? = null,
 ) {
     val editing: Boolean get() = editUid != null
-    val title: String get() = if (editing) "Edit account" else "Add account"
-    val saveLabel: String get() = if (editing) "Save changes" else "Add account"
+    val fromSms: Boolean get() = fromSmsBank != null || smsAvailableLimitMinor != null
+    val title: String get() = if (editing) "Edit account" else if (fromSms && kind == AccountKind.CREDIT_CARD) "Add card" else "Add account"
+    val saveLabel: String get() = if (editing) "Save changes" else if (fromSms) "Add and continue" else "Add account"
 
     /** Null with the error to show when a field can't be read. */
     fun toDraft(): Pair<AccountDraft?, String?> {
@@ -53,7 +58,10 @@ data class AccountFormState(
             return null to "Statement and due dates are days of the month, 1–31."
         }
         val limit = creditLimit.takeIf { it.isNotBlank() }?.let { FinanceFormat.parseAmount(it) ?: return null to "Check the credit limit." }
-        val openingMinor = opening.takeIf { it.isNotBlank() }?.let { FinanceFormat.parseAmount(it) ?: if (it.trim().matches(Regex("0+(\\.0*)?"))) 0L else return null to "Check the amount." } ?: 0L
+        val openingMinor = opening.takeIf { it.isNotBlank() }?.let { FinanceFormat.parseAmount(it) ?: if (it.trim().matches(Regex("0+(\\.0*)?"))) 0L else return null to "Check the amount." }
+            // From an SMS: what's owed today is the limit less the "Avl Lmt" it showed.
+            ?: smsOutstandingMinor(limit)
+            ?: 0L
         return AccountDraft(
             kind = kind,
             name = name,
@@ -70,7 +78,22 @@ data class AccountFormState(
         ) to null
     }
 
+    /** Limit − "Avl Lmt" from the SMS, for a card added from one; null otherwise. */
+    fun smsOutstandingMinor(limit: Long? = creditLimit.takeIf { it.isNotBlank() }?.let(FinanceFormat::parseAmount)): Long? {
+        if (kind != AccountKind.CREDIT_CARD || limit == null) return null
+        return smsAvailableLimitMinor?.let { (limit - it).coerceAtLeast(0) }
+    }
+
     companion object {
+        fun prefilled(kind: AccountKind, prefill: AccountPrefill) = AccountFormState(
+            kind = kind,
+            name = prefill.name.orEmpty(),
+            institution = prefill.institution.orEmpty(),
+            savedLast4 = prefill.last4,
+            fromSmsBank = prefill.institution,
+            smsAvailableLimitMinor = prefill.availableLimitMinor,
+        )
+
         fun editing(account: Account, balanceMinor: Long) = AccountFormState(
             editUid = account.uid,
             kind = account.kind,

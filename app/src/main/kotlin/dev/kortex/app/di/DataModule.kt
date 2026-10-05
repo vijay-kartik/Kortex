@@ -10,6 +10,7 @@ import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.data.local.AppDatabase
 import dev.kortex.app.data.local.ChatSessionDao
 import dev.kortex.app.data.auth.GmailAuthManager
+import dev.kortex.app.data.finance.LlmFinanceReader
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.app.data.topics.GmailEmailDirectory
 import dev.kortex.app.data.topics.LinksLinkCatalog
@@ -18,6 +19,7 @@ import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.observability.AgentRunStore
 import dev.kortex.core.observability.RoomAgentRunStore
 import dev.kortex.core.store.KortexDatabase
+import dev.kortex.finance.domain.read.FinanceReader
 import dev.kortex.links.domain.port.PageReader
 import dev.kortex.links.domain.port.TagSuggester
 import dev.kortex.links.domain.repository.LinksRepository
@@ -66,4 +68,9 @@ object DataModule {
     @Singleton
     fun provideTopicSummarizer(llm: LlmProvider, settings: SettingsStore): TopicSummarizer =
         LlmTopicSummarizer(llm, settings)
+
+    /** Finance's fallback for SMS and receipts the patterns can't read, on the model picked in Settings. */
+    @Provides
+    @Singleton
+    fun provideFinanceReader(llm: LlmProvider, settings: SettingsStore): FinanceReader = LlmFinanceReader(llm, settings)
 }

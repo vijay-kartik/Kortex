@@ -24,6 +24,11 @@ class FinanceRouteTest {
         FinanceRoute.RecurringForm("r1"),
         FinanceRoute.MarkPaid("netflix", java.time.LocalDate.of(2026, 10, 3)),
         FinanceRoute.PayBill("stmt_abc"),
+        FinanceRoute.PasteSms(),
+        FinanceRoute.PasteSms("Rs.42.50 spent on Card x8824 at A|B: on 28-09-26. Avl Lmt: Rs.48,557.50 ₹"),
+        FinanceRoute.ScanReceipt,
+        FinanceRoute.AddAccount(AccountKind.CREDIT_CARD, AccountPrefill("ICICI ••5512", "ICICI Bank", "5512", 98_150_00)),
+        FinanceRoute.AddAccount(AccountKind.BANK, AccountPrefill(last4 = "4471")),
     )
 
     @Test

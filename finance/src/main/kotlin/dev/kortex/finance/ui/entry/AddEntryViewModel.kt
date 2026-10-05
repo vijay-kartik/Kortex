@@ -76,6 +76,8 @@ class AddEntryViewModel @Inject constructor(
             )
             AddEntryIntent.ManageCategories -> sendEffect(AddEntryEffect.Navigate(FinanceRoute.Categories))
             AddEntryIntent.AddAccount -> sendEffect(AddEntryEffect.Navigate(FinanceRoute.AddAccount(AccountKind.BANK)))
+            AddEntryIntent.PasteSms -> sendEffect(AddEntryEffect.Replace(FinanceRoute.PasteSms()))
+            AddEntryIntent.ScanReceipt -> sendEffect(AddEntryEffect.Replace(FinanceRoute.ScanReceipt))
             AddEntryIntent.Save -> save()
         }
     }

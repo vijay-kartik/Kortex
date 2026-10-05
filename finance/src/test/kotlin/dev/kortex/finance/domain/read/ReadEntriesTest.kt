@@ -13,6 +13,7 @@ import dev.kortex.finance.domain.usecase.MerchantGuess
 import dev.kortex.finance.domain.usecase.ReadReceipt
 import dev.kortex.finance.domain.usecase.ReadSms
 import dev.kortex.finance.domain.usecase.SmsResult
+import dev.kortex.finance.domain.usecase.SuggestCategory
 import dev.kortex.finance.domain.usecase.SuggestMerchant
 import dev.kortex.finance.domain.usecase.TransactionDraft
 import dev.kortex.finance.domain.usecase.TransactionSaveResult
@@ -41,6 +42,16 @@ class ReadEntriesTest {
         }
     }
 
+    /** A decision model with fixed answers, recording what it was sent. */
+    private class FakeDecider(
+        private val kind: Decision<SmsKind>? = null,
+        private val category: Decision<String>? = null,
+    ) : FinanceDecider {
+        val sent = mutableListOf<String>()
+        override suspend fun smsKind(maskedText: String): Decision<SmsKind>? = kind.also { sent += maskedText }
+        override suspend fun pickCategory(merchant: String, categories: List<Category>): Decision<String>? = category.also { sent += merchant }
+    }
+
     @Test
     fun `an SMS the patterns can't read goes to the model, masked`() = runTest {
         val reader = FakeReader()
@@ -57,6 +68,52 @@ class ReadEntriesTest {
         assertEquals(SmsResult.NotAPayment(SmsKind.OTP), result)
         assertTrue(reader.sent.isEmpty())
         assertEquals(SmsResult.NotAPayment(SmsKind.UNREADABLE), ReadSms(FinanceReader.None, Fixtures.clock)("hello there"))
+    }
+
+    @Test
+    fun `an unreadable SMS the decision model is sure about skips the LLM`() = runTest {
+        val text = "Your a/c 123456784471 was charged ninety nine rupees for chai"
+        val reader = FakeReader()
+        val decider = FakeDecider(kind = Decision(SmsKind.PROMO, 0.95))
+        assertEquals(SmsResult.NotAPayment(SmsKind.PROMO), ReadSms(reader, Fixtures.clock, decider)(text))
+        assertEquals("Your a/c XXXXXXXX4471 was charged ninety nine rupees for chai", decider.sent.single())
+        assertTrue(reader.sent.isEmpty())
+
+        // Unsure, or sure it's a payment: the LLM reads it as before.
+        assertTrue(ReadSms(reader, Fixtures.clock, FakeDecider(kind = Decision(SmsKind.PROMO, 0.6)))(text) is SmsResult.Read)
+        assertTrue(ReadSms(reader, Fixtures.clock, FakeDecider(kind = Decision(SmsKind.TRANSACTION, 0.99)))(text) is SmsResult.Read)
+    }
+
+    @Test
+    fun `patterns that place an SMS never ask the decision model`() = runTest {
+        val decider = FakeDecider(kind = Decision(SmsKind.PROMO, 0.99))
+        assertEquals(SmsResult.NotAPayment(SmsKind.OTP), ReadSms(FakeReader(), Fixtures.clock, decider)("123456 is your OTP. Do not share."))
+        assertTrue(decider.sent.isEmpty())
+    }
+
+    @Test
+    fun `a sure decision model picks the category, else the LLM's pick stands`() = runTest {
+        val repository = FakeFinanceRepository()
+        val sure = SuggestMerchant(repository, FakeReader(), FakeDecider(category = Decision("food", 0.8)))
+        assertEquals(MerchantGuess("Decathlon", "food", MerchantGuess.Source.MODEL), sure("DECATHLON SPORTS", CategoryKind.EXPENSE))
+        val unsure = SuggestMerchant(repository, FakeReader(), FakeDecider(category = Decision("food", 0.3)))
+        assertEquals(MerchantGuess("Decathlon", "travel", MerchantGuess.Source.MODEL), unsure("DECATHLON SPORTS", CategoryKind.EXPENSE))
+    }
+
+    @Test
+    fun `a merchant typed by hand gets its remembered category, else a sure pick`() = runTest {
+        val repository = FakeFinanceRepository()
+        repository.merchants.value = listOf(Merchant("m", "whole foods market", "Whole Foods Market", "food", 0))
+        val decider = FakeDecider(category = Decision("travel", 0.9))
+        val suggest = SuggestCategory(repository, decider)
+
+        assertEquals(MerchantGuess("Whole Foods Market", "food", MerchantGuess.Source.REMEMBERED), suggest("Whole Foods Market", CategoryKind.EXPENSE))
+        assertTrue(decider.sent.isEmpty())
+        assertEquals(MerchantGuess("Uber", "travel", MerchantGuess.Source.MODEL), suggest("Uber", CategoryKind.EXPENSE))
+        assertNull(SuggestCategory(repository, FakeDecider(category = Decision("travel", 0.4)))("Uber", CategoryKind.EXPENSE))
+        // A pick from the other kind's categories is dropped.
+        assertNull(suggest("Uber", CategoryKind.INCOME))
+        assertNull(SuggestCategory(repository)("Uber", CategoryKind.EXPENSE))
     }
 
     @Test

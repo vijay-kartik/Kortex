@@ -1,8 +1,11 @@
 package dev.kortex.app
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.view.animation.AccelerateInterpolator
+import android.window.SplashScreenView
 import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -88,14 +91,15 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun handSplashToIntro(provider: SplashScreenViewProvider) {
-        val icon = provider.iconView
-        val at = IntArray(2).also(icon::getLocationInWindow)
-        val bounds = Rect(
-            at[0].toFloat(),
-            at[1].toFloat(),
-            (at[0] + icon.width).toFloat(),
-            (at[1] + icon.height).toFloat(),
-        )
+        val bounds = provider.iconOrNull?.let { icon ->
+            val at = IntArray(2).also(icon::getLocationInWindow)
+            Rect(
+                at[0].toFloat(),
+                at[1].toFloat(),
+                (at[0] + icon.width).toFloat(),
+                (at[1] + icon.height).toFloat(),
+            )
+        }
         val handoff = SplashHandoff(bounds, provider::remove)
         splashHandoff = handoff
         // If the intro never takes it, don't leave the splash covering the app.
@@ -103,12 +107,12 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun fadeOutSplash(provider: SplashScreenViewProvider) {
-        provider.iconView.animate()
-            .scaleX(0.9f)
-            .scaleY(0.9f)
-            .setDuration(SPLASH_EXIT_MS)
-            .setInterpolator(AccelerateInterpolator())
-            .start()
+        provider.iconOrNull?.animate()
+            ?.scaleX(0.9f)
+            ?.scaleY(0.9f)
+            ?.setDuration(SPLASH_EXIT_MS)
+            ?.setInterpolator(AccelerateInterpolator())
+            ?.start()
         provider.view.animate()
             .alpha(0f)
             .setDuration(SPLASH_EXIT_MS)
@@ -116,6 +120,13 @@ class MainActivity : FragmentActivity() {
             .withEndAction(provider::remove)
             .start()
     }
+
+    /**
+     * The splash icon, or null when the system drew an icon-less splash (Android 12+ does this e.g.
+     * on the relaunch after an install). The androidx `iconView` is non-null and throws in that case.
+     */
+    private val SplashScreenViewProvider.iconOrNull: View?
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) (view as SplashScreenView).iconView else iconView
 
     // launchMode="singleTop": a notification tap, share or shortcut while the app is open lands here.
     override fun onNewIntent(intent: Intent) {

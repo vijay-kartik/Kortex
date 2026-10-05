@@ -1,7 +1,10 @@
 package dev.kortex.finance.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,7 +63,9 @@ fun FinancesScreen(
     val scroll = remember { BarVisibility() }
     // Each time the tab opens: due statements and auto-debits are written before anything reads them.
     LaunchedEffect(Unit) { viewModel.runEngine() }
-    Box(modifier.fillMaxSize().nestedScroll(scroll)) {
+    // The home Scaffold already keeps the tab above the system navigation bar; consuming it here
+    // stops the bottom bar from adding that gap a second time (as Links and Topics do).
+    Box(modifier.fillMaxSize().consumeWindowInsets(WindowInsets.navigationBars).nestedScroll(scroll)) {
         // Keyed so each section starts at its top and the bar shows again.
         key(section) {
             LaunchedEffect(Unit) { scroll.visible = true }

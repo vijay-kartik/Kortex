@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -47,10 +48,11 @@ import dev.kortex.design.anim.StandardEasing
 import dev.kortex.finance.ui.FinanceSection
 
 /**
- * Floating toolbar (Figma: Finances/BottomBar, Bottom bar — notes): 252×56, centred, 24dp above the
- * gesture bar, over a Void scrim that fades content out beneath it. The active tab is a SynapseDim
- * capsule with icon and label; the rest are icons. Scrolling down hides it; any upward scroll
- * brings it back ([visible]).
+ * Floating toolbar (Figma: Finances/BottomBar, Bottom bar — notes): at least 252×56, centred, 24dp
+ * above the gesture bar, over a Void scrim that fades content out beneath it. The active tab is a
+ * SynapseDim capsule with icon and label; the rest are 44dp icons. It grows to fit the active label
+ * rather than squeezing the last icon. Scrolling down hides it; any upward scroll brings it back
+ * ([visible]).
  */
 @Composable
 fun FinanceBottomBar(
@@ -75,14 +77,14 @@ fun FinanceBottomBar(
                 Modifier
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(top = 44.dp, bottom = 24.dp)
-                    .width(252.dp)
+                    .widthIn(min = 252.dp)
                     .height(56.dp)
                     .clip(RoundedCornerShape(28.dp))
                     .background(Panel.copy(alpha = 0.94f))
                     .border(1.dp, Edge, RoundedCornerShape(28.dp))
                     .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
             ) {
                 FinanceSection.entries.forEach { section ->
                     BarTab(section, section == selected) { onSelect(section) }
@@ -98,11 +100,13 @@ private fun BarTab(section: FinanceSection, active: Boolean, onClick: () -> Unit
     Row(
         Modifier
             .height(44.dp)
+            .widthIn(min = 44.dp)
             .clip(RoundedCornerShape(22.dp))
             .background(if (active) SynapseDim else Color.Transparent)
             .selectable(selected = active, role = Role.Tab, onClick = onClick)
-            .padding(horizontal = if (active) 14.dp else 10.dp),
+            .padding(horizontal = if (active) 14.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
         Icon(painterResource(section.icon), contentDescription = section.label, tint = tint, modifier = Modifier.size(20.dp))
         AnimatedVisibility(active, enter = expandHorizontally(tween(200)), exit = shrinkHorizontally(tween(200))) {

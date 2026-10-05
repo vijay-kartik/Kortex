@@ -108,6 +108,7 @@ data class CardsState(val loading: Boolean = true, val cards: List<CardUi> = emp
 sealed interface CardsIntent {
     data object AddCard : CardsIntent
     data class Edit(val uid: String) : CardsIntent
+    data class PayBill(val statementUid: String) : CardsIntent
 }
 
 sealed interface CardsEffect {

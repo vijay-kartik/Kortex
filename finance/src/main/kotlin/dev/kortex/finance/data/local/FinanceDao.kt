@@ -2,6 +2,7 @@ package dev.kortex.finance.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
@@ -37,6 +38,12 @@ abstract class FinanceDao {
     @Query("SELECT * FROM merchants WHERE payeeKey = :payeeKey")
     abstract suspend fun findMerchant(payeeKey: String): MerchantEntity?
 
+    @Query("SELECT * FROM recurring WHERE uid = :uid")
+    abstract suspend fun getRecurring(uid: String): RecurringEntity?
+
+    @Query("SELECT * FROM card_statements WHERE uid = :uid")
+    abstract suspend fun getStatement(uid: String): CardStatementEntity?
+
     @Insert
     abstract suspend fun insertAccount(account: AccountEntity)
 
@@ -49,6 +56,9 @@ abstract class FinanceDao {
 
     @Insert
     abstract suspend fun insertTransaction(transaction: TransactionEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun insertTransactionIfAbsent(transaction: TransactionEntity)
 
     @Update
     abstract suspend fun updateTransaction(transaction: TransactionEntity)
@@ -73,6 +83,23 @@ abstract class FinanceDao {
 
     @Upsert
     abstract suspend fun upsertStatement(statement: CardStatementEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun insertStatementsIfAbsent(statements: List<CardStatementEntity>)
+
+    @Transaction
+    open suspend fun saveRecurringChange(
+        recurring: RecurringEntity,
+        payment: TransactionEntity?,
+        merchant: MerchantEntity?,
+        removePaymentUid: String?,
+    ) {
+        removePaymentUid?.let { deleteTransaction(it) }
+        // Ignored when this occurrence was paid meanwhile (the engine and a tap on the same day).
+        payment?.let { insertTransactionIfAbsent(it) }
+        merchant?.let { upsertMerchant(it) }
+        upsertRecurring(recurring)
+    }
 
     /** The account and its opening entry land together, or not at all. */
     @Transaction

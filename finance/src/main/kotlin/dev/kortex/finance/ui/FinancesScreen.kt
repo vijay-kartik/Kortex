@@ -3,10 +3,6 @@ package dev.kortex.finance.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,18 +21,23 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.kortex.finance.domain.usecase.DeleteTransaction
+import dev.kortex.finance.domain.usecase.RunFinanceEngine
 import dev.kortex.finance.ui.accounts.AccountFormRoute
 import dev.kortex.finance.ui.accounts.AccountsRoute
 import dev.kortex.finance.ui.accounts.CardsRoute
 import dev.kortex.finance.ui.categories.CategoriesRoute
 import dev.kortex.finance.ui.categories.CategoryFormRoute
 import dev.kortex.finance.ui.common.FinanceBottomBar
-import dev.kortex.finance.ui.common.FinanceNotices
+import dev.kortex.finance.ui.common.FinanceNoticeHost
 import dev.kortex.finance.ui.dashboard.DashboardRoute
 import dev.kortex.finance.ui.entry.AddEntryRoute
 import dev.kortex.finance.ui.expenses.ExpensesRoute
 import dev.kortex.finance.ui.expenses.MonthlyReportRoute
+import dev.kortex.finance.ui.pending.PendingRoute
+import dev.kortex.finance.ui.recurring.MarkPaidRoute
+import dev.kortex.finance.ui.recurring.PayBillRoute
+import dev.kortex.finance.ui.recurring.RecurringFormRoute
+import dev.kortex.finance.ui.recurring.RecurringListRoute
 import dev.kortex.mvi.ScopedViewModelStore
 import javax.inject.Inject
 import kotlinx.coroutines.launch
@@ -55,18 +56,8 @@ fun FinancesScreen(
     viewModel: FinanceHomeViewModel = hiltViewModel(),
 ) {
     val scroll = remember { BarVisibility() }
-    val snackbars = remember { SnackbarHostState() }
-    LaunchedEffect(Unit) {
-        viewModel.notices.notices.collect { notice ->
-            viewModel.notices.consumed()
-            val result = snackbars.showSnackbar(
-                message = notice.message,
-                actionLabel = notice.undoTransactionUid?.let { "UNDO" },
-                duration = SnackbarDuration.Short,
-            )
-            if (result == SnackbarResult.ActionPerformed) notice.undoTransactionUid?.let(viewModel::undo)
-        }
-    }
+    // Each time the tab opens: due statements and auto-debits are written before anything reads them.
+    LaunchedEffect(Unit) { viewModel.runEngine() }
     Box(modifier.fillMaxSize().nestedScroll(scroll)) {
         // Keyed so each section starts at its top and the bar shows again.
         key(section) {
@@ -78,7 +69,7 @@ fun FinancesScreen(
                 FinanceSection.Cards -> CardsRoute(onNavigate)
             }
         }
-        SnackbarHost(snackbars, Modifier.align(Alignment.BottomCenter).padding(bottom = 104.dp, start = 16.dp, end = 16.dp))
+        FinanceNoticeHost(Modifier.align(Alignment.BottomCenter).padding(bottom = 104.dp, start = 16.dp, end = 16.dp))
         FinanceBottomBar(
             selected = section,
             onSelect = onSectionChange,
@@ -118,16 +109,20 @@ private fun FinanceRouteContent(route: FinanceRoute, onNavigate: (FinanceRoute) 
         is FinanceRoute.MonthlyReport -> MonthlyReportRoute(month = route.month, onBack = onBack)
         FinanceRoute.Categories -> CategoriesRoute(onNavigate = onNavigate, onBack = onBack)
         is FinanceRoute.CategoryForm -> CategoryFormRoute(uid = route.uid, kind = route.kind, onClose = onBack)
+        FinanceRoute.Pending -> PendingRoute(onNavigate = onNavigate, onBack = onBack)
+        FinanceRoute.Recurring -> RecurringListRoute(onNavigate = onNavigate, onBack = onBack)
+        is FinanceRoute.RecurringForm -> RecurringFormRoute(uid = route.uid, onNavigate = onNavigate, onClose = onBack)
+        is FinanceRoute.MarkPaid -> MarkPaidRoute(recurringUid = route.recurringUid, dueOn = route.dueOn, onClose = onBack)
+        is FinanceRoute.PayBill -> PayBillRoute(statementUid = route.statementUid, onClose = onBack)
     }
 }
 
 @HiltViewModel
 class FinanceHomeViewModel @Inject constructor(
-    val notices: FinanceNotices,
-    private val deleteTransaction: DeleteTransaction,
+    private val engine: RunFinanceEngine,
 ) : ViewModel() {
-    fun undo(transactionUid: String) {
-        viewModelScope.launch { deleteTransaction(transactionUid) }
+    fun runEngine() {
+        viewModelScope.launch { engine() }
     }
 }
 

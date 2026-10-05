@@ -31,6 +31,8 @@ class FakeFinanceRepository : FinanceRepository {
     override suspend fun getTransaction(uid: String) = transactions.value.find { it.uid == uid }
     override suspend fun getCategory(uid: String) = categories.value.find { it.uid == uid }
     override suspend fun findMerchant(payeeKey: String) = merchants.value.find { it.payeeKey == payeeKey }
+    override suspend fun getRecurring(uid: String) = recurring.value.find { it.uid == uid }
+    override suspend fun getStatement(uid: String) = statements.value.find { it.uid == uid }
 
     override suspend fun addAccount(account: Account, opening: Transaction?) {
         accounts.update { it + account }
@@ -65,6 +67,15 @@ class FakeFinanceRepository : FinanceRepository {
 
     override suspend fun deleteRecurring(uid: String) = recurring.update { list -> list.filterNot { it.uid == uid } }
 
+    override suspend fun saveRecurringChange(recurring: Recurring, payment: Transaction?, merchant: Merchant?, removePaymentUid: String?) {
+        removePaymentUid?.let { deleteTransaction(it) }
+        payment?.let { tx -> if (transactions.value.none { it.uid == tx.uid }) addTransaction(tx, merchant) }
+        upsertRecurring(recurring)
+    }
+
     override suspend fun upsertStatement(statement: CardStatement) =
         statements.update { list -> list.filterNot { it.uid == statement.uid } + statement }
+
+    override suspend fun addStatementsIfAbsent(statements: List<CardStatement>) =
+        this.statements.update { list -> list + statements.filter { new -> list.none { it.uid == new.uid } } }
 }

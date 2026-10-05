@@ -7,6 +7,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import dagger.hilt.android.HiltAndroidApp
 import dev.kortex.app.domain.agent.AgentBootstrap
 import dev.kortex.app.domain.security.AppLock
+import dev.kortex.finance.reminders.FinanceReminders
 import javax.inject.Inject
 
 /** Root of the Hilt dependency graph (modules in `di/`). Registered as android:name in the manifest. */
@@ -20,6 +21,8 @@ class KortexApp : Application() {
         super.onCreate()
         // Before any screen or share intake: tools, MCP servers and models are app-wide state.
         agentBootstrap.start()
+        // Daily payment reminders; scheduling again keeps the job already queued.
+        FinanceReminders.schedule(this)
         // App lock times the whole app in the background, not each activity.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) = appLock.onAppForegrounded()

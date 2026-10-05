@@ -38,6 +38,10 @@ class RoomFinanceRepository(
 
     override suspend fun findMerchant(payeeKey: String): Merchant? = dao.findMerchant(payeeKey)?.toDomain()
 
+    override suspend fun getRecurring(uid: String): Recurring? = dao.getRecurring(uid)?.toDomain()
+
+    override suspend fun getStatement(uid: String): CardStatement? = dao.getStatement(uid)?.toDomain()
+
     override suspend fun addAccount(account: Account, opening: Transaction?) =
         dao.insertAccountWithOpening(account.toEntity(), opening?.toEntity())
 
@@ -69,6 +73,22 @@ class RoomFinanceRepository(
 
     override suspend fun deleteRecurring(uid: String) = dao.deleteRecurring(uid)
 
+    override suspend fun saveRecurringChange(
+        recurring: Recurring,
+        payment: Transaction?,
+        merchant: Merchant?,
+        removePaymentUid: String?,
+    ) = dao.saveRecurringChange(
+        recurring.copy(updatedAtMillis = clock.nowMillis()).toEntity(),
+        payment?.toEntity(),
+        merchant?.toEntity(),
+        removePaymentUid,
+    )
+
     override suspend fun upsertStatement(statement: CardStatement) =
         dao.upsertStatement(statement.copy(updatedAtMillis = clock.nowMillis()).toEntity())
+
+    override suspend fun addStatementsIfAbsent(statements: List<CardStatement>) {
+        if (statements.isNotEmpty()) dao.insertStatementsIfAbsent(statements.map { it.toEntity() })
+    }
 }

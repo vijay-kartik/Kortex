@@ -205,6 +205,26 @@ after sign-in.
    receipt arrive in Phase 5. Export PDF on the Monthly report hasn't been started. Card and
    account numbers keep only their last 4 digits until Phase 6 encrypts the full number.
 3. **Recurring & statement engine**, Pending payments, Mark as paid, Pay card bill, reminders.
+   *Done:*
+   - **Engine.** `RunFinanceEngine` runs each time the Finances tab opens:
+     - it writes AUTO statements, and never replaces one an SMS or an edit already set;
+     - it records auto-debits on their due day;
+     - it steps a recurring payment past occurrences that another phone already paid.
+   - **Use cases.** `MarkPaid`, `SkipOccurrence` and `UndoOccurrence` save the occurrence and the
+     next due date together, through `saveRecurringChange`. `SaveRecurring` keeps a 31st anchor
+     through short months. Also added: `DeleteRecurring` and `PayCardBill`, and `AddTransaction`
+     now validates and saves in separate steps (`prepare`, then save).
+   - **Pending.** Only each card's latest statement counts, since it already includes whatever the
+     previous one left unpaid.
+   - **Screens.** Pending payments (filters, swipe to mark paid, Undo), Recurring payments, Add /
+     Edit recurring (pause, delete), Mark as paid / Skip, and Pay card bill (full, minimum or
+     another amount). The Dashboard's Pending tile and the Credit Cards › Pay bill button open them.
+   - **Reminders.** `FinanceReminderWorker` is a WorkManager job that runs daily at about 9:00.
+     - It reminds you about recurring payments the chosen number of days before they're due.
+     - It reminds you about unpaid card bills 3 days before they're due and again on the day.
+     - Tapping a reminder opens Pending payments.
+     - The app asks for notification permission when a payment is saved with a reminder.
+     - `remindDaysBefore` = −1 means no reminder.
 4. **FinanceSync** — Firestore docs, live listeners, onboarding restore.
 5. **Paste SMS** (bank packs + LLM fallback) and **Scan receipt** (ML Kit).
 6. **Secrets** (Tink + `financeKey`), `addTransaction` / `listFinance` + API, agent tools.

@@ -160,7 +160,7 @@ fun CardsScreen(state: CardsState, onIntent: (CardsIntent) -> Unit, modifier: Mo
         }
         state.cards.forEach { card ->
             item(key = card.uid) { CardVisual(card) { onIntent(CardsIntent.Edit(card.uid)) } }
-            item(key = "${card.uid}/overview") { CardOverview(card) }
+            item(key = "${card.uid}/overview") { CardOverview(card, onPayBill = { onIntent(CardsIntent.PayBill(it)) }) }
             item(key = "${card.uid}/details") { CardDetails(card) }
         }
         item {
@@ -202,7 +202,7 @@ private fun CardVisual(card: CardUi, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CardOverview(card: CardUi) {
+private fun CardOverview(card: CardUi, onPayBill: (String) -> Unit) {
     FinanceCard {
         Text("Credit limit overview", style = MaterialTheme.typography.titleMedium, color = Ink)
         card.limitMinor?.let {
@@ -221,6 +221,8 @@ private fun CardOverview(card: CardUi) {
             Spacer(Modifier.height(12.dp))
             Text("Spent since ${statement.statementOn} statement", style = MaterialTheme.typography.bodySmall, color = Muted)
             Text(FinanceFormat.rupees(card.spentSinceMinor), style = AmountMono, color = Ink)
+            Spacer(Modifier.height(14.dp))
+            PrimaryButton("Pay bill", { onPayBill(statement.statementUid) })
         } else {
             Text(if (statement == null) "Outstanding · no statement yet" else "Statement paid · spent since", style = MaterialTheme.typography.bodySmall, color = Muted)
             Text(FinanceFormat.rupees(if (statement == null) card.outstandingMinor else card.spentSinceMinor), style = AmountLarge, color = Ink)

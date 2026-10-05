@@ -49,6 +49,7 @@ sealed interface DashboardIntent {
     data object AddExpense : DashboardIntent
     data object AddIncome : DashboardIntent
     data object AddAccount : DashboardIntent
+    data object OpenPending : DashboardIntent
 }
 
 sealed interface DashboardEffect {

@@ -50,6 +50,19 @@ class PendingTest {
     }
 
     @Test
+    fun `only a card's latest statement is pending, as it carries what the last one left`() {
+        val august = kortexStatement.copy(
+            uid = "stmt-aug",
+            statementOn = LocalDate.of(2026, 8, 25),
+            dueOn = LocalDate.of(2026, 9, 15),
+            totalDueMinor = 900_00,
+        )
+        val pending = Pending.summary(TODAY, listOf(august, kortexStatement), emptyList(), emptyList())
+        assertEquals(kortexStatement.uid, pending.items.single().sourceUid)
+        assertEquals(1_400_00, pending.cardBillsMinor)
+    }
+
+    @Test
     fun `anything past the 30-day horizon waits`() {
         val later = recurring.map { it.copy(nextDueOn = it.nextDueOn.plusMonths(1)) }
         assertTrue(Pending.summary(TODAY, emptyList(), later, emptyList()).items.isEmpty())

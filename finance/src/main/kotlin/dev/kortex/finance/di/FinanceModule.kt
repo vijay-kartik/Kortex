@@ -21,6 +21,13 @@ import dev.kortex.finance.domain.usecase.DeleteTransaction
 import dev.kortex.finance.domain.usecase.ObserveFinance
 import dev.kortex.finance.domain.usecase.UpdateAccount
 import dev.kortex.finance.domain.usecase.UpdateCategory
+import dev.kortex.finance.domain.usecase.DeleteRecurring
+import dev.kortex.finance.domain.usecase.MarkPaid
+import dev.kortex.finance.domain.usecase.PayCardBill
+import dev.kortex.finance.domain.usecase.RunFinanceEngine
+import dev.kortex.finance.domain.usecase.SaveRecurring
+import dev.kortex.finance.domain.usecase.SkipOccurrence
+import dev.kortex.finance.domain.usecase.UndoOccurrence
 import javax.inject.Singleton
 
 /** Finance storage and use cases. Domain and data classes carry no DI annotations; they are built here. */
@@ -71,4 +78,30 @@ object FinanceModule {
 
     @Provides
     fun provideDeleteTransaction(repository: FinanceRepository) = DeleteTransaction(repository)
+
+    @Provides
+    fun provideSaveRecurring(repository: FinanceRepository, clock: Clock) = SaveRecurring(repository, clock)
+
+    @Provides
+    fun provideDeleteRecurring(repository: FinanceRepository) = DeleteRecurring(repository)
+
+    @Provides
+    fun provideMarkPaid(repository: FinanceRepository, addTransaction: AddTransaction, clock: Clock) =
+        MarkPaid(repository, addTransaction, clock)
+
+    @Provides
+    fun provideSkipOccurrence(repository: FinanceRepository) = SkipOccurrence(repository)
+
+    @Provides
+    fun provideUndoOccurrence(repository: FinanceRepository) = UndoOccurrence(repository)
+
+    @Provides
+    fun providePayCardBill(repository: FinanceRepository, addTransaction: AddTransaction, clock: Clock) =
+        PayCardBill(repository, addTransaction, clock)
+
+    /** One instance, so two screens opening at once don't run the engine side by side. */
+    @Provides
+    @Singleton
+    fun provideRunFinanceEngine(repository: FinanceRepository, markPaid: MarkPaid, clock: Clock) =
+        RunFinanceEngine(repository, markPaid, clock)
 }

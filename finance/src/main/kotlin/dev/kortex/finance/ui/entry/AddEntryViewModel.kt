@@ -16,6 +16,7 @@ import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.finance.ui.common.FinanceFormat
 import dev.kortex.finance.ui.common.FinanceNotice
 import dev.kortex.finance.ui.common.FinanceNotices
+import dev.kortex.finance.ui.common.FinanceUndo
 import dev.kortex.mvi.MviViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -110,9 +111,7 @@ class AddEntryViewModel @Inject constructor(
         }
         setState { copy(saving = true) }
         viewModelScope.launch {
-            val now = clock.nowMillis()
-            // Today keeps the time it was saved; another day is noon, so the day can't slip across zones.
-            val at = if (state.date == clock.today()) now else state.date.atTime(12, 0).atZone(clock.zone()).toInstant().toEpochMilli()
+            val at = clock.millisOn(state.date)
             val result = addTransaction(
                 TransactionDraft(
                     type = if (state.income) TransactionType.INCOME else TransactionType.EXPENSE,
@@ -126,7 +125,7 @@ class AddEntryViewModel @Inject constructor(
             )
             if (result is TransactionSaveResult.Saved) {
                 val where = state.merchant.trim().takeIf { it.isNotEmpty() }?.let { if (state.income) " from $it" else " at $it" }.orEmpty()
-                notices.post(FinanceNotice("Saved ${FinanceFormat.rupees(amount)}$where", undoTransactionUid = result.uid))
+                notices.post(FinanceNotice("Saved ${FinanceFormat.rupees(amount)}$where", undo = FinanceUndo.DeleteEntry(result.uid)))
                 sendEffect(AddEntryEffect.Close)
             } else {
                 setState { copy(saving = false, error = AddEntryState.message(result)) }

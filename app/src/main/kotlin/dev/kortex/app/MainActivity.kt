@@ -28,6 +28,8 @@ import dev.kortex.sync.CloudAccount
 import dev.kortex.sync.CloudSync
 import kotlinx.coroutines.CoroutineScope
 import dagger.hilt.android.AndroidEntryPoint
+import dev.kortex.finance.reminders.FinanceReminders
+import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.links.domain.model.linkDomain
 import javax.inject.Inject
 
@@ -126,6 +128,10 @@ class MainActivity : FragmentActivity() {
     private fun handleEntryIntent(intent: Intent): Boolean {
         intent.getStringExtra(EXTRA_OPEN_SESSION_ID)?.let {
             entryRequest = EntryRequest.OpenSession(it)
+            return true
+        }
+        intent.getStringExtra(FinanceReminders.EXTRA_OPEN_ROUTE)?.let { encoded ->
+            FinanceRoute.decode(encoded)?.let { entryRequest = EntryRequest.OpenFinance(it) }
             return true
         }
         when (intent.action) {

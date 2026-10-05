@@ -15,6 +15,13 @@ interface Clock {
 
     fun dayOf(millis: Long): LocalDate = Instant.ofEpochMilli(millis).atZone(zone()).toLocalDate()
 
+    /**
+     * When something picked as happening on [day] is saved: now for today, otherwise noon, so the
+     * day can't slip across zones.
+     */
+    fun millisOn(day: LocalDate): Long =
+        if (day == today()) nowMillis() else day.atTime(12, 0).atZone(zone()).toInstant().toEpochMilli()
+
     companion object {
         val System: Clock = object : Clock {
             override fun nowMillis() = java.lang.System.currentTimeMillis()

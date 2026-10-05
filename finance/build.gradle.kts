@@ -64,6 +64,9 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
 
+    // Daily payment reminders
+    implementation(libs.work.runtime.ktx)
+
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
 }

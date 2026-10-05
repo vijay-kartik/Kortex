@@ -32,6 +32,7 @@ internal class FinanceSync(
         SyncCollection.FinRecurring,
         SyncCollection.FinMerchants,
         SyncCollection.FinTransactions,
+        SyncCollection.FinSecrets,
     )
 
     suspend fun countChanged(userUid: String): Int = collections.sumOf { remote.countChanged(userUid, it) }
@@ -61,6 +62,7 @@ internal class FinanceSync(
             SyncCollection.FinRecurring -> dao.applyPulledRecurring(rows(::remoteRecurring))
             SyncCollection.FinMerchants -> dao.applyPulledMerchants(rows(::remoteMerchant))
             SyncCollection.FinTransactions -> dao.applyPulledTransactions(rows(::remoteTransaction))
+            SyncCollection.FinSecrets -> dao.applyPulledSecrets(rows(::remoteSecret))
             else -> error("${collection.path} isn't a finance collection")
         }
     }
@@ -97,7 +99,10 @@ internal class FinanceSync(
         val transactions = dao.dirtyTransactions().map { row ->
             PendingWrite(doc(SyncCollection.FinTransactions, row.uid), transactionDoc(row, now)) { dao.markTransactionPushed(row.uid, row.dirty) }
         }
-        remote.write(deletes + categories + accounts + statements + recurring + merchants + transactions)
+        val secrets = dao.dirtySecrets().map { row ->
+            PendingWrite(doc(SyncCollection.FinSecrets, row.uid), secretDoc(row, now)) { dao.markSecretPushed(row.uid, row.dirty) }
+        }
+        remote.write(deletes + categories + accounts + statements + recurring + merchants + transactions + secrets)
     }
 
     private fun collectionOf(kind: String): SyncCollection? = when (kind) {
@@ -107,6 +112,7 @@ internal class FinanceSync(
         FinanceSyncSchema.KIND_RECURRING -> SyncCollection.FinRecurring
         FinanceSyncSchema.KIND_MERCHANT -> SyncCollection.FinMerchants
         FinanceSyncSchema.KIND_TRANSACTION -> SyncCollection.FinTransactions
+        FinanceSyncSchema.KIND_SECRET -> SyncCollection.FinSecrets
         else -> null.also { Log.w(TAG, "Unknown tombstone kind $kind") }
     }
 

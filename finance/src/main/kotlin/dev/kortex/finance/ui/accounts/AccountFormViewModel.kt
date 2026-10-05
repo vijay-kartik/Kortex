@@ -8,7 +8,10 @@ import dev.kortex.finance.domain.usecase.AccountSaveResult
 import dev.kortex.finance.domain.usecase.AddAccount
 import dev.kortex.finance.domain.usecase.DeleteAccount
 import dev.kortex.finance.domain.usecase.ObserveFinance
+import dev.kortex.finance.domain.usecase.RevealNumber
 import dev.kortex.finance.domain.usecase.UpdateAccount
+import dev.kortex.finance.ui.common.ScreenLock
+import kotlinx.coroutines.delay
 import dev.kortex.finance.ui.AccountPrefill
 import dev.kortex.finance.ui.common.FinanceNotice
 import dev.kortex.finance.ui.common.FinanceNotices
@@ -23,6 +26,7 @@ class AccountFormViewModel @Inject constructor(
     private val addAccount: AddAccount,
     private val updateAccount: UpdateAccount,
     private val deleteAccount: DeleteAccount,
+    private val revealNumber: RevealNumber,
     private val notices: FinanceNotices,
 ) : MviViewModel<AccountFormState, AccountFormIntent, AccountFormEffect>(AccountFormState()) {
 
@@ -56,6 +60,8 @@ class AccountFormViewModel @Inject constructor(
             AccountFormIntent.AskDelete -> askDelete()
             AccountFormIntent.CancelDelete -> setState { copy(deleteSummary = null) }
             AccountFormIntent.ConfirmDelete -> confirmDelete()
+            AccountFormIntent.Reveal -> reveal()
+            AccountFormIntent.Hide -> setState { copy(revealedNumber = null) }
         }
     }
 
@@ -71,11 +77,26 @@ class AccountFormViewModel @Inject constructor(
             val uid = currentState.editUid
             val result = if (uid == null) addAccount(draft) else updateAccount(uid, draft)
             if (result is AccountSaveResult.Saved) {
-                notices.post(FinanceNotice(if (uid == null) "Added ${draft.name.trim()}" else "Saved ${draft.name.trim()}"))
+                val saved = if (uid == null) "Added ${draft.name.trim()}" else "Saved ${draft.name.trim()}"
+                notices.post(
+                    FinanceNotice(
+                        if (result.numberKept == false) "$saved · the full number wasn’t kept: sign in to Kortex, online, to keep it encrypted" else saved,
+                    ),
+                )
                 sendEffect(AccountFormEffect.Close)
             } else {
                 setState { copy(saving = false, error = AccountFormState.message(result)) }
             }
+        }
+    }
+
+    private fun reveal() {
+        val uid = currentState.editUid ?: return
+        viewModelScope.launch {
+            val number = revealNumber(uid) ?: return@launch setState { copy(error = "Couldn’t show the full number. Check you’re signed in and online.") }
+            setState { copy(revealedNumber = number, error = null) }
+            delay(ScreenLock.SHOW_MILLIS)
+            setState { copy(revealedNumber = null) }
         }
     }
 

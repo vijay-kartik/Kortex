@@ -2,10 +2,11 @@ import type { Request } from "firebase-functions/v2/https";
 import { HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions/v2";
 import { Action, addLink, addTopicItem, createTopic } from "./actions";
+import { addTransaction, listFinance } from "./finance";
 import { bearerKey, userForApiKey } from "./apiKeys";
 
 /** What `api` can do, by path: `POST /api/addLink` runs [addLink]. */
-export const API_ROUTES: Record<string, Action> = { addLink, createTopic, addTopicItem };
+export const API_ROUTES: Record<string, Action> = { addLink, createTopic, addTopicItem, addTransaction, listFinance };
 
 interface ApiResponse {
   status: number;

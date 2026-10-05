@@ -67,6 +67,10 @@ dependencies {
     // Daily payment reminders
     implementation(libs.work.runtime.ktx)
 
+    // Encrypted full numbers; reveal behind the screen lock
+    implementation(libs.tink.android)
+    implementation(libs.androidx.biometric)
+
     // Scan receipt
     implementation(libs.mlkit.document.scanner)
     implementation(libs.mlkit.text.recognition)

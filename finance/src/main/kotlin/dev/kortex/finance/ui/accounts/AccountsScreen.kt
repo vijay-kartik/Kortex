@@ -16,8 +16,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,6 +46,7 @@ import dev.kortex.finance.ui.common.FinanceFormat
 import dev.kortex.finance.ui.common.IconTile
 import dev.kortex.finance.ui.common.PrimaryButton
 import dev.kortex.finance.ui.common.ProgressTrack
+import dev.kortex.finance.ui.common.ScreenLock
 import dev.kortex.finance.ui.common.SectionLabel
 import dev.kortex.mvi.ObserveEffects
 
@@ -161,7 +166,7 @@ fun CardsScreen(state: CardsState, onIntent: (CardsIntent) -> Unit, modifier: Mo
         state.cards.forEach { card ->
             item(key = card.uid) { CardVisual(card) { onIntent(CardsIntent.Edit(card.uid)) } }
             item(key = "${card.uid}/overview") { CardOverview(card, onPayBill = { onIntent(CardsIntent.PayBill(it)) }) }
-            item(key = "${card.uid}/details") { CardDetails(card) }
+            item(key = "${card.uid}/details") { CardDetails(card, state.revealed[card.uid], onIntent) }
         }
         item {
             Text(
@@ -251,13 +256,29 @@ private fun CardOverview(card: CardUi, onPayBill: (String) -> Unit) {
 }
 
 @Composable
-private fun CardDetails(card: CardUi) {
+private fun CardDetails(card: CardUi, revealed: String?, onIntent: (CardsIntent) -> Unit) {
+    val context = LocalContext.current
+    var problem by remember { mutableStateOf<String?>(null) }
     Column {
         Text("Card details", style = MaterialTheme.typography.titleMedium, color = Ink)
         Spacer(Modifier.height(12.dp))
         FieldList(
             listOfNotNull(
-                FieldRow("Card number", "•••• •••• •••• ${card.last4 ?: "····"}"),
+                FieldRow(
+                    "Card number",
+                    revealed?.let(ScreenLock::grouped) ?: ("•••• •••• •••• ${card.last4 ?: "····"}" + if (card.hasSecret) "  · Show" else ""),
+                    valueColor = if (card.hasSecret && revealed == null) Synapse else null,
+                    onClick = if (!card.hasSecret) null else {
+                        {
+                            problem = null
+                            if (revealed != null) {
+                                onIntent(CardsIntent.Hide(card.uid))
+                            } else {
+                                ScreenLock.confirm(context, "Show ${card.name}’s number", { onIntent(CardsIntent.Reveal(card.uid)) }, { problem = it })
+                            }
+                        }
+                    },
+                ),
                 card.holder?.let { FieldRow("Card holder", it) },
                 card.expiry?.let { FieldRow("Expiry", it) },
                 card.network?.let { FieldRow("Card network", it) },
@@ -265,6 +286,10 @@ private fun CardDetails(card: CardUi) {
                 card.dueDay?.let { FieldRow("Payment due date", it) },
             ),
         )
+        problem?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = Amber)
+        }
     }
 }
 

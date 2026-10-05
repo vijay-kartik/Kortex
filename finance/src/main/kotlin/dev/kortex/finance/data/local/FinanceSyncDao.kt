@@ -39,6 +39,9 @@ abstract class FinanceSyncDao : FinanceDao() {
     @Query("SELECT * FROM merchants WHERE dirty > 0")
     abstract suspend fun dirtyMerchants(): List<MerchantEntity>
 
+    @Query("SELECT * FROM secrets WHERE dirty > 0")
+    abstract suspend fun dirtySecrets(): List<SecretEntity>
+
     @Query("SELECT * FROM sync_tombstones")
     abstract suspend fun tombstones(): List<SyncTombstoneEntity>
 
@@ -62,6 +65,9 @@ abstract class FinanceSyncDao : FinanceDao() {
 
     @Query("UPDATE merchants SET dirty = 0 WHERE uid = :uid AND dirty = :dirty")
     abstract suspend fun markMerchantPushed(uid: String, dirty: Int)
+
+    @Query("UPDATE secrets SET dirty = 0 WHERE uid = :uid AND dirty = :dirty")
+    abstract suspend fun markSecretPushed(uid: String, dirty: Int)
 
     /** Drops a pushed tombstone, unless the row was deleted again after it was read. */
     @Query("DELETE FROM sync_tombstones WHERE kind = :kind AND uid = :uid AND deletedAtMillis = :deletedAtMillis")
@@ -106,6 +112,11 @@ abstract class FinanceSyncDao : FinanceDao() {
     @Transaction
     open suspend fun applyPulledMerchants(rows: List<RemoteRow<MerchantEntity>>): FinancePullResult =
         applyRows(FinanceSyncSchema.KIND_MERCHANT, rows, ::merchantVersion, { replacePulledMerchant(it.copy(dirty = 0)) }, ::deleteMerchant)
+
+    /** Cipher text only; the account's `hasSecret` arrives with the account itself. */
+    @Transaction
+    open suspend fun applyPulledSecrets(rows: List<RemoteRow<SecretEntity>>): FinancePullResult =
+        applyRows(FinanceSyncSchema.KIND_SECRET, rows, ::secretVersion, { upsertSecret(it.copy(dirty = 0)) }, ::deleteSecret)
 
     /** Applies [rows] with the triggers off; must run inside the caller's transaction. */
     private suspend fun <T> applyRows(
@@ -184,6 +195,7 @@ abstract class FinanceSyncDao : FinanceDao() {
         deleteAllStatements()
         deleteAllMerchants()
         deleteUserCategories()
+        deleteAllSecrets()
         deleteAllTombstones()
         setApplying(false)
     }
@@ -195,6 +207,7 @@ abstract class FinanceSyncDao : FinanceDao() {
         markAllRecurringDirty()
         markAllStatementsDirty()
         markAllMerchantsDirty()
+        markAllSecretsDirty()
     }
 
     // ── Helpers ───────────────────────────────────────────────────────
@@ -222,6 +235,15 @@ abstract class FinanceSyncDao : FinanceDao() {
 
     @Query("SELECT updatedAtMillis, dirty FROM merchants WHERE uid = :uid")
     protected abstract suspend fun merchantVersion(uid: String): RowVersion?
+
+    @Query("SELECT updatedAtMillis, dirty FROM secrets WHERE uid = :uid")
+    protected abstract suspend fun secretVersion(uid: String): RowVersion?
+
+    @Query("UPDATE secrets SET dirty = dirty + 1")
+    protected abstract suspend fun markAllSecretsDirty()
+
+    @Query("DELETE FROM secrets")
+    protected abstract suspend fun deleteAllSecrets()
 
     @Query("SELECT name FROM categories WHERE uid != :uid AND kind = :kind")
     protected abstract suspend fun namesOfOtherCategories(uid: String, kind: String): List<String>
@@ -295,4 +317,5 @@ private const val UNPUSHED_COUNT =
     "SELECT (SELECT COUNT(*) FROM accounts WHERE dirty > 0) + (SELECT COUNT(*) FROM transactions WHERE dirty > 0) + " +
         "(SELECT COUNT(*) FROM categories WHERE dirty > 0 AND builtIn = 0) + (SELECT COUNT(*) FROM recurring WHERE dirty > 0) + " +
         "(SELECT COUNT(*) FROM card_statements WHERE dirty > 0) + (SELECT COUNT(*) FROM merchants WHERE dirty > 0) + " +
+        "(SELECT COUNT(*) FROM secrets WHERE dirty > 0) + " +
         "(SELECT COUNT(*) FROM sync_tombstones)"

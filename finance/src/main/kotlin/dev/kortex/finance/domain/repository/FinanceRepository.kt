@@ -6,6 +6,7 @@ import dev.kortex.finance.domain.model.Category
 import dev.kortex.finance.domain.model.Merchant
 import dev.kortex.finance.domain.model.Recurring
 import dev.kortex.finance.domain.model.Transaction
+import dev.kortex.finance.domain.port.SealedSecret
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -43,8 +44,13 @@ interface FinanceRepository {
     /** Never changes a balance: there's none on an account to change. */
     suspend fun updateAccount(account: Account)
 
-    /** Its transactions stay, still naming it; screens show them as from a deleted account. */
+    /** Its transactions stay, still naming it; screens show them as from a deleted account. Its secret goes with it. */
     suspend fun deleteAccount(uid: String)
+
+    /** The account's full number, sealed; marks it as having one. */
+    suspend fun saveSecret(accountUid: String, secret: SealedSecret)
+
+    suspend fun getSecret(accountUid: String): SealedSecret?
 
     /** Saves [transaction], and [merchant] when given (its name and the category picked for it). */
     suspend fun addTransaction(transaction: Transaction, merchant: Merchant? = null)

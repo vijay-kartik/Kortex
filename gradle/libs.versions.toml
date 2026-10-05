@@ -34,6 +34,8 @@ credentials = "1.5.0"
 [libraries]
 # Scan receipt: Google's document scanner (camera, edges, crop) and on-device text recognition.
 mlkit-document-scanner = { module = "com.google.android.gms:play-services-mlkit-document-scanner", version = "16.0.0-beta1" }
+# Full card and account numbers: AES-256-GCM (Tink), key wrapped by Android Keystore.
+tink-android = { module = "com.google.crypto.tink:tink-android", version = "1.15.0" }
 mlkit-text-recognition = { module = "com.google.android.gms:play-services-mlkit-text-recognition", version = "19.0.1" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
@@ -43,6 +45,9 @@ kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-cor
 firebase-bom = { module = "com.google.firebase:firebase-bom", version = "34.19.0" }
 firebase-auth = { module = "com.google.firebase:firebase-auth" }
 firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
+firebase-functions = { module = "com.google.firebase:firebase-functions" }
+firebase-appcheck-playintegrity = { module = "com.google.firebase:firebase-appcheck-playintegrity" }
+firebase-appcheck-debug = { module = "com.google.firebase:firebase-appcheck-debug" }
 androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "credentials" }
 androidx-credentials-play-services-auth = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "credentials" }
 googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version = "1.1.1" }

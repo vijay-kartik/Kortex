@@ -7,6 +7,7 @@ import dev.kortex.finance.domain.model.BankType
 import dev.kortex.finance.domain.model.Transaction
 import dev.kortex.finance.domain.model.TransactionType
 import dev.kortex.finance.domain.port.Clock
+import dev.kortex.finance.domain.port.SecretBox
 import dev.kortex.finance.domain.repository.FinanceRepository
 
 /** What Add account collects (Figma: Add account — bank / credit card, Paste SMS 09). */
@@ -27,15 +28,21 @@ data class AccountDraft(
     val colorToken: String? = null,
     /** "Opening balance", or a credit card's "Outstanding today". Saved as the first entry. */
     val openingMinor: Long = 0,
+    /** The full card or account number, digits only; kept encrypted, never in the account itself. */
+    val fullNumber: String? = null,
 )
 
 sealed interface AccountSaveResult {
-    data class Saved(val uid: String) : AccountSaveResult
+    /** [numberKept] is null when no full number was given, false when it couldn't be encrypted (no key yet). */
+    data class Saved(val uid: String, val numberKept: Boolean? = null) : AccountSaveResult
     data object BlankName : AccountSaveResult
     data object InvalidLast4 : AccountSaveResult
     data object InvalidDay : AccountSaveResult
     data object InvalidAmount : AccountSaveResult
     data object UnknownLinkedAccount : AccountSaveResult
+
+    /** A full number that isn't 8 to 19 digits, or doesn't end in the last 4 given. */
+    data object InvalidNumber : AccountSaveResult
     data object NotFound : AccountSaveResult
 }
 
@@ -46,11 +53,15 @@ sealed interface AccountSaveResult {
 class AddAccount(
     private val repository: FinanceRepository,
     private val clock: Clock,
+    private val secrets: SecretBox = SecretBox.None,
 ) {
     suspend operator fun invoke(draft: AccountDraft): AccountSaveResult {
         val name = draft.name.trim().ifEmpty { return AccountSaveResult.BlankName }
-        val last4 = draft.last4?.trim()?.ifEmpty { null }
+        val number = AccountNumbers.clean(draft.fullNumber)
+        if (number == AccountNumbers.INVALID) return AccountSaveResult.InvalidNumber
+        val last4 = draft.last4?.trim()?.ifEmpty { null } ?: number?.takeLast(4)
         if (last4 != null && (last4.length != 4 || !last4.all { it.isDigit() })) return AccountSaveResult.InvalidLast4
+        if (number != null && number.takeLast(4) != last4) return AccountSaveResult.InvalidNumber
         if (listOfNotNull(draft.statementDay, draft.dueDay).any { it !in 1..31 }) return AccountSaveResult.InvalidDay
         if (draft.openingMinor < 0 || (draft.creditLimitMinor ?: 0) < 0) return AccountSaveResult.InvalidAmount
         val linked = draft.linkedAccountUid?.let { uid ->
@@ -88,8 +99,31 @@ class AddAccount(
             )
         }
         repository.addAccount(account, opening)
-        return AccountSaveResult.Saved(account.uid)
+        return AccountSaveResult.Saved(account.uid, number?.let { AccountNumbers.keep(repository, secrets, account.uid, it) })
     }
+}
+
+internal object AccountNumbers {
+    const val INVALID = "invalid"
+
+    /** Digits only; null when not given, [INVALID] when it can't be a card or account number. */
+    fun clean(raw: String?): String? {
+        val digits = raw?.filter { !it.isWhitespace() && it != '-' }?.ifEmpty { null } ?: return null
+        return if (digits.all(Char::isDigit) && digits.length in 8..19) digits else INVALID
+    }
+
+    /** Seals and saves [number] for [accountUid]; false when there was no key to seal it with. */
+    suspend fun keep(repository: FinanceRepository, secrets: SecretBox, accountUid: String, number: String): Boolean {
+        val sealed = secrets.seal(accountUid, number) ?: return false
+        repository.saveSecret(accountUid, sealed)
+        return true
+    }
+}
+
+/** Shows a full number (Figma: Credit Cards › Card details), after the screen lock has been passed. */
+class RevealNumber(private val repository: FinanceRepository, private val secrets: SecretBox) {
+    suspend operator fun invoke(accountUid: String): String? =
+        repository.getSecret(accountUid)?.let { secrets.open(accountUid, it) }
 }
 
 internal fun String?.clean(): String? = this?.trim()?.ifEmpty { null }

@@ -5,6 +5,7 @@ import dev.kortex.finance.data.local.CardStatementEntity
 import dev.kortex.finance.data.local.CategoryEntity
 import dev.kortex.finance.data.local.MerchantEntity
 import dev.kortex.finance.data.local.RecurringEntity
+import dev.kortex.finance.data.local.SecretEntity
 import dev.kortex.finance.data.local.TransactionEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -48,6 +49,11 @@ class FinanceDocsTest {
 
         val merchant = MerchantEntity("mer_1", "netflix", "Netflix", "utilities", updatedAtMillis = 2, dirty = 1)
         assertEquals(merchant.copy(dirty = 0), remoteMerchant("mer_1", merchantDoc(merchant, serverTime))!!.row)
+
+        val secret = SecretEntity("kortex", "c2VhbGVk", keyVersion = 1, updatedAtMillis = 2, dirty = 1)
+        val doc = secretDoc(secret, serverTime)
+        assertEquals(setOf("cipherText", "keyVersion", "updatedAt", "serverUpdatedAt", "deleted"), doc.keys)
+        assertEquals(secret.copy(dirty = 0), remoteSecret("kortex", doc)!!.row)
     }
 
     @Test

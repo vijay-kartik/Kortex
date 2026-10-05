@@ -15,8 +15,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -43,6 +47,7 @@ import dev.kortex.finance.ui.common.IconTile
 import dev.kortex.finance.ui.common.InputCard
 import dev.kortex.finance.ui.common.NoticeCard
 import dev.kortex.finance.ui.common.PrimaryButton
+import dev.kortex.finance.ui.common.ScreenLock
 import dev.kortex.finance.ui.common.SecondaryButton
 import dev.kortex.finance.ui.common.Segmented
 import dev.kortex.finance.ui.common.SheetButton
@@ -127,10 +132,12 @@ fun AccountFormScreen(state: AccountFormState, onIntent: (AccountFormIntent) -> 
                 label = if (card) "Card number" else "Account number",
                 value = state.number,
                 onValueChange = { text -> edit { copy(number = text.filter { it.isDigit() || it == ' ' }.take(23)) } },
-                placeholder = state.savedLast4?.let { "Ends $it" } ?: if (card) "1234 5678 9012 3456" else "Full account number",
-                helper = "Kortex keeps the last 4 digits to match SMS and receipts; the full number is kept, encrypted, in a later update.",
+                placeholder = state.savedLast4?.let { "Ends $it" + if (state.hasSecret) " · full number kept" else "" }
+                    ?: if (card) "1234 5678 9012 3456" else "Full account number",
+                helper = "Only the last 4 digits show in Kortex. The full number is kept encrypted, and only shows on your phone after your screen lock.",
                 keyboardType = KeyboardType.Number,
             )
+            if (state.editing && state.hasSecret) RevealRow(state, onIntent)
         }
         if (card) {
             InputCard("Card holder name", state.holder, { edit { copy(holder = it) } }, placeholder = "Full name on card")
@@ -180,6 +187,31 @@ fun AccountFormScreen(state: AccountFormState, onIntent: (AccountFormIntent) -> 
             )
         }
     }
+}
+
+/** "Full number · Show": asks for the screen lock, then shows it for a while. */
+@Composable
+private fun RevealRow(state: AccountFormState, onIntent: (AccountFormIntent) -> Unit) {
+    val context = LocalContext.current
+    var problem by remember { mutableStateOf<String?>(null) }
+    FieldList(
+        listOf(
+            FieldRow(
+                "Full number",
+                state.revealedNumber?.let(ScreenLock::grouped) ?: "Show",
+                valueColor = if (state.revealedNumber == null) Synapse else null,
+                onClick = {
+                    problem = null
+                    if (state.revealedNumber != null) {
+                        onIntent(AccountFormIntent.Hide)
+                    } else {
+                        ScreenLock.confirm(context, "Show ${state.name.ifBlank { "the" }} number", { onIntent(AccountFormIntent.Reveal) }, { problem = it })
+                    }
+                },
+            ),
+        ),
+    )
+    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Amber) }
 }
 
 @Composable

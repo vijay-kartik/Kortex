@@ -17,6 +17,12 @@ internal enum class SyncCollection(val path: String) {
     Links("links"),
     Topics("topics"),
     TopicItems("topicItems"),
+    FinCategories("finCategories"),
+    FinAccounts("finAccounts"),
+    FinStatements("finStatements"),
+    FinRecurring("finRecurring"),
+    FinMerchants("finMerchants"),
+    FinTransactions("finTransactions"),
 }
 
 /**

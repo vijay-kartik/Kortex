@@ -12,6 +12,7 @@ import dev.kortex.app.data.auth.McpOAuthManager
 import dev.kortex.app.data.security.AppLockStore
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.app.domain.security.AppLock
+import dev.kortex.finance.data.local.FinanceSyncDao
 import dev.kortex.links.data.LinkSyncDao
 import dev.kortex.links.images.LinkImageStore
 import dev.kortex.myinfo.topics.data.local.TopicSyncDao
@@ -51,7 +52,7 @@ object AppModule {
     fun provideCloudAccount(@ApplicationContext context: Context): CloudAccount =
         CloudAccount(context, BuildConfig.FIREBASE_WEB_CLIENT_ID)
 
-    /** Manual cloud sync of links and topics, from Settings › Cloud sync and after each sign-in. */
+    /** Cloud sync of links, topics and finances: live, from Settings › Cloud sync and after each sign-in. */
     @Provides
     @Singleton
     fun provideCloudSync(
@@ -61,7 +62,8 @@ object AppModule {
         linkImages: LinkImageStore,
         topicSyncDao: TopicSyncDao,
         topicFiles: FileVault,
-    ): CloudSync = CloudSync(context, account, linkSyncDao, linkImages, topicSyncDao, topicFiles)
+        financeSyncDao: FinanceSyncDao,
+    ): CloudSync = CloudSync(context, account, linkSyncDao, linkImages, topicSyncDao, topicFiles, financeSyncDao)
 
     /** Biometric app lock: one lock state shared by every activity. */
     @Provides

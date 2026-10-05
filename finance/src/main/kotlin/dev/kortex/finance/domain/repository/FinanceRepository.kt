@@ -1,0 +1,67 @@
+package dev.kortex.finance.domain.repository
+
+import dev.kortex.finance.domain.model.Account
+import dev.kortex.finance.domain.model.CardStatement
+import dev.kortex.finance.domain.model.Category
+import dev.kortex.finance.domain.model.Merchant
+import dev.kortex.finance.domain.model.Recurring
+import dev.kortex.finance.domain.model.Transaction
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * Finance storage. Each write is one database transaction, so a screen never sees half a change
+ * and sync pushes it as one (docs/FINANCE_PLAN.md › Firestore).
+ */
+interface FinanceRepository {
+    fun observeAccounts(): Flow<List<Account>>
+
+    /** Every transaction. A person's history is small enough for the calculators to sum in memory. */
+    fun observeTransactions(): Flow<List<Transaction>>
+
+    /** Built-in categories first, then yours, each by sort order. */
+    fun observeCategories(): Flow<List<Category>>
+
+    fun observeRecurring(): Flow<List<Recurring>>
+
+    fun observeStatements(): Flow<List<CardStatement>>
+
+    suspend fun getAccount(uid: String): Account?
+
+    suspend fun getTransaction(uid: String): Transaction?
+
+    suspend fun getCategory(uid: String): Category?
+
+    suspend fun findMerchant(payeeKey: String): Merchant?
+
+    /** The account and its OPENING entry (when there is one) are saved together. */
+    suspend fun addAccount(account: Account, opening: Transaction?)
+
+    /** Never changes a balance: there's none on an account to change. */
+    suspend fun updateAccount(account: Account)
+
+    /** Its transactions stay, still naming it; screens show them as from a deleted account. */
+    suspend fun deleteAccount(uid: String)
+
+    /** Saves [transaction], and [merchant] when given (its name and the category picked for it). */
+    suspend fun addTransaction(transaction: Transaction, merchant: Merchant? = null)
+
+    suspend fun updateTransaction(transaction: Transaction)
+
+    suspend fun deleteTransaction(uid: String)
+
+    suspend fun addCategory(category: Category)
+
+    suspend fun updateCategory(category: Category)
+
+    /**
+     * Moves everything that used [uid] — transactions, recurring payments, remembered merchants —
+     * to [moveTo] (null: Uncategorised), then deletes the category.
+     */
+    suspend fun deleteCategory(uid: String, moveTo: String?)
+
+    suspend fun upsertRecurring(recurring: Recurring)
+
+    suspend fun deleteRecurring(uid: String)
+
+    suspend fun upsertStatement(statement: CardStatement)
+}

@@ -188,7 +188,11 @@ after sign-in.
 ## Phases
 
 1. **`:finance` module** — entities, DAOs, migrations, seeded built-in categories, OPENING-based
-   balances and every calculator in *Derived values*, with unit tests.
+   balances and every calculator in *Derived values*, with unit tests. *Done:* domain models,
+   `FinanceIds`, calculators (`Balances`, `Statements`, `RecurringSchedule`, `Pending`,
+   `Spending`), use cases (`AddAccount`, `AddTransaction`, `AddCategory`, `UpdateCategory`,
+   `DeleteCategory`, `ObserveFinance`), Room `FinanceDatabase` v1 with change-tracking triggers,
+   `RoomFinanceRepository` and `FinanceModule`. Unit tests use the Figma screens' numbers.
 2. **Screens on Room** — dashboard, expenses (daily / monthly / yearly), monthly report, accounts,
    cards, add / edit account, add expense / income, categories.
 3. **Recurring & statement engine**, Pending payments, Mark as paid, Pay card bill, reminders.

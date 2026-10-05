@@ -80,6 +80,7 @@ dependencies {
     implementation(project(":knowledge-graph:graph-tools"))
     implementation(project(":links"))
     implementation(project(":topics"))
+    implementation(project(":finance"))
     implementation(project(":design"))
     implementation(project(":sync"))
 

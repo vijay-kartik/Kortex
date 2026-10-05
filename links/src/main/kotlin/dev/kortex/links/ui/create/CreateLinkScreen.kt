@@ -396,7 +396,7 @@ private fun TagsSection(
                         suggested = tag in suggestedTags,
                         onSelectedChange = { onTagToggle(tag) },
                         modifier = Modifier.sharedElement(
-                            state = rememberSharedContentState("tag:$tag"),
+                            sharedContentState = rememberSharedContentState("tag:$tag"),
                             animatedVisibilityScope = this,
                         ),
                     )

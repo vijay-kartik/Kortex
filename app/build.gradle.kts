@@ -45,6 +45,12 @@ android {
             "FIREBASE_WEB_CLIENT_ID",
             "\"${localProps.getProperty("FIREBASE_WEB_CLIENT_ID", "")}\"",
         )
+        // Vercel AI Gateway key (https://vercel.com/<team>/~/ai-gateway › API keys).
+        buildConfigField(
+            "String",
+            "AI_GATEWAY_API_KEY",
+            "\"${localProps.getProperty("AI_GATEWAY_API_KEY", "")}\"",
+        )
     }
 
     buildFeatures {
@@ -83,6 +89,7 @@ dependencies {
     implementation(project(":finance"))
     implementation(project(":design"))
     implementation(project(":sync"))
+    implementation(libs.ktor.client.okhttp)
 
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
     // App Check: `financeKey` only answers this app, attested by Play Integrity (debug builds use the debug provider).

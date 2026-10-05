@@ -29,7 +29,6 @@ import dev.kortex.links.domain.usecase.RetryLinkImage
 import dev.kortex.links.domain.usecase.SaveLink
 import dev.kortex.links.domain.usecase.SetLinkTags
 import dev.kortex.links.images.LinkImageStore
-import dev.kortex.links.tagging.EmbeddingTagSuggester
 import dev.kortex.links.tagging.LinkEmbedder
 import dev.kortex.links.tagging.MediaPipeLinkEmbedder
 import dev.kortex.links.tagging.PageMetadataFetcher
@@ -43,8 +42,8 @@ abstract class LinksModule {
     @Binds
     abstract fun bindLinkEmbedder(impl: MediaPipeLinkEmbedder): LinkEmbedder
 
-    @Binds
-    abstract fun bindTagSuggester(impl: EmbeddingTagSuggester): TagSuggester
+    // TagSuggester is bound by the app, which owns the decision model's key; it can fall back to
+    // EmbeddingTagSuggester, which stays injectable here.
 
     @Binds
     abstract fun bindPageReader(impl: PageMetadataFetcher): PageReader

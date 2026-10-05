@@ -7,9 +7,9 @@ import dev.kortex.finance.domain.model.AccountKind
 import dev.kortex.finance.domain.model.CategoryKind
 import dev.kortex.finance.domain.model.TransactionType
 import dev.kortex.finance.domain.port.Clock
-import dev.kortex.finance.domain.repository.FinanceRepository
 import dev.kortex.finance.domain.usecase.AddTransaction
 import dev.kortex.finance.domain.usecase.ObserveFinance
+import dev.kortex.finance.domain.usecase.SuggestCategory
 import dev.kortex.finance.domain.usecase.TransactionDraft
 import dev.kortex.finance.domain.usecase.TransactionSaveResult
 import dev.kortex.finance.ui.FinanceRoute
@@ -26,8 +26,8 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class AddEntryViewModel @Inject constructor(
     private val observeFinance: ObserveFinance,
-    private val repository: FinanceRepository,
     private val addTransaction: AddTransaction,
+    private val suggestCategoryFor: SuggestCategory,
     private val notices: FinanceNotices,
     private val clock: Clock,
 ) : MviViewModel<AddEntryState, AddEntryIntent, AddEntryEffect>(AddEntryState()) {
@@ -82,21 +82,24 @@ class AddEntryViewModel @Inject constructor(
         }
     }
 
-    /** Picks the category last used for this merchant, unless the user already chose one. */
+    /**
+     * Picks the category last used for this merchant, else the decision model's pick, unless the
+     * user already chose one.
+     */
     private fun suggestCategory(merchant: String) {
         suggestJob?.cancel()
         if (currentState.categoryPicked) return
-        val key = FinanceIds.payeeKey(merchant)
-        if (key.isEmpty()) {
+        if (FinanceIds.payeeKey(merchant).isEmpty()) {
             setState { copy(categoryUid = if (suggestedFrom != null) null else categoryUid, suggestedFrom = null) }
             return
         }
         suggestJob = viewModelScope.launch {
             delay(SUGGEST_DELAY_MS)
-            val known = repository.findMerchant(key)?.categoryUid
+            val kind = if (currentState.income) CategoryKind.INCOME else CategoryKind.EXPENSE
+            val suggested = suggestCategoryFor(merchant, kind)?.categoryUid
             setState {
                 if (categoryPicked) this
-                else if (known != null && categories.any { it.uid == known }) copy(categoryUid = known, suggestedFrom = merchant.trim())
+                else if (suggested != null && categories.any { it.uid == suggested }) copy(categoryUid = suggested, suggestedFrom = merchant.trim())
                 else copy(categoryUid = if (suggestedFrom != null) null else categoryUid, suggestedFrom = null)
             }
         }
@@ -136,6 +139,7 @@ class AddEntryViewModel @Inject constructor(
     }
 
     private companion object {
-        const val SUGGEST_DELAY_MS = 300L
+        /** Long enough that the decision model is asked about a word, not every keystroke. */
+        const val SUGGEST_DELAY_MS = 500L
     }
 }

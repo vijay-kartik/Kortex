@@ -4,6 +4,7 @@ import dev.kortex.finance.domain.FinanceIds
 import dev.kortex.finance.domain.model.CategoryKind
 import dev.kortex.finance.domain.model.Receipt
 import dev.kortex.finance.domain.port.Clock
+import dev.kortex.finance.domain.read.FinanceDecider
 import dev.kortex.finance.domain.read.FinanceReader
 import dev.kortex.finance.domain.read.ParsedReceipt
 import dev.kortex.finance.domain.read.ParsedSms
@@ -12,6 +13,8 @@ import dev.kortex.finance.domain.read.SmsKind
 import dev.kortex.finance.domain.read.SmsParser
 import dev.kortex.finance.domain.read.TextReading
 import dev.kortex.finance.domain.repository.FinanceRepository
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 
 sealed interface SmsResult {
@@ -21,8 +24,16 @@ sealed interface SmsResult {
     data class NotAPayment(val kind: SmsKind) : SmsResult
 }
 
-/** Paste SMS 01: patterns first; what they can't read goes to the LLM, masked. OTPs never do. */
-class ReadSms(private val reader: FinanceReader, private val clock: Clock) {
+/**
+ * Paste SMS 01: patterns first; what they can't read goes to the LLM, masked. OTPs the patterns
+ * catch never do. In between, the decision model gets a quick look: when it's sure an unreadable
+ * SMS isn't a payment, the LLM isn't asked at all.
+ */
+class ReadSms(
+    private val reader: FinanceReader,
+    private val clock: Clock,
+    private val decider: FinanceDecider = FinanceDecider.None,
+) {
     suspend operator fun invoke(text: String): SmsResult {
         val today = clock.today()
         when (val kind = SmsParser.classify(text, today)) {
@@ -30,7 +41,11 @@ class ReadSms(private val reader: FinanceReader, private val clock: Clock) {
             SmsKind.TRANSACTION -> return SmsResult.Read(SmsParser.parse(text, today)!!)
             SmsKind.UNREADABLE -> Unit
         }
-        val reading = reader.readSms(TextReading.maskForModel(text), today)?.takeIf { it.amountMinor > 0 }
+        val masked = TextReading.maskForModel(text)
+        decider.smsKind(masked)
+            ?.takeIf { it.value != SmsKind.TRANSACTION && it.confidence >= NOT_A_PAYMENT_CONFIDENCE }
+            ?.let { return SmsResult.NotAPayment(it.value) }
+        val reading = reader.readSms(masked, today)?.takeIf { it.amountMinor > 0 }
             ?: return SmsResult.NotAPayment(SmsKind.UNREADABLE)
         return SmsResult.Read(
             ParsedSms(
@@ -46,6 +61,11 @@ class ReadSms(private val reader: FinanceReader, private val clock: Clock) {
                 fromModel = true,
             ),
         )
+    }
+
+    internal companion object {
+        /** High: a payment wrongly turned away is worse than an LLM call spent on an advert. */
+        const val NOT_A_PAYMENT_CONFIDENCE = 0.85
     }
 }
 
@@ -87,8 +107,15 @@ data class MerchantGuess(
     enum class Source { REMEMBERED, MODEL }
 }
 
-/** Remembered merchants first; then the LLM tidies the name and suggests a category; else a tidy name alone. */
-class SuggestMerchant(private val repository: FinanceRepository, private val reader: FinanceReader) {
+/**
+ * Remembered merchants first; then the LLM tidies the name while the decision model picks the
+ * category (the LLM's pick stands in when the decision model isn't sure); else a tidy name alone.
+ */
+class SuggestMerchant(
+    private val repository: FinanceRepository,
+    private val reader: FinanceReader,
+    private val decider: FinanceDecider = FinanceDecider.None,
+) {
     suspend operator fun invoke(raw: String?, kind: CategoryKind, isUpiId: Boolean = false): MerchantGuess {
         val name = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return MerchantGuess(null, null, null)
         repository.findMerchant(FinanceIds.payeeKey(name))?.let { known ->
@@ -97,13 +124,43 @@ class SuggestMerchant(private val repository: FinanceRepository, private val rea
         }
         if (isUpiId) return MerchantGuess(null, null, null, needsName = true)
         val categories = repository.observeCategories().first().filter { it.kind == kind }
-        val suggestion = reader.suggestMerchant(TextReading.maskForModel(name), categories)
-        val category = suggestion?.categoryUid?.takeIf { uid -> categories.any { it.uid == uid } }
+        val masked = TextReading.maskForModel(name)
+        val (suggestion, decided) = coroutineScope {
+            val picked = async { decider.pickCategory(masked, categories) }
+            reader.suggestMerchant(masked, categories) to picked.await()
+        }
+        val category = (decided?.takeIf { it.confidence >= SuggestCategory.CONFIDENCE }?.value ?: suggestion?.categoryUid)
+            ?.takeIf { uid -> categories.any { it.uid == uid } }
         return MerchantGuess(
             name = suggestion?.name?.trim()?.takeIf { it.isNotEmpty() } ?: TextReading.tidyName(name),
             categoryUid = category,
             source = category?.let { MerchantGuess.Source.MODEL },
         )
+    }
+}
+
+/**
+ * Add expense / Add income: the category for a merchant typed by hand. The one it was last saved
+ * under, else the decision model's pick when it's sure; null when neither has one.
+ */
+class SuggestCategory(
+    private val repository: FinanceRepository,
+    private val decider: FinanceDecider = FinanceDecider.None,
+) {
+    suspend operator fun invoke(merchant: String, kind: CategoryKind): MerchantGuess? {
+        val name = merchant.trim().takeIf { it.isNotEmpty() } ?: return null
+        val categories = repository.observeCategories().first().filter { it.kind == kind }
+        repository.findMerchant(FinanceIds.payeeKey(name))?.categoryUid
+            ?.takeIf { uid -> categories.any { it.uid == uid } }
+            ?.let { return MerchantGuess(name, it, MerchantGuess.Source.REMEMBERED) }
+        return decider.pickCategory(TextReading.maskForModel(name), categories)
+            ?.takeIf { decided -> decided.confidence >= CONFIDENCE && categories.any { it.uid == decided.value } }
+            ?.let { MerchantGuess(name, it.value, MerchantGuess.Source.MODEL) }
+    }
+
+    internal companion object {
+        /** Probability of the picked category; spread across many categories, half is a clear lead. */
+        const val CONFIDENCE = 0.5
     }
 }
 

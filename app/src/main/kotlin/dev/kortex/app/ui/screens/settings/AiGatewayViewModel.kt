@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.app.data.ai.AiGatewayClient
+import dev.kortex.app.data.ai.probability
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,9 +13,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
@@ -53,7 +51,7 @@ class AiGatewayViewModel @Inject constructor(
                         }
                     },
                 )
-                val probability = answers["refunded"]?.jsonObject?.get("probability")?.jsonPrimitive?.doubleOrNull
+                val probability = answers.probability("refunded")
                 val elapsed = System.currentTimeMillis() - started
                 TestState.Passed(
                     if (probability != null) "P(refunded) = ${"%.2f".format(probability)} · ${elapsed} ms"

@@ -37,7 +37,9 @@ import dev.kortex.finance.domain.usecase.UndoOccurrence
 import dev.kortex.finance.domain.usecase.AttachReceipt
 import dev.kortex.finance.domain.usecase.ReadReceipt
 import dev.kortex.finance.domain.usecase.ReadSms
+import dev.kortex.finance.domain.usecase.SuggestCategory
 import dev.kortex.finance.domain.usecase.SuggestMerchant
+import dev.kortex.finance.domain.read.FinanceDecider
 import dev.kortex.finance.domain.read.FinanceReader
 import javax.inject.Singleton
 
@@ -129,16 +131,21 @@ object FinanceModule {
     fun provideRunFinanceEngine(repository: FinanceRepository, markPaid: MarkPaid, clock: Clock) =
         RunFinanceEngine(repository, markPaid, clock)
 
-    // FinanceReader (the agent's model) is bound by the app, which owns the LLM settings.
+    // FinanceReader (the agent's model) and FinanceDecider (the decision model) are bound by the
+    // app, which owns the model settings and keys.
 
     @Provides
-    fun provideReadSms(reader: FinanceReader, clock: Clock) = ReadSms(reader, clock)
+    fun provideReadSms(reader: FinanceReader, clock: Clock, decider: FinanceDecider) = ReadSms(reader, clock, decider)
 
     @Provides
     fun provideReadReceipt(reader: FinanceReader, clock: Clock) = ReadReceipt(reader, clock)
 
     @Provides
-    fun provideSuggestMerchant(repository: FinanceRepository, reader: FinanceReader) = SuggestMerchant(repository, reader)
+    fun provideSuggestMerchant(repository: FinanceRepository, reader: FinanceReader, decider: FinanceDecider) =
+        SuggestMerchant(repository, reader, decider)
+
+    @Provides
+    fun provideSuggestCategory(repository: FinanceRepository, decider: FinanceDecider) = SuggestCategory(repository, decider)
 
     @Provides
     fun provideAttachReceipt(repository: FinanceRepository) = AttachReceipt(repository)

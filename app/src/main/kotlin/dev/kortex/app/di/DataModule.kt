@@ -10,7 +10,10 @@ import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.data.local.AppDatabase
 import dev.kortex.app.data.local.ChatSessionDao
 import dev.kortex.app.data.auth.GmailAuthManager
+import dev.kortex.app.data.ai.AiGatewayClient
+import dev.kortex.app.data.finance.JevFinanceDecider
 import dev.kortex.app.data.finance.LlmFinanceReader
+import dev.kortex.app.data.links.JevTagSuggester
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.app.data.topics.GmailEmailDirectory
 import dev.kortex.app.data.topics.LinksLinkCatalog
@@ -19,10 +22,12 @@ import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.observability.AgentRunStore
 import dev.kortex.core.observability.RoomAgentRunStore
 import dev.kortex.core.store.KortexDatabase
+import dev.kortex.finance.domain.read.FinanceDecider
 import dev.kortex.finance.domain.read.FinanceReader
 import dev.kortex.links.domain.port.PageReader
 import dev.kortex.links.domain.port.TagSuggester
 import dev.kortex.links.domain.repository.LinksRepository
+import dev.kortex.links.tagging.EmbeddingTagSuggester
 import dev.kortex.myinfo.topics.domain.port.EmailDirectory
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
 import dev.kortex.myinfo.topics.domain.port.TopicSummarizer
@@ -51,7 +56,13 @@ object DataModule {
     @Provides
     fun provideChatSessionDao(database: AppDatabase): ChatSessionDao = database.chatSessionDao()
 
-    /** Topics keep links in the Links library rather than their own copy. */
+    /** Link tags come from Jev on Vercel AI Gateway; the on-device embeddings stand in offline. */
+    @Provides
+    @Singleton
+    fun provideTagSuggester(gateway: AiGatewayClient, links: LinksRepository, embeddings: EmbeddingTagSuggester): TagSuggester =
+        JevTagSuggester(gateway, links, embeddings)
+
+    /** Topics keep links in the Links library rather than their own copy.*/
     @Provides
     @Singleton
     fun provideLinkCatalog(links: LinksRepository, pages: PageReader, tagSuggester: TagSuggester): LinkCatalog =
@@ -73,4 +84,9 @@ object DataModule {
     @Provides
     @Singleton
     fun provideFinanceReader(llm: LlmProvider, settings: SettingsStore): FinanceReader = LlmFinanceReader(llm, settings)
+
+    /** Finance's quick pick-one questions (SMS kind, category) go to Jev on Vercel AI Gateway. */
+    @Provides
+    @Singleton
+    fun provideFinanceDecider(gateway: AiGatewayClient): FinanceDecider = JevFinanceDecider(gateway)
 }

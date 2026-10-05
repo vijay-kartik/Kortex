@@ -29,8 +29,9 @@ import kotlinx.serialization.json.put
  * goes through `POST /v1/evaluate` rather than chat completions.
  * Docs: https://vercel.com/docs/ai-gateway/modalities/evaluation
  *
- * The key comes from `AI_GATEWAY_API_KEY` in local.properties. Nothing calls this yet besides the
- * Settings test button.
+ * The key comes from `AI_GATEWAY_API_KEY` in local.properties. Used by finance's
+ * [dev.kortex.app.data.finance.JevFinanceDecider], link tagging's
+ * [dev.kortex.app.data.links.JevTagSuggester], and the Settings test button.
  */
 @Singleton
 class AiGatewayClient @Inject constructor() {

@@ -20,6 +20,11 @@ data class TransactionDraft(
     val toAccountUid: String? = null,
     val categoryUid: String? = null,
     val merchant: String? = null,
+    /**
+     * What the merchant is remembered by, when it isn't its name: a UPI id named once on Paste
+     * SMS 06, so the next SMS from that id gets the name.
+     */
+    val payeeKey: String? = null,
     val note: String? = null,
     /** Defaults to now. */
     val occurredAtMillis: Long? = null,
@@ -105,7 +110,7 @@ class AddTransaction(
         val now = clock.nowMillis()
         val at = draft.occurredAtMillis ?: now
         val merchantName = draft.merchant.clean().takeIf { !movesBetweenAccounts }
-        val payeeKey = merchantName?.let(FinanceIds::payeeKey)
+        val payeeKey = merchantName?.let { name -> FinanceIds.payeeKey(draft.payeeKey?.takeIf { it.isNotBlank() } ?: name) }
         val categoryUid = draft.categoryUid.takeIf { !movesBetweenAccounts }
         val transaction = Transaction(
             uid = draft.uid ?: FinanceIds.random(),

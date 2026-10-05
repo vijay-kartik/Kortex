@@ -34,6 +34,7 @@ import dev.kortex.design.Well
 import dev.kortex.finance.R
 import dev.kortex.finance.domain.model.AccountKind
 import dev.kortex.finance.domain.model.BankType
+import dev.kortex.finance.ui.AccountPrefill
 import dev.kortex.finance.ui.common.FieldList
 import dev.kortex.finance.ui.common.FieldRow
 import dev.kortex.finance.ui.common.FinanceFormat
@@ -52,9 +53,10 @@ fun AccountFormRoute(
     editUid: String?,
     initialKind: AccountKind?,
     onClose: () -> Unit,
+    prefill: AccountPrefill? = null,
     viewModel: AccountFormViewModel = hiltViewModel(),
 ) {
-    LaunchedEffect(editUid, initialKind) { viewModel.start(editUid, initialKind) }
+    LaunchedEffect(editUid, initialKind) { viewModel.start(editUid, initialKind, prefill) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     ObserveEffects(viewModel.effects) { effect ->
         when (effect) {
@@ -89,6 +91,13 @@ fun AccountFormScreen(state: AccountFormState, onIntent: (AccountFormIntent) -> 
         },
     ) {
         if (state.loading) return@FinanceSheet
+        if (state.fromSms) {
+            Text(
+                "Filled in from the ${state.fromSmsBank ?: "bank"} SMS. The SMS only shows the last 4 digits, so add the full number.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Muted,
+            )
+        }
         if (!state.editing) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 KindTile("Bank account", "Savings or current", R.drawable.ic_fin_bank, state.kind == AccountKind.BANK, Modifier.weight(1f)) {
@@ -130,9 +139,25 @@ fun AccountFormScreen(state: AccountFormState, onIntent: (AccountFormIntent) -> 
                 InputCard("Due date", state.dueDay, { edit { copy(dueDay = it.filter(Char::isDigit).take(2)) } }, Modifier.weight(1f), placeholder = "15", helper = "Day of month", keyboardType = KeyboardType.Number)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                InputCard("Credit limit", state.creditLimit, { edit { copy(creditLimit = it) } }, Modifier.weight(1f), placeholder = "₹50,000", keyboardType = KeyboardType.Decimal)
+                InputCard(
+                    "Credit limit",
+                    state.creditLimit,
+                    { edit { copy(creditLimit = it) } },
+                    Modifier.weight(1f),
+                    placeholder = "₹50,000",
+                    tag = state.smsAvailableLimitMinor?.let { "Avl ${FinanceFormat.rupees(it, paise = false)}" },
+                    keyboardType = KeyboardType.Decimal,
+                )
                 if (!state.editing) {
-                    InputCard("Outstanding today", state.opening, { edit { copy(opening = it) } }, Modifier.weight(1f), placeholder = "₹0.00", helper = "The first entry", keyboardType = KeyboardType.Decimal)
+                    InputCard(
+                        "Outstanding today",
+                        state.opening,
+                        { edit { copy(opening = it) } },
+                        Modifier.weight(1f),
+                        placeholder = state.smsOutstandingMinor()?.let(FinanceFormat::rupees) ?: "₹0.00",
+                        helper = if (state.smsAvailableLimitMinor != null) "Limit − Avl in SMS" else "The first entry",
+                        keyboardType = KeyboardType.Decimal,
+                    )
                 } else {
                     InputCard("Expiry", state.expiry, { edit { copy(expiry = it.take(5)) } }, Modifier.weight(1f), placeholder = "MM/YY")
                 }

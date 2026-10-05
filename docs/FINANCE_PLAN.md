@@ -243,5 +243,39 @@ after sign-in.
    - **App.** `CloudSync` counts finance in sync progress, in live listeners, in push-on-change,
      and in the other-account and keep / remove choices. Onboarding's restore has a Finances row
      and reports "N accounts · M entries".
-5. **Paste SMS** (bank packs + LLM fallback) and **Scan receipt** (ML Kit).
+5. **Paste SMS** (bank packs + LLM fallback) and **Scan receipt** (ML Kit). *Done:*
+   - **Reading SMS.** `SmsParser` in `domain/read` reads amounts, debit or credit, the last 4
+     digits (card or account), date and time, the payee or UPI id, the reference, and Avl Bal /
+     Avl Lmt. It records where each field was found, so the review can underline it.
+     - The patterns cover the common formats of the major Indian banks. One shared set replaces
+       the per-bank "packs" in the plan.
+     - OTPs and offers are turned away (07) and never sent anywhere.
+   - **Reading receipts.** `ReceiptParser` finds the total and the other amounts it could be, the
+     GST, the items, the date and the card's last 4 digits.
+   - **The model.** `FinanceReader` is the LLM port, implemented in `:app` as `LlmFinanceReader`
+     on the model chosen in Settings. Everything it's sent goes through `maskForModel` first.
+     - `ReadSms` and `ReadReceipt` ask the model only for what the patterns missed.
+     - `SuggestMerchant` checks remembered merchants first, then asks the model for a tidy name
+       and a category, and otherwise just tidies the name.
+   - **Matching.** `EntryMatching` matches the last 4 digits to an account and spots
+     duplicates: the same reference, or the same amount on the same account within 10 minutes
+     for an SMS and 60 minutes for a receipt.
+   - **Saving.**
+     - A UPI id named once is remembered by the id (`TransactionDraft.payeeKey`).
+     - The same SMS saved twice is one entry (`sms_…`).
+     - A card's "payment received" becomes a card payment; any other card credit is turned away,
+       since refunds aren't supported.
+   - **Paste SMS screens (01–09).**
+     - The clipboard is read once, when Paste SMS opens.
+     - Read parts of the SMS are underlined. The review covers duplicates (Skip or Add anyway),
+       a UPI id with no name yet ("Who was this for?") and a card the phone doesn't know (pick
+       an account, or Add card filled in from the SMS).
+     - A card added from an SMS works out what's owed today as the limit minus Avl Lmt.
+     - Sharing a bank SMS to Kortex from Messages opens straight at its review.
+   - **Scan receipt screens (03–06).** Google's document scanner (ML Kit, up to 2 pages, gallery
+     allowed) and on-device text recognition; the text is rebuilt into rows by position.
+     - The flow covers choosing a total, attaching the receipt to an existing expense, and a
+       photo that couldn't be read (Retake).
+     - The photo is kept in `files/receipts/` only when "Keep the receipt photo" is checked.
+   - **Entry points.** Paste SMS and Scan Receipt tiles sit at the top of Add Expense.
 6. **Secrets** (Tink + `financeKey`), `addTransaction` / `listFinance` + API, agent tools.

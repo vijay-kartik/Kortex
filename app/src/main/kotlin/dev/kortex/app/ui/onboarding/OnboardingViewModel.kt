@@ -29,7 +29,9 @@ sealed interface SignInSync {
 }
 
 /** What a restore brought back, as the phone now holds it. */
-data class Restored(val links: Int, val topics: Int)
+data class Restored(val links: Int, val topics: Int, val accounts: Int = 0, val entries: Int = 0) {
+    val isEmpty: Boolean get() = links + topics + accounts + entries == 0
+}
 
 data class OnboardingUi(
     val step: OnboardingStep = OnboardingStep.Welcome,
@@ -131,5 +133,10 @@ class OnboardingViewModel @Inject constructor(
 
     // The counts include deleted docs, so a restore can bring nothing back; say nothing then.
     private suspend fun restoredCounts(): Restored? =
-        Restored(links = cloudSync.linkCount(), topics = cloudSync.topicCount()).takeIf { it.links + it.topics > 0 }
+        Restored(
+            links = cloudSync.linkCount(),
+            topics = cloudSync.topicCount(),
+            accounts = cloudSync.financeAccountCount(),
+            entries = cloudSync.financeEntryCount(),
+        ).takeIf { !it.isEmpty }
 }

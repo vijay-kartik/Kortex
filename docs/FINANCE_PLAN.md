@@ -125,16 +125,17 @@ financeKeys/{uid}                            KMS-wrapped data key; outside users
   triggers gated by `sync_control.applying`, `sync_tombstones(kind, uid)`. Built-in categories are
   excluded from tracking.
 - **Pull before push.** Pull order: categories → accounts → statements → recurring → merchants →
-  transactions → secrets, so references resolve; a transaction whose account isn't here yet is
-  held back and fetched again by id. Push: tombstones first, then the same order, batches of ≤ 500.
+  transactions → secrets. Nothing is held back: rows are keyed by document id with no foreign
+  keys, so a transaction pulled before its account simply names the account's uid until it
+  lands. Push: tombstones first, then the same order, batches of ≤ 500.
 - **Last writer wins** per document on `updatedAt`. With balances derived only from entries, two
   phones only conflict when both edit the same transaction.
 - **Multi-record changes** are one Room transaction and one push: Add account writes the account
   and its OPENING entry; Mark paid writes the occurrence and moves `nextDueOn`; Delete category
   moves its transactions to the chosen category, then soft-deletes it; Delete account is a soft
   delete, and recurring payments that used it are flagged "needs an account".
-- **Live listeners** on every `fin*` collection while Finances is on screen; Settings › *Sync now*
-  and onboarding's restore count include finance.
+- **Live listeners** on every `fin*` collection while the app is on screen, as for links and
+  topics; Settings › *Sync now* and onboarding's restore include finance.
 - **Rules:** the existing owner-only `users/{uid}/**` rule covers every path; `financeKeys` is
   outside it. No composite indexes — Firestore is only queried by `serverUpdatedAt`.
 
@@ -225,6 +226,22 @@ after sign-in.
      - Tapping a reminder opens Pending payments.
      - The app asks for notification permission when a payment is saved with a reminder.
      - `remindDaysBefore` = −1 means no reminder.
-4. **FinanceSync** — Firestore docs, live listeners, onboarding restore.
+4. **FinanceSync** — Firestore docs, live listeners, onboarding restore. *Done:*
+   - **Local side.** `FinanceSyncDao` in `:finance` returns the dirty rows and the tombstones, and
+     marks a row pushed only when its change count is still the one it read. It applies pulled
+     rows with the triggers off; last writer wins (`decideMerge`), and an unpushed delete counts
+     as a dirty version.
+   - **Categories.** A category name that both phones added becomes "Name (2)" and goes back up.
+     Built-in uids are never applied.
+   - **Saves keep the change count.** Repository saves keep the row's stored count (`saveAccount`
+     and the others) instead of resetting it to 1, so an edit made while a push is in flight
+     can't be marked as pushed.
+   - **Remote side.** `FinanceDocs` and `FinanceSync` live in `:sync`. There are six collections,
+     pulled and pushed in the order above. Documents carry every field (`deleted`, `updatedAt`,
+     `serverUpdatedAt`). A document with an enum value this app doesn't know is skipped rather
+     than crashing.
+   - **App.** `CloudSync` counts finance in sync progress, in live listeners, in push-on-change,
+     and in the other-account and keep / remove choices. Onboarding's restore has a Finances row
+     and reports "N accounts · M entries".
 5. **Paste SMS** (bank packs + LLM fallback) and **Scan receipt** (ML Kit).
 6. **Secrets** (Tink + `financeKey`), `addTransaction` / `listFinance` + API, agent tools.

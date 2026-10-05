@@ -6,10 +6,12 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.MemoryCacheSettings
+import dev.kortex.finance.data.local.FinanceSyncDao
 import dev.kortex.links.data.LinkSyncDao
 import dev.kortex.links.images.LinkImageStore
 import dev.kortex.myinfo.topics.data.local.TopicSyncDao
 import dev.kortex.myinfo.topics.domain.port.FileVault
+import dev.kortex.sync.finance.FinanceSync
 import dev.kortex.sync.links.LinkSync
 import dev.kortex.sync.topics.TopicSync
 import kotlinx.coroutines.CancellationException
@@ -38,25 +40,28 @@ sealed interface SyncOutcome {
 }
 
 /** How far a sync's pull has got, per part of the library. Topics count their items too. */
-data class SyncProgress(val links: Part, val topics: Part) {
+data class SyncProgress(val links: Part, val topics: Part, val finance: Part = Part(0, 0)) {
     /** [total] is 0 when that part has nothing to pull. */
     data class Part(val done: Int, val total: Int)
 
-    val isEmpty: Boolean get() = links.total == 0 && topics.total == 0
+    val isEmpty: Boolean get() = links.total == 0 && topics.total == 0 && finance.total == 0
 }
 
-/** Links and topics on this phone that belong to another account, found by [CloudSync.otherAccountData] after a sign-in. */
+/** Links, topics and finances on this phone that belong to another account, found by [CloudSync.otherAccountData] after a sign-in. */
 data class OtherAccountData(
     val linkCount: Int,
     val topicCount: Int,
+    /** Accounts, entries, recurring payments and categories of yours. */
+    val financeCount: Int = 0,
     /** Changes that account never synced; removing its data loses them. */
     val unpushedCount: Int,
     val ownerEmail: String?,
 )
 
 /**
- * Sync of the signed-in account's links and topics with Firestore (docs/CLOUD_SYNC_PLAN.md): live
- * while the app is on screen ([runLive]), and on demand ([syncNow]).
+ * Sync of the signed-in account's links, topics and finances with Firestore
+ * (docs/CLOUD_SYNC_PLAN.md, docs/FINANCE_PLAN.md › Firestore): live while the app is on screen
+ * ([runLive]), and on demand ([syncNow]).
  */
 class CloudSync(
     context: Context,
@@ -65,6 +70,7 @@ class CloudSync(
     private val linkImages: LinkImageStore,
     private val topicDao: TopicSyncDao,
     private val topicFiles: FileVault,
+    private val financeDao: FinanceSyncDao,
 ) {
     private val store = SyncStore(context)
 
@@ -78,6 +84,7 @@ class CloudSync(
     private val remote = SyncRemote(firestore, store)
     private val links = LinkSync(remote, linkDao, linkImages)
     private val topics = TopicSync(remote, store, topicDao, linkDao, topicFiles)
+    private val finance = FinanceSync(remote, financeDao)
     private val mutex = Mutex()
 
     private val _syncing = MutableStateFlow(false)
@@ -92,7 +99,8 @@ class CloudSync(
     /**
      * Pulls, then pushes. Pulling first lets a newer remote change replace a local one before it
      * could be uploaded over it, so the push only carries changes that are the newest anywhere.
-     * Links go before topics both ways, since items refer to links. A second call waits for the
+     * Links go before topics both ways, since items refer to links; finances, which refer to
+     * neither, go last. A second call waits for the
      * running one, then syncs again.
      *
      * [onProgress] hears first with the totals (all 0 when there's nothing to pull, which is how a
@@ -104,7 +112,7 @@ class CloudSync(
             // Never push one account's data, or deletes made under it, into another.
             otherAccountDataLocked(user)?.let { other ->
                 return@withLock SyncOutcome.Failed(
-                    "This phone’s links and topics belong to ${other.ownerEmail ?: "another account"}. " +
+                    "This phone’s links, topics and finances belong to ${other.ownerEmail ?: "another account"}. " +
                         "Sign out and back in to choose what to do with them.",
                 )
             }
@@ -113,6 +121,7 @@ class CloudSync(
                 var progress = SyncProgress(
                     links = SyncProgress.Part(0, links.countChanged(user.uid)),
                     topics = SyncProgress.Part(0, topics.countChanged(user.uid)),
+                    finance = SyncProgress.Part(0, finance.countChanged(user.uid)),
                 )
                 onProgress(progress)
                 // Documents written since the count can push a part past its total.
@@ -126,8 +135,14 @@ class CloudSync(
                     progress = progress.copy(topics = part.copy(done = (part.done + read).coerceAtMost(part.total)))
                     onProgress(progress)
                 }
+                finance.pull(user.uid) { read ->
+                    val part = progress.finance
+                    progress = progress.copy(finance = part.copy(done = (part.done + read).coerceAtMost(part.total)))
+                    onProgress(progress)
+                }
                 links.push(user.uid)
                 topics.push(user.uid)
+                finance.push(user.uid)
                 store.setLastSyncedAt(user.uid, System.currentTimeMillis())
                 SyncOutcome.Done
             } catch (e: TimeoutCancellationException) {
@@ -157,7 +172,8 @@ class CloudSync(
     /**
      * Keeps this phone and the cloud in step until cancelled; the app runs it while it's on screen.
      * Catches up with a full [syncNow] first, then listens to all three collections, applying what
-     * other clients write as it arrives, and pushes each save as soon as it lands. Does nothing while the phone's data belongs to another account (the sign-in flow settles
+     * other clients write as it arrives (links, topics and items, and each finance collection),
+     * and pushes each save as soon as it lands. Does nothing while the phone's data belongs to another account (the sign-in flow settles
      * that first).
      */
     suspend fun runLive() {
@@ -188,6 +204,13 @@ class CloudSync(
                     applyHeard(user, SyncCollection.TopicItems, changes) { topics.applyHeardItems(user.uid, changes.docs) }
                 }
             }
+            finance.collections.forEach { collection ->
+                launch {
+                    finance.changes(user.uid, collection).collect { changes ->
+                        applyHeard(user, collection, changes) { finance.apply(collection, changes.docs) }
+                    }
+                }
+            }
             launch { pushWhenChanged(user) }
         }
     }
@@ -204,6 +227,7 @@ class CloudSync(
             try {
                 links.push(user.uid)
                 topics.push(user.uid)
+                finance.push(user.uid)
                 store.setLastSyncedAt(user.uid, System.currentTimeMillis())
                 true
             } catch (e: TimeoutCancellationException) {
@@ -236,13 +260,15 @@ class CloudSync(
     }
 
     /**
-     * Pushes whenever a save leaves links.db or topics.db with unpushed changes: saving a link,
-     * adding an item, creating or editing a topic, deleting. A failed push is retried with backoff;
+     * Pushes whenever a save leaves links.db, topics.db or finance.db with unpushed changes: saving
+     * a link, adding an item, creating or editing a topic, an expense saved, deleting. A failed push is retried with backoff;
      * the next save also tries again.
      */
     @OptIn(FlowPreview::class)
     private suspend fun pushWhenChanged(user: CloudUser) {
-        combine(linkDao.observeUnpushedCount(), topicDao.observeUnpushedCount()) { links, topics -> links + topics }
+        combine(linkDao.observeUnpushedCount(), topicDao.observeUnpushedCount(), financeDao.observeUnpushedCount()) { links, topics, finance ->
+            links + topics + finance
+        }
             .filter { it > 0 }
             .debounce(PUSH_DEBOUNCE_MS)
             .conflate()
@@ -261,23 +287,30 @@ class CloudSync(
     /** How many topics this phone has. */
     suspend fun topicCount(): Int = topicDao.topicCount()
 
+    /** How many accounts and cards this phone has. */
+    suspend fun financeAccountCount(): Int = financeDao.accountCount()
+
+    /** How many expenses, income and other entries this phone has, opening balances aside. */
+    suspend fun financeEntryCount(): Int = financeDao.entryCount()
+
     /**
-     * Call right after [user] signs in. Returns null when the links and topics on this phone are
+     * Call right after [user] signs in. Returns null when the links, topics and finances on this phone are
      * already theirs (or there are none, and the phone is simply claimed for them). Otherwise the
      * user chooses between [keepLocalData] and [discardLocalData] before anything syncs.
      */
     suspend fun otherAccountData(user: CloudUser): OtherAccountData? = mutex.withLock { otherAccountDataLocked(user) }
 
-    /** Keeps this phone's links and topics and makes them [user]'s: the next sync pushes them all to their cloud. */
+    /** Keeps this phone's links, topics and finances and makes them [user]'s: the next sync pushes them all to their cloud. */
     suspend fun keepLocalData(user: CloudUser) = mutex.withLock {
         adoptLocalData()
         claim(user)
     }
 
-    /** Removes this phone's links and topics, leaving every cloud copy as it is, and makes the phone [user]'s. */
+    /** Removes this phone's links, topics and finances, leaving every cloud copy as it is, and makes the phone [user]'s. */
     suspend fun discardLocalData(user: CloudUser) = mutex.withLock {
         linkDao.discardAll().forEach { linkImages.deleteImages(it) }
         topicFiles.delete(topicDao.discardAll())
+        financeDao.discardAll()
         claim(user)
     }
 
@@ -286,8 +319,9 @@ class CloudSync(
         if (owner?.uid == user.uid) return null
         val linkCount = linkDao.linkCount()
         val topicCount = topicDao.topicCount()
+        val financeCount = financeDao.recordCount()
         // No owner recorded means data saved before accounts were tracked: it's the signed-in user's.
-        if (owner == null || linkCount + topicCount == 0) {
+        if (owner == null || linkCount + topicCount + financeCount == 0) {
             if (owner != null) adoptLocalData() // nothing left, but maybe the old account's deletes
             claim(user)
             return null
@@ -295,7 +329,8 @@ class CloudSync(
         return OtherAccountData(
             linkCount = linkCount,
             topicCount = topicCount,
-            unpushedCount = linkDao.unpushedCount() + topicDao.unpushedCount(),
+            financeCount = financeCount,
+            unpushedCount = linkDao.unpushedCount() + topicDao.unpushedCount() + financeDao.unpushedCount(),
             ownerEmail = owner.email,
         )
     }
@@ -303,6 +338,7 @@ class CloudSync(
     private suspend fun adoptLocalData() {
         linkDao.adoptForNewAccount()
         topicDao.adoptForNewAccount()
+        financeDao.adoptForNewAccount()
     }
 
     /**

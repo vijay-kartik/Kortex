@@ -21,6 +21,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 abstract class FinanceDatabase : RoomDatabase() {
     abstract fun financeDao(): FinanceDao
 
+    abstract fun financeSyncDao(): FinanceSyncDao
+
     companion object {
         /**
          * A fresh database gets its tables from Room; the sync switch row, triggers and built-in

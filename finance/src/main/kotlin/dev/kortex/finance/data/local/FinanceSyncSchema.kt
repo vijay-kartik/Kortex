@@ -8,7 +8,7 @@ import dev.kortex.finance.domain.model.BuiltInCategories
  * to any synced column counts the row dirty and stamps it; a delete leaves a tombstone. Built-in
  * categories are never tracked: every device seeds the same ones.
  */
-internal object FinanceSyncSchema {
+object FinanceSyncSchema {
     const val KIND_ACCOUNT = "finAccount"
     const val KIND_TRANSACTION = "finTransaction"
     const val KIND_CATEGORY = "finCategory"
@@ -49,12 +49,12 @@ internal object FinanceSyncSchema {
         Tracked("merchants", KIND_MERCHANT, listOf("payeeKey", "displayName", "categoryUid")),
     )
 
-    fun seedControl(db: SupportSQLiteDatabase) {
+    internal fun seedControl(db: SupportSQLiteDatabase) {
         db.execSQL("INSERT OR IGNORE INTO sync_control (id, applying) VALUES (0, 0)")
     }
 
     /** Safe to run on every open: rows that exist are left alone. */
-    fun seedBuiltInCategories(db: SupportSQLiteDatabase) {
+    internal fun seedBuiltInCategories(db: SupportSQLiteDatabase) {
         BuiltInCategories.all.forEach { category ->
             db.execSQL(
                 "INSERT OR IGNORE INTO categories " +
@@ -65,7 +65,7 @@ internal object FinanceSyncSchema {
         }
     }
 
-    fun createTriggers(db: SupportSQLiteDatabase) {
+    internal fun createTriggers(db: SupportSQLiteDatabase) {
         TRACKED.forEach { tracked ->
             val extraNew = tracked.extraWhen?.let { " AND NEW.$it" }.orEmpty()
             val extraOld = tracked.extraWhen?.let { " AND OLD.$it" }.orEmpty()

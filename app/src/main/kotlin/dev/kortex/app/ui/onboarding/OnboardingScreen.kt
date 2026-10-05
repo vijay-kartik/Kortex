@@ -363,7 +363,8 @@ private fun OtherAccountLinksScreen(
     val what = listOfNotNull(
         other?.linkCount?.takeIf { it > 0 }?.let { if (it == 1) "1 link" else "$it links" },
         other?.topicCount?.takeIf { it > 0 }?.let { if (it == 1) "1 topic" else "$it topics" },
-    ).joinToString(" and ")
+        other?.financeCount?.takeIf { it > 0 }?.let { "finances" },
+    ).let { parts -> if (parts.size <= 2) parts.joinToString(" and ") else parts.dropLast(1).joinToString(", ") + " and " + parts.last() }
     val previous = other?.ownerEmail ?: "another account"
     val current = user?.email ?: "this account"
 
@@ -427,13 +428,15 @@ private fun OtherAccountLinksScreen(
 
 /**
  * The account's library coming back after a sign-in (Figma: Login & Logout 03). Links pull first,
- * then topics with their items. Files aren't backed up, so the design's Files row isn't here.
+ * then topics with their items, then finances. Files aren’t backed up, so the design’s Files row isn’t here.
  */
 @Composable
 private fun RestoringScreen(user: CloudUser?, progress: SyncProgress?) {
     val links = progress?.links ?: SyncProgress.Part(0, 0)
     val topics = progress?.topics ?: SyncProgress.Part(0, 0)
+    val finance = progress?.finance ?: SyncProgress.Part(0, 0)
     val linksPulled = links.done >= links.total
+    val topicsPulled = linksPulled && topics.done >= topics.total
 
     Column(
         modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 24.dp),
@@ -473,6 +476,7 @@ private fun RestoringScreen(user: CloudUser?, progress: SyncProgress?) {
         ) {
             RestoreRow("Links", links, started = true)
             RestoreRow("Topics", topics, started = linksPulled)
+            RestoreRow("Finances", finance, started = topicsPulled)
         }
         Spacer(Modifier.weight(1f))
         Text(
@@ -654,9 +658,11 @@ private fun SummaryCard(user: CloudUser?, sync: SignInSync?, modifier: Modifier 
             SummaryDivider()
             SummaryRow(
                 "Restored",
-                listOf(
+                listOfNotNull(
                     if (restored.links == 1) "1 link" else "${restored.links} links",
                     if (restored.topics == 1) "1 topic" else "${restored.topics} topics",
+                    restored.accounts.takeIf { it > 0 }?.let { if (it == 1) "1 account" else "$it accounts" },
+                    restored.entries.takeIf { it > 0 }?.let { if (it == 1) "1 entry" else "$it entries" },
                 ).joinToString(" · "),
             )
         }

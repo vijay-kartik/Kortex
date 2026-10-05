@@ -46,7 +46,7 @@ class RoomFinanceRepository(
         dao.insertAccountWithOpening(account.toEntity(), opening?.toEntity())
 
     override suspend fun updateAccount(account: Account) =
-        dao.updateAccount(account.copy(updatedAtMillis = clock.nowMillis()).toEntity())
+        dao.saveAccount(account.copy(updatedAtMillis = clock.nowMillis()).toEntity())
 
     override suspend fun deleteAccount(uid: String) = dao.deleteAccount(uid)
 
@@ -54,7 +54,7 @@ class RoomFinanceRepository(
         dao.insertTransactionWithMerchant(transaction.toEntity(), merchant?.toEntity())
 
     override suspend fun updateTransaction(transaction: Transaction) =
-        dao.updateTransaction(transaction.copy(updatedAtMillis = clock.nowMillis()).toEntity())
+        dao.saveTransaction(transaction.copy(updatedAtMillis = clock.nowMillis()).toEntity())
 
     override suspend fun deleteTransaction(uid: String) = dao.deleteTransaction(uid)
 
@@ -63,13 +63,13 @@ class RoomFinanceRepository(
     override suspend fun updateCategory(category: Category) {
         val existing = dao.getCategory(category.uid) ?: return
         if (existing.builtIn) return
-        dao.updateCategory(category.toEntity(clock.nowMillis(), createdAtMillis = existing.createdAtMillis))
+        dao.saveCategory(category.toEntity(clock.nowMillis(), createdAtMillis = existing.createdAtMillis))
     }
 
     override suspend fun deleteCategory(uid: String, moveTo: String?) = dao.deleteCategoryMoving(uid, moveTo)
 
     override suspend fun upsertRecurring(recurring: Recurring) =
-        dao.upsertRecurring(recurring.copy(updatedAtMillis = clock.nowMillis()).toEntity())
+        dao.saveRecurring(recurring.copy(updatedAtMillis = clock.nowMillis()).toEntity())
 
     override suspend fun deleteRecurring(uid: String) = dao.deleteRecurring(uid)
 
@@ -86,7 +86,7 @@ class RoomFinanceRepository(
     )
 
     override suspend fun upsertStatement(statement: CardStatement) =
-        dao.upsertStatement(statement.copy(updatedAtMillis = clock.nowMillis()).toEntity())
+        dao.saveStatement(statement.copy(updatedAtMillis = clock.nowMillis()).toEntity())
 
     override suspend fun addStatementsIfAbsent(statements: List<CardStatement>) {
         if (statements.isNotEmpty()) dao.insertStatementsIfAbsent(statements.map { it.toEntity() })

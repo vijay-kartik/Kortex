@@ -87,6 +87,46 @@ abstract class FinanceDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insertStatementsIfAbsent(statements: List<CardStatementEntity>)
 
+    // A row's `dirty` counts changes not yet pushed, and a push marks it clean only if the count
+    // is what it read. Saving a row from its entity would reset the count to the entity's 1, so
+    // these keep the stored count and let the trigger move it on.
+
+    @Query("SELECT dirty FROM accounts WHERE uid = :uid")
+    protected abstract suspend fun accountDirty(uid: String): Int?
+
+    @Query("SELECT dirty FROM transactions WHERE uid = :uid")
+    protected abstract suspend fun transactionDirty(uid: String): Int?
+
+    @Query("SELECT dirty FROM categories WHERE uid = :uid")
+    protected abstract suspend fun categoryDirty(uid: String): Int?
+
+    @Query("SELECT dirty FROM recurring WHERE uid = :uid")
+    protected abstract suspend fun recurringDirty(uid: String): Int?
+
+    @Query("SELECT dirty FROM card_statements WHERE uid = :uid")
+    protected abstract suspend fun statementDirty(uid: String): Int?
+
+    @Query("SELECT dirty FROM merchants WHERE uid = :uid")
+    protected abstract suspend fun merchantDirty(uid: String): Int?
+
+    @Transaction
+    open suspend fun saveAccount(account: AccountEntity) = updateAccount(account.copy(dirty = accountDirty(account.uid) ?: 1))
+
+    @Transaction
+    open suspend fun saveTransaction(transaction: TransactionEntity) =
+        updateTransaction(transaction.copy(dirty = transactionDirty(transaction.uid) ?: 1))
+
+    @Transaction
+    open suspend fun saveCategory(category: CategoryEntity) = updateCategory(category.copy(dirty = categoryDirty(category.uid) ?: 1))
+
+    @Transaction
+    open suspend fun saveRecurring(recurring: RecurringEntity) = upsertRecurring(recurring.copy(dirty = recurringDirty(recurring.uid) ?: 1))
+
+    @Transaction
+    open suspend fun saveStatement(statement: CardStatementEntity) = upsertStatement(statement.copy(dirty = statementDirty(statement.uid) ?: 1))
+
+    private suspend fun saveMerchant(merchant: MerchantEntity) = upsertMerchant(merchant.copy(dirty = merchantDirty(merchant.uid) ?: 1))
+
     @Transaction
     open suspend fun saveRecurringChange(
         recurring: RecurringEntity,
@@ -97,8 +137,8 @@ abstract class FinanceDao {
         removePaymentUid?.let { deleteTransaction(it) }
         // Ignored when this occurrence was paid meanwhile (the engine and a tap on the same day).
         payment?.let { insertTransactionIfAbsent(it) }
-        merchant?.let { upsertMerchant(it) }
-        upsertRecurring(recurring)
+        merchant?.let { saveMerchant(it) }
+        saveRecurring(recurring)
     }
 
     /** The account and its opening entry land together, or not at all. */
@@ -111,7 +151,7 @@ abstract class FinanceDao {
     @Transaction
     open suspend fun insertTransactionWithMerchant(transaction: TransactionEntity, merchant: MerchantEntity?) {
         insertTransaction(transaction)
-        merchant?.let { upsertMerchant(it) }
+        merchant?.let { saveMerchant(it) }
     }
 
     /** Moves everything that used the category to [moveTo] (null: Uncategorised), then deletes it. */

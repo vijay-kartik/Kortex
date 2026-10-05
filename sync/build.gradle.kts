@@ -3,7 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
-// Cloud sync: owns every Firebase dependency, so :links and :topics stay Firebase-free.
+// Cloud sync: owns every Firebase dependency, so :links, :topics and :finance stay Firebase-free.
 android {
     namespace = "dev.kortex.sync"
     compileSdk = 36
@@ -27,6 +27,7 @@ dependencies {
     // The local side of sync: dirty rows to push, and applying pulled ones.
     implementation(project(":links"))
     implementation(project(":topics"))
+    implementation(project(":finance"))
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)

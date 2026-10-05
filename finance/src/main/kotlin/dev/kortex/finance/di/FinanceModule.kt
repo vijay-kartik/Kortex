@@ -10,6 +10,7 @@ import dagger.hilt.components.SingletonComponent
 import dev.kortex.finance.data.RoomFinanceRepository
 import dev.kortex.finance.data.local.FinanceDao
 import dev.kortex.finance.data.local.FinanceDatabase
+import dev.kortex.finance.data.local.FinanceSyncDao
 import dev.kortex.finance.domain.port.Clock
 import dev.kortex.finance.domain.repository.FinanceRepository
 import dev.kortex.finance.domain.usecase.AddAccount
@@ -44,6 +45,10 @@ object FinanceModule {
 
     @Provides
     fun provideFinanceDao(database: FinanceDatabase): FinanceDao = database.financeDao()
+
+    /** For sync in `:sync`, which pushes dirty rows and applies pulled ones. */
+    @Provides
+    fun provideFinanceSyncDao(database: FinanceDatabase): FinanceSyncDao = database.financeSyncDao()
 
     @Provides
     fun provideClock(): Clock = Clock.System

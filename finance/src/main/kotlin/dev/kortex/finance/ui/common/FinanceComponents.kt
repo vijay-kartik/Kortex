@@ -71,6 +71,8 @@ fun FinanceCard(
     onClick: (() -> Unit)? = null,
     highlighted: Boolean = false,
     padding: Dp = 16.dp,
+    /** Overrides the hairline: Alarm for an overdue card bill. */
+    borderColor: Color? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -78,7 +80,7 @@ fun FinanceCard(
             .fillMaxWidth()
             .clip(CardShape)
             .background(if (highlighted) SynapseDim else Panel)
-            .border(1.dp, if (highlighted) Synapse.copy(alpha = 0.45f) else Edge, CardShape)
+            .border(1.dp, borderColor ?: if (highlighted) Synapse.copy(alpha = 0.45f) else Edge, CardShape)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(padding),
         content = content,

@@ -47,9 +47,14 @@ class CardsViewModel @Inject constructor(
 ) : MviViewModel<CardsState, CardsIntent, CardsEffect>(CardsState()) {
 
     private val revealed = MutableStateFlow<Map<String, String>>(emptyMap())
+    private val front = MutableStateFlow<String?>(null)
 
     init {
-        combine(observeFinance(), revealed) { snapshot, shown -> CardsUi.build(snapshot, clock.today()).copy(revealed = shown) }.reduceInto { it }
+        combine(observeFinance(), revealed, front) { snapshot, shown, frontUid ->
+            val state = CardsUi.build(snapshot, clock.today())
+            // A deleted or archived front card falls back to the first one.
+            state.copy(revealed = shown, frontUid = frontUid?.takeIf { uid -> state.cards.any { it.uid == uid } } ?: state.cards.firstOrNull()?.uid)
+        }.reduceInto { it }
     }
 
     override fun handleIntent(intent: CardsIntent) {
@@ -57,6 +62,7 @@ class CardsViewModel @Inject constructor(
             CardsIntent.AddCard -> FinanceRoute.AddAccount(AccountKind.CREDIT_CARD)
             is CardsIntent.Edit -> FinanceRoute.EditAccount(intent.uid)
             is CardsIntent.PayBill -> FinanceRoute.PayBill(intent.statementUid)
+            is CardsIntent.Front -> return front.update { intent.uid }
             is CardsIntent.Reveal -> return reveal(intent.uid)
             is CardsIntent.Hide -> return revealed.update { it - intent.uid }
         }

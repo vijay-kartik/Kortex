@@ -26,10 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GH_TOKEN: ${{ github.token }}
+      # Personal access token for vijay-kartik/Kortex, stored as the GH_PAT repository secret.
+      # Falls back to the built-in workflow token when the secret is not set.
+      GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
+          token: ${{ secrets.GH_PAT || github.token }}
           fetch-depth: 50 # recent history so Claude can look at the last week of commits
 
       - name: Pick focus area and ensure labels exist
@@ -85,7 +88,7 @@ jobs:
           # (create it with `claude setup-token`); the API key bills the Anthropic API.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ github.token }}
+          github_token: ${{ secrets.GH_PAT || github.token }}
           claude_args: |
             --model claude-opus-5-5
             --max-turns 50

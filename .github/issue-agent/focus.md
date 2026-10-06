@@ -22,6 +22,7 @@ in priority order.
 6. **Design system** — the code must follow design guide as mentioned in the figma project. Figma project link Kortex file: https://www.figma.com/design/8CBjHcKRkTl4AroVOQlhL4/Kortex?m=auto&t=9HVYWMYh5Rh0d1pZ-6
 7. **Clean architecture** — Code must follow clean architecture everywhere. Clean code principles and SOLID principles as well.
 8. **Code duplication** — Any duplication in code if it can be reduced, must be reduced. Though not at the cost of code readability.
+9. **New Features** — Suggest incremental improvements in the existing features, and also request for new features with the mindset of bettering this product.
 
 
 ## Out of scope

@@ -1,0 +1,188 @@
+name: Claude fix agent
+
+on:
+  schedule:
+    # Every 2 hours: 00:00 02:00 ... 22:00 UTC = 05:30 07:30 ... 03:30 IST.
+    - cron: "0 */2 * * *"
+  workflow_dispatch: # lets you trigger a run by hand from the Actions tab
+    inputs:
+      issue:
+        description: "Issue number to fix (leave empty to pick the oldest eligible one)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+concurrency:
+  group: claude-fix-issues
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Pick an issue that has no fix PR yet
+        id: pick
+        env:
+          ISSUE_OVERRIDE: ${{ inputs.issue }}
+        run: |
+          for l in "claude-fix|0e8a16|Pull request opened by the Claude fix agent" \
+                   "needs-human|d93f0b|The Claude fix agent needs a decision or more detail before it can fix this" \
+                   "auto-fix-failed|b60205|The Claude fix agent tried and failed; remove to let it retry" \
+                   "no-auto-fix|ededed|Keep the Claude fix agent away from this issue"; do
+            IFS='|' read -r name color desc <<<"$l"
+            gh label create "$name" --color "$color" --description "$desc" --force
+          done
+
+          if [ -n "$ISSUE_OVERRIDE" ]; then
+            candidates=$ISSUE_OVERRIDE
+          else
+            # Open issues, oldest first, skipping any that already have a linked PR (open or
+            # closed), an assignee (someone is on it) or one of the opt-out labels.
+            candidates=$(gh api graphql -f owner="$GITHUB_REPOSITORY_OWNER" -f name="${GITHUB_REPOSITORY#*/}" -f query='
+              query($owner: String!, $name: String!) {
+                repository(owner: $owner, name: $name) {
+                  issues(states: OPEN, first: 100, orderBy: {field: CREATED_AT, direction: ASC}) {
+                    nodes {
+                      number
+                      assignees { totalCount }
+                      labels(first: 30) { nodes { name } }
+                      closedByPullRequestsReferences(first: 1, includeClosedPrs: true) { totalCount }
+                    }
+                  }
+                }
+              }' --jq '.data.repository.issues.nodes[]
+                | select(.closedByPullRequestsReferences.totalCount == 0)
+                | select(.assignees.totalCount == 0)
+                | select(any(.labels.nodes[]; .name == "needs-human" or .name == "auto-fix-failed" or .name == "no-auto-fix") | not)
+                | .number')
+          fi
+
+          issue=""
+          for n in $candidates; do
+            # A leftover branch means an earlier run got part-way; leave it for a human.
+            if git ls-remote --exit-code --heads origin "claude/issue-$n" >/dev/null; then continue; fi
+            issue=$n
+            break
+          done
+          if [ -z "$issue" ]; then
+            echo "No open issue needs a fix PR right now."
+            exit 0
+          fi
+
+          echo "Fixing issue #$issue"
+          echo "issue=$issue" >> "$GITHUB_OUTPUT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "claude/issue-$issue"
+
+      - uses: actions/setup-java@v4
+        if: steps.pick.outputs.issue != ''
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.pick.outputs.issue != ''
+
+      - name: Restore google-services.json
+        if: steps.pick.outputs.issue != ''
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          # Gitignored, so it never ends up in Claude's commit. Without it only :app fails to build.
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+          else
+            echo "GOOGLE_SERVICES_JSON secret not set; the :app module will not build"
+          fi
+
+      - uses: anthropics/claude-code-action@v1
+        if: steps.pick.outputs.issue != ''
+        with:
+          # Use ONE of these. The OAuth token bills your Claude Pro/Max plan
+          # (create it with `claude setup-token`); the API key bills the Anthropic API.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          claude_args: |
+            --model claude-opus-5-5
+            --max-turns 120
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git add:*),Bash(git rm:*),Bash(git mv:*),Bash(git commit:*),Bash(git push -u origin claude/issue-${{ steps.pick.outputs.issue }}),Bash(./gradlew:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh pr create:*)"
+          prompt: |
+            You are fixing GitHub issue #${{ steps.pick.outputs.issue }} in the Kortex repository
+            (${{ github.repository }}): a multi-module Kotlin/Android app (Jetpack Compose, MVI).
+            The branch `claude/issue-${{ steps.pick.outputs.issue }}` is already checked out from
+            `main`. Do not switch branches.
+
+            1. Read the issue and its comments:
+               `gh issue view ${{ steps.pick.outputs.issue }} --comments`
+               Then read `AGENTS.md`, `README.md`, the relevant `docs/*.md` and the code involved.
+               Match the conventions of the surrounding code (naming, comment density, module
+               layering, MVI contracts).
+
+            2. Decide whether this can be fixed well in one focused PR. If it cannot (too large,
+               ambiguous, needs a product or design decision, needs secrets or console access, or
+               the issue is not actually a problem), change no code. Instead, comment on the issue
+               explaining exactly what you need decided or clarified, add the `needs-human` label
+               (`gh issue edit ${{ steps.pick.outputs.issue }} --add-label needs-human`), and stop.
+               Large feature requests usually belong here; small, well-specified ones do not.
+
+            3. Otherwise, implement the fix. Keep the change scoped to the issue: no unrelated
+               refactors or formatting changes. Add or update unit tests when the logic involved
+               is testable.
+
+            4. Verify it. In this CI environment you should run Gradle. Compile and unit-test the
+               modules you touched, e.g.
+               `./gradlew :finance:compileDebugKotlin :finance:testDebugUnitTest`.
+               The `:app` module only builds if `app/google-services.json` exists. If a failure is
+               caused by your change, fix it. If it is environmental, say so in the PR.
+
+            5. Commit only the files you changed, with the message
+               `<short summary> (#${{ steps.pick.outputs.issue }})`, then push:
+               `git push -u origin claude/issue-${{ steps.pick.outputs.issue }}`
+
+            6. Open the pull request:
+               `gh pr create --base main --head claude/issue-${{ steps.pick.outputs.issue }} --label claude-fix --title "<concise title>" --body-file <file>`
+               Write the body to a temp file first. Body format:
+
+               Fixes #${{ steps.pick.outputs.issue }}
+
+               ## Summary
+               What was wrong and how this fixes it, in 2–4 sentences.
+
+               ## Changes
+               Each changed file with one line on what changed.
+
+               ## Verification
+               The exact Gradle commands you ran and their results, and anything you could not
+               verify (e.g. UI behaviour that needs a device).
+
+               ## Notes for the reviewer
+               Risks, decisions you made that the reviewer should check, and follow-ups.
+
+            7. Finish with the PR URL, or with why you stopped without one.
+
+      - name: Flag the issue if no PR came out of this run
+        if: always() && steps.pick.outputs.issue != ''
+        env:
+          ISSUE: ${{ steps.pick.outputs.issue }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          prs=$(gh pr list --head "claude/issue-$ISSUE" --state all --json number --jq length)
+          needs_human=$(gh issue view "$ISSUE" --json labels --jq 'any(.labels[]; .name == "needs-human")')
+          if [ "$prs" = "0" ] && [ "$needs_human" != "true" ]; then
+            gh issue edit "$ISSUE" --add-label auto-fix-failed
+            gh issue comment "$ISSUE" --body "The Claude fix agent couldn't open a PR for this issue ([run log]($RUN_URL)). To let it try again, remove the \`auto-fix-failed\` label and delete the \`claude/issue-$ISSUE\` branch if it exists."
+          fi

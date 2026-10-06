@@ -73,7 +73,7 @@ class JevFinanceDecider(private val gateway: AiGatewayClient) : FinanceDecider {
 
         /** Option name → the kind it means, and what the model is told it covers. */
         val SMS_KINDS: Map<String, Pair<SmsKind, String>> = mapOf(
-            "transaction" to (SmsKind.TRANSACTION to "A bank, card, UPI or wallet alert that money was debited, credited, spent, received, sent or refunded"),
+            "transaction" to (SmsKind.TRANSACTION to "A bank, credit card, or UPI alert that money was debited, credited, spent, received, sent or refunded"),
             "otp" to (SmsKind.OTP to "A one-time password or verification code"),
             "promo" to (SmsKind.PROMO to "An offer, advert, cashback or reward pitch, or a loan or card promotion"),
             "other" to (SmsKind.UNREADABLE to "Anything else: bill or payment-due reminders, balance updates with no transaction, delivery updates, personal messages"),

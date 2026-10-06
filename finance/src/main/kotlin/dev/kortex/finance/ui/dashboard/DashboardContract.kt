@@ -43,6 +43,8 @@ data class DashboardState(
     val insights: List<Insight> = emptyList(),
     val pace: PaceUi? = null,
     val shares: List<ShareUi> = emptyList(),
+    /** Received bank SMS waiting in To review (docs/SMS_AUTO_PLAN.md, phase 6). */
+    val smsToReview: Int = 0,
 )
 
 sealed interface DashboardIntent {
@@ -50,6 +52,7 @@ sealed interface DashboardIntent {
     data object AddIncome : DashboardIntent
     data object AddAccount : DashboardIntent
     data object OpenPending : DashboardIntent
+    data object OpenSmsReview : DashboardIntent
 }
 
 sealed interface DashboardEffect {

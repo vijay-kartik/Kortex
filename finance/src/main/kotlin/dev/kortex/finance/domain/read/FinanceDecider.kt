@@ -13,7 +13,7 @@ data class Decision<T>(val value: T, val confidence: Double)
  * themselves how sure is sure enough.
  */
 interface FinanceDecider {
-    /** Which kind of message this is. Only asked about SMS the patterns couldn't place. */
+    /** Which kind of message this is. Asked about every pasted SMS, before the patterns read it. */
     suspend fun smsKind(maskedText: String): Decision<SmsKind>?
 
     /** The uid of the category in [categories] that fits [merchant] best. */

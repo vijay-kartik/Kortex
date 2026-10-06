@@ -10,15 +10,16 @@ import dev.kortex.finance.domain.model.TransactionSource
 import dev.kortex.finance.domain.port.Clock
 import dev.kortex.finance.domain.read.EntryMatching
 import dev.kortex.finance.domain.read.Instrument
-import dev.kortex.finance.domain.read.MoneyDirection
 import dev.kortex.finance.domain.read.ParsedSms
 import dev.kortex.finance.domain.usecase.AddTransaction
 import dev.kortex.finance.domain.usecase.FinanceSnapshot
-import dev.kortex.finance.domain.usecase.MerchantGuess
 import dev.kortex.finance.domain.usecase.ObserveFinance
+import dev.kortex.finance.domain.usecase.PrepareSmsEntry
 import dev.kortex.finance.domain.usecase.ReadSms
+import dev.kortex.finance.domain.usecase.ResolveInboxSms
+import dev.kortex.finance.domain.usecase.SmsEntryPlan
+import dev.kortex.finance.domain.usecase.SmsEntryType
 import dev.kortex.finance.domain.usecase.SmsResult
-import dev.kortex.finance.domain.usecase.SuggestMerchant
 import dev.kortex.finance.domain.usecase.TransactionDraft
 import dev.kortex.finance.domain.usecase.TransactionSaveResult
 import dev.kortex.finance.ui.AccountPrefill
@@ -33,7 +34,6 @@ import dev.kortex.finance.ui.entry.CategoryOption
 import dev.kortex.finance.ui.recurring.RecurringLabels
 import dev.kortex.mvi.MviViewModel
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
@@ -44,8 +44,9 @@ import kotlinx.coroutines.launch
 class SmsEntryViewModel @Inject constructor(
     private val observeFinance: ObserveFinance,
     private val readSms: ReadSms,
-    private val suggestMerchant: SuggestMerchant,
+    private val prepareSmsEntry: PrepareSmsEntry,
     private val addTransaction: AddTransaction,
+    private val resolveInboxSms: ResolveInboxSms,
     private val notices: FinanceNotices,
     private val clock: Clock,
 ) : MviViewModel<SmsEntryState, SmsEntryIntent, SmsEntryEffect>(SmsEntryState()) {
@@ -53,10 +54,17 @@ class SmsEntryViewModel @Inject constructor(
     private var started = false
     private var clipboardRead = false
 
-    /** [shared] is the text shared from Messages; without it the route reads the clipboard once. */
-    fun start(shared: String?) {
+    /** The received SMS this review came from (To review); saving it marks that SMS done. */
+    private var inboxId: String? = null
+
+    /**
+     * [shared] is the text shared from Messages or opened from To review; without it the route
+     * reads the clipboard once.
+     */
+    fun start(shared: String?, inboxId: String? = null) {
         if (started) return
         started = true
+        this.inboxId = inboxId
         setState { copy(today = clock.today(), date = clock.today()) }
         // Keeps the account lists current, and picks up a card added from here (Paste SMS 09).
         viewModelScope.launch { observeFinance().collect(::onData) }
@@ -95,50 +103,35 @@ class SmsEntryViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = readSms(text.trim())) {
                 is SmsResult.NotAPayment -> setState { copy(stage = SmsStage.Paste, rejected = result.kind, pasteBox = "") }
-                is SmsResult.Read -> review(result.sms, observeFinance().first())
+                is SmsResult.Read -> {
+                    val snapshot = observeFinance().first()
+                    review(prepareSmsEntry(text.trim(), result.sms, snapshot), snapshot)
+                }
             }
         }
     }
 
-    private suspend fun review(sms: ParsedSms, snapshot: FinanceSnapshot) {
-        val account = EntryMatching.accountFor(sms.last4, sms.instrument, snapshot.accounts)
-        val onCard = account?.kind?.isCard ?: (sms.instrument == Instrument.CARD || sms.availableLimitMinor != null)
-        val type = when {
-            sms.direction == MoneyDirection.DEBIT -> SmsEntryType.EXPENSE
-            !onCard -> SmsEntryType.INCOME
-            sms.cardPaymentReceived -> SmsEntryType.CARD_PAYMENT
-            else -> SmsEntryType.CARD_REFUND
-        }
-        val guess = if (type == SmsEntryType.EXPENSE || type == SmsEntryType.INCOME) {
-            suggestMerchant(sms.payee, if (type == SmsEntryType.INCOME) CategoryKind.INCOME else CategoryKind.EXPENSE, sms.payeeIsUpiId)
-        } else {
-            MerchantGuess(null, null, null)
-        }
-        val date = sms.date?.let { minOf(it, clock.today()) } ?: clock.today()
-        val text = currentState.text
-        val smsUid = FinanceIds.smsTransaction("", text)
-        val at = occurredAt(date, sms.time)
-        val duplicate = snapshot.transactions.find { it.uid == smsUid }
-            ?: EntryMatching.duplicateOf(sms.amountMinor, account?.uid, at, sms.time != null, sms.ref, snapshot.transactions, EntryMatching.SMS_DUPLICATE_MINUTES, clock::dayOf)
+    private fun review(plan: SmsEntryPlan, snapshot: FinanceSnapshot) {
+        val sms = plan.sms
         setState {
             copy(
                 stage = SmsStage.Review,
                 sms = sms,
                 spans = sms.spans,
-                header = header(sms, date),
-                type = type,
+                header = header(sms, plan.date),
+                type = plan.type,
                 amount = FinanceFormat.amountInput(sms.amountMinor),
-                merchant = guess.name ?: if (sms.payeeIsUpiId) "" else sms.payee.orEmpty(),
-                needsName = guess.needsName,
+                merchant = plan.merchant.name ?: if (sms.payeeIsUpiId) "" else sms.payee.orEmpty(),
+                needsName = plan.merchant.needsName,
                 upiId = sms.payee?.takeIf { sms.payeeIsUpiId },
-                date = date,
+                date = plan.date,
                 time = sms.time,
-                accountUid = account?.uid,
-                unknownLast4 = if (account == null) sms.last4 else null,
-                categoryUid = guess.categoryUid,
-                categorySuggested = guess.categoryUid != null,
-                duplicate = duplicate,
-                duplicateAccount = duplicate?.let { snapshot.accountsByUid[it.accountUid] }?.let(RecurringLabels::account),
+                accountUid = plan.account?.uid,
+                unknownLast4 = plan.unknownLast4,
+                categoryUid = plan.merchant.categoryUid,
+                categorySuggested = plan.merchant.categoryUid != null,
+                duplicate = plan.duplicate,
+                duplicateAccount = plan.duplicate?.let { snapshot.accountsByUid[it.accountUid] }?.let(RecurringLabels::account),
             )
         }
         onData(snapshot)
@@ -209,7 +202,7 @@ class SmsEntryViewModel @Inject constructor(
                     merchant = name.takeIf { !cardPayment },
                     payeeKey = state.upiId,
                     note = state.note,
-                    occurredAtMillis = occurredAt(state.date, state.time),
+                    occurredAtMillis = clock.millisAt(state.date, state.time),
                     source = TransactionSource.SMS,
                     sourceRef = sms.ref,
                     statementUid = state.accountUid?.takeIf { cardPayment }?.let { Statements.latest(it, snapshot.statements)?.uid },
@@ -219,20 +212,20 @@ class SmsEntryViewModel @Inject constructor(
             )
             when (result) {
                 is TransactionSaveResult.Saved -> {
+                    inboxId?.let { resolveInboxSms.saved(it, result.uid) }
                     val where = name.takeIf { it.isNotEmpty() && !cardPayment }?.let { if (state.type == SmsEntryType.INCOME) " from $it" else " at $it" }.orEmpty()
                     notices.post(FinanceNotice("Saved ${FinanceFormat.rupees(amount)}$where", FinanceUndo.DeleteEntry(result.uid)))
                     sendEffect(SmsEntryEffect.Close)
                 }
-                is TransactionSaveResult.AlreadySaved -> setState {
-                    copy(saving = false, duplicate = snapshot.transactions.find { it.uid == result.uid }, error = null)
+                is TransactionSaveResult.AlreadySaved -> {
+                    // This SMS's own entry is already there: the received one is done with too.
+                    inboxId?.let { resolveInboxSms.saved(it, result.uid) }
+                    setState { copy(saving = false, duplicate = snapshot.transactions.find { it.uid == result.uid }, error = null) }
                 }
                 else -> setState { copy(saving = false, error = dev.kortex.finance.ui.entry.AddEntryState.message(result)) }
             }
         }
     }
-
-    private fun occurredAt(date: LocalDate, time: LocalTime?): Long =
-        time?.let { date.atTime(it).atZone(clock.zone()).toInstant().toEpochMilli() } ?: clock.millisOn(date)
 
     private fun header(sms: ParsedSms, date: LocalDate): String = listOfNotNull(
         (sms.bank ?: "Bank SMS").uppercase(),

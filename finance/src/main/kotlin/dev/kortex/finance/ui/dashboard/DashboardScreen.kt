@@ -82,6 +82,9 @@ fun DashboardScreen(state: DashboardState, onIntent: (DashboardIntent) -> Unit, 
             item { FirstAccountCard(onAdd = { onIntent(DashboardIntent.AddAccount) }) }
             return@LazyColumn
         }
+        if (state.smsToReview > 0) {
+            item { SmsReviewCard(state.smsToReview, onClick = { onIntent(DashboardIntent.OpenSmsReview) }) }
+        }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Tile(
@@ -148,6 +151,20 @@ private fun Tile(label: String, value: String, caption: String, captionColor: Co
         )
         Spacer(Modifier.height(6.dp))
         Text(caption, style = MaterialTheme.typography.bodySmall, color = captionColor)
+    }
+}
+
+/** Bank SMS that weren't saved on their own (docs/SMS_AUTO_PLAN.md, phase 6). */
+@Composable
+private fun SmsReviewCard(count: Int, onClick: () -> Unit) {
+    FinanceCard(onClick = onClick, highlighted = true, padding = 14.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(if (count == 1) "1 bank SMS to review" else "$count bank SMS to review", style = MaterialTheme.typography.bodyLarge, color = Ink)
+                Text("Check them before they count", style = MaterialTheme.typography.bodySmall, color = Muted)
+            }
+            Text("Review", style = MaterialTheme.typography.labelLarge, color = Synapse)
+        }
     }
 }
 

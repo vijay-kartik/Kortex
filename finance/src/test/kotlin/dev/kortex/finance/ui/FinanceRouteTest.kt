@@ -26,6 +26,8 @@ class FinanceRouteTest {
         FinanceRoute.PayBill("stmt_abc"),
         FinanceRoute.PasteSms(),
         FinanceRoute.PasteSms("Rs.42.50 spent on Card x8824 at A|B: on 28-09-26. Avl Lmt: Rs.48,557.50 ₹"),
+        FinanceRoute.PasteSms("INR 420.00 debited from a/c **4471", inboxId = "sms_0f3a"),
+        FinanceRoute.SmsReview,
         FinanceRoute.ScanReceipt,
         FinanceRoute.AddAccount(AccountKind.CREDIT_CARD, AccountPrefill("ICICI ••5512", "ICICI Bank", "5512", 98_150_00)),
         FinanceRoute.AddAccount(AccountKind.BANK, AccountPrefill(last4 = "4471")),

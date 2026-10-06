@@ -168,6 +168,10 @@ fun SettingsScreen(
                 )
             }
 
+            // ── Finances ───────────────────────────────────────────────
+            item { SectionLabel("FINANCES", Modifier.padding(top = 16.dp)) }
+            item { BankSmsSection() }
+
             // ── LLM Provider ───────────────────────────────────────────
             item { SectionLabel("LLM PROVIDER", Modifier.padding(top = 16.dp)) }
             item {

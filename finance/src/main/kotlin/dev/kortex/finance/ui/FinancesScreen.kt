@@ -39,6 +39,7 @@ import dev.kortex.finance.ui.expenses.MonthlyReportRoute
 import dev.kortex.finance.ui.pending.PendingRoute
 import dev.kortex.finance.ui.read.ReceiptEntryRoute
 import dev.kortex.finance.ui.read.SmsEntryRoute
+import dev.kortex.finance.ui.read.SmsReviewRoute
 import dev.kortex.finance.ui.recurring.MarkPaidRoute
 import dev.kortex.finance.ui.recurring.PayBillRoute
 import dev.kortex.finance.ui.recurring.RecurringFormRoute
@@ -121,7 +122,8 @@ private fun FinanceRouteContent(route: FinanceRoute, onNavigate: (FinanceRoute) 
         is FinanceRoute.RecurringForm -> RecurringFormRoute(uid = route.uid, onNavigate = onNavigate, onClose = onBack)
         is FinanceRoute.MarkPaid -> MarkPaidRoute(recurringUid = route.recurringUid, dueOn = route.dueOn, onClose = onBack)
         is FinanceRoute.PayBill -> PayBillRoute(statementUid = route.statementUid, onClose = onBack)
-        is FinanceRoute.PasteSms -> SmsEntryRoute(text = route.text, onNavigate = onNavigate, onClose = onBack)
+        is FinanceRoute.PasteSms -> SmsEntryRoute(text = route.text, inboxId = route.inboxId, onNavigate = onNavigate, onClose = onBack)
+        FinanceRoute.SmsReview -> SmsReviewRoute(onNavigate = onNavigate, onBack = onBack)
         FinanceRoute.ScanReceipt -> ReceiptEntryRoute(onNavigate = onNavigate, onClose = onBack)
     }
 }

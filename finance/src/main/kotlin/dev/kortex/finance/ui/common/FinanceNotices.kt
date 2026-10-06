@@ -1,5 +1,6 @@
 package dev.kortex.finance.ui.common
 
+import dev.kortex.finance.domain.model.InboxSms
 import dev.kortex.finance.domain.model.Recurring
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,6 +16,9 @@ sealed interface FinanceUndo {
 
     /** Mark as paid or Skip: puts [previous] back and removes [paymentUid] when one was recorded. */
     data class RestoreRecurring(val previous: Recurring, val paymentUid: String?) : FinanceUndo
+
+    /** A received SMS swiped out of To review: puts it back as it was. */
+    data class RestoreInboxSms(val previous: InboxSms) : FinanceUndo
 }
 
 /** A snackbar for the Finance screens; [undo] adds an Undo. */

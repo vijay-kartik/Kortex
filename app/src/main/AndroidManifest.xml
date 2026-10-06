@@ -7,6 +7,12 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Android 13+: the share-intake flow posts a "processing complete" notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Bank SMS become finance entries (docs/SMS_AUTO_PLAN.md). Asked for from Settings ›
+         FINANCES; only SMS from bank-style senders are kept, and only while that's on. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- Settings › Add earlier SMS: bank SMS already on the phone, from a chosen day. Asked for only
+         when earlier SMS are wanted. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
     <!-- All-files access: the on-device EmbeddingGemma model (and its tokenizer) are
          read from the public Downloads folder, which scoped storage otherwise blocks.
          Granted via system Settings (Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION). -->
@@ -88,5 +94,26 @@
                 <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
+
+        <!-- Received SMS → BankSms (docs/SMS_AUTO_PLAN.md, phase 4). BROADCAST_SMS: only the
+             system can send it, so nothing else can feed the inbox. -->
+        <receiver
+            android:name=".BankSmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Undo on a bank SMS entry's notification (phase 5). Not exported: only this app's
+             notifications reach it. -->
+        <receiver
+            android:name=".BankSmsActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="dev.kortex.finance.action.UNDO_SMS_ENTRY" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

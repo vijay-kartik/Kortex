@@ -158,7 +158,7 @@ private fun Wordmark(modifier: Modifier = Modifier) {
         Image(painterResource(R.drawable.ic_kortex_mark), contentDescription = null, modifier = Modifier.size(18.dp))
         Text(
             "KORTEX",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 4.sp),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
             color = Ink,
         )
     }

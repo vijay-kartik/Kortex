@@ -57,7 +57,6 @@ private fun mono(weight: FontWeight) = Font(
 val Grotesk = FontFamily(
     grotesk(FontWeight.Normal),
     grotesk(FontWeight.Medium),
-    grotesk(FontWeight.SemiBold),
     grotesk(FontWeight.Bold),
 )
 
@@ -87,8 +86,8 @@ private val scheme = darkColorScheme(
 
 private val base = Typography()
 private val type = Typography(
-    headlineSmall = base.headlineSmall.copy(fontFamily = Grotesk, fontWeight = FontWeight.SemiBold),
-    titleLarge = base.titleLarge.copy(fontFamily = Grotesk, fontWeight = FontWeight.SemiBold),
+    headlineSmall = base.headlineSmall.copy(fontFamily = Grotesk, fontWeight = FontWeight.Bold),
+    titleLarge = base.titleLarge.copy(fontFamily = Grotesk, fontWeight = FontWeight.Bold),
     titleMedium = base.titleMedium.copy(fontFamily = Grotesk, fontWeight = FontWeight.Medium),
     titleSmall = base.titleSmall.copy(fontFamily = Grotesk, fontWeight = FontWeight.Medium),
     bodyLarge = base.bodyLarge.copy(fontFamily = Grotesk, fontSize = 16.sp, lineHeight = 23.sp),

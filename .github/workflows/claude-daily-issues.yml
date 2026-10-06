@@ -1,0 +1,90 @@
+name: Claude daily issues
+
+on:
+  schedule:
+    - cron: "30 3 * * *" # 03:30 UTC = 09:00 IST, every day
+  workflow_dispatch: # lets you trigger a run by hand from the Actions tab
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+concurrency:
+  group: claude-daily-issues
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50 # recent history so Claude can look at the last week of commits
+
+      - name: Ensure labels exist
+        run: |
+          gh label create claude-audit --color 7057ff --description "Filed by the daily Claude audit" --force
+          for area in bug security architecture performance tests; do
+            gh label create "area:$area" --color c5def5 --force
+          done
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          # Use ONE of these. The OAuth token bills your Claude Pro/Max plan
+          # (create it with `claude setup-token`); the API key bills the Anthropic API.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          claude_args: |
+            --model claude-opus-5-5
+            --max-turns 80
+            --allowedTools "Read,Glob,Grep,Write,Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*),Bash(gh search issues:*)"
+          prompt: |
+            You are auditing the Kortex repository (${{ github.repository }}): a multi-module
+            Kotlin/Android app (Jetpack Compose, MVI). Your job is to file GitHub issues for
+            real problems you find. You cannot build or run the app; do not try to run Gradle.
+
+            1. Read `.github/issue-agent/focus.md`. It lists the focus areas in priority order
+               and what is out of scope. Also skim `AGENTS.md`, `README.md` and the relevant
+               `docs/*.md` so you understand the intended design before judging the code.
+
+            2. Load what has already been filed:
+               `gh issue list --label claude-audit --state all --limit 300 --json number,title,state,body`
+               Never file a duplicate or near-duplicate of any of these, open or closed.
+               A closed issue means the owner either fixed it or rejected it; do not refile it.
+
+            3. Analyse the code against each focus area. Start with what changed recently
+               (`git log --since="7 days ago" --stat`, then `git show` the interesting commits),
+               then go wider into modules you have not covered in previous issues.
+               Verify every finding by reading the actual code paths involved; do not report
+               something you have not confirmed.
+
+            4. File at least 5 new issues, at most 8, spread across the focus areas. Quality
+               beats count: if after a thorough search you have fewer than 5 confirmed problems,
+               file only those and say why in your final message. Never pad with vague or
+               speculative issues.
+
+               Create each one with:
+               `gh issue create --title "<concise title>" --label claude-audit --label "area:<bug|security|architecture|performance|tests>" --body-file <file>`
+               Write the body to a temp file first. Body format:
+
+               ## Problem
+               What is wrong, in 1–3 sentences.
+
+               ## Evidence
+               Specific `path/to/File.kt:line` references with short code excerpts.
+
+               ## Impact
+               What a user or developer actually experiences, and how likely it is.
+
+               ## Suggested fix
+               Concrete steps; name the files to change.
+
+               ## Acceptance criteria
+               - [ ] Checkable conditions that mean this is done.
+
+            5. Finish with a short summary listing the issues you filed (number + title).

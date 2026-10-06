@@ -4,8 +4,13 @@ The scheduled Claude agent (`.github/workflows/claude-daily-issues.yml`) reads t
 on every run. Edit the list below to steer what it looks for; the change takes effect
 on the next run once it is on `main`.
 
-Each run files at least 5 new issues, spread across these areas. Areas are listed
-in priority order.
+The agent runs every 4 hours (6 times a day, first run at 04:00 IST) and files one issue
+per run. Each run is assigned the next area in this list, wrapping back to 1 after the
+last, so with 9 areas every area comes up once every 1.5 days. If a run finds nothing
+worth filing in its area, it moves on to the next area in the list.
+
+Keep each area on the form `N. **Title** — description`: the workflow reads the bold
+titles to build the rotation and the `area:<title>` labels.
 
 ## Focus areas
 

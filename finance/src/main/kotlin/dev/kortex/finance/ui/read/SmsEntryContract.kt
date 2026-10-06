@@ -5,6 +5,7 @@ import dev.kortex.finance.domain.model.TransactionType
 import dev.kortex.finance.domain.read.ParsedSms
 import dev.kortex.finance.domain.read.SmsField
 import dev.kortex.finance.domain.read.SmsKind
+import dev.kortex.finance.domain.usecase.SmsEntryType
 import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.finance.ui.entry.AccountOption
 import dev.kortex.finance.ui.entry.CategoryOption
@@ -20,18 +21,6 @@ enum class SmsStage {
 
     /** The fields, ready to save (Paste SMS 02, 04, 05, 06, 08). */
     Review,
-}
-
-/** What saving this SMS records. */
-enum class SmsEntryType {
-    EXPENSE,
-    INCOME,
-
-    /** "Payment received" on a card (docs/FINANCE_PLAN.md › Paste SMS). */
-    CARD_PAYMENT,
-
-    /** Any other credit on a card: a refund, which v1 doesn't handle. */
-    CARD_REFUND,
 }
 
 data class SmsEntryState(
@@ -76,12 +65,7 @@ data class SmsEntryState(
     val selectedFrom: AccountOption? get() = payingAccounts.find { it.uid == fromAccountUid }
     val selectedCategory: CategoryOption? get() = categories.find { it.uid == categoryUid }
     val choosingAccount: Boolean get() = stage == SmsStage.Review && accountUid == null && unknownLast4 != null
-    val transactionType: TransactionType
-        get() = when (type) {
-            SmsEntryType.INCOME -> TransactionType.INCOME
-            SmsEntryType.CARD_PAYMENT -> TransactionType.CARD_PAYMENT
-            else -> TransactionType.EXPENSE
-        }
+    val transactionType: TransactionType get() = type.transactionType
 }
 
 sealed interface SmsEntryIntent {

@@ -9,6 +9,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.finance.agent.FinanceAgent
 import dev.kortex.finance.data.RoomFinanceRepository
+import dev.kortex.finance.data.RoomSmsInboxRepository
 import dev.kortex.finance.data.local.FinanceDao
 import dev.kortex.finance.data.local.FinanceDatabase
 import dev.kortex.finance.data.local.FinanceSyncDao
@@ -18,6 +19,7 @@ import dev.kortex.finance.domain.port.SecretBox
 import dev.kortex.finance.domain.usecase.RevealNumber
 import dev.kortex.finance.domain.port.Clock
 import dev.kortex.finance.domain.repository.FinanceRepository
+import dev.kortex.finance.domain.repository.SmsInboxRepository
 import dev.kortex.finance.domain.usecase.AddAccount
 import dev.kortex.finance.domain.usecase.AddCategory
 import dev.kortex.finance.domain.usecase.AddTransaction
@@ -34,9 +36,15 @@ import dev.kortex.finance.domain.usecase.RunFinanceEngine
 import dev.kortex.finance.domain.usecase.SaveRecurring
 import dev.kortex.finance.domain.usecase.SkipOccurrence
 import dev.kortex.finance.domain.usecase.UndoOccurrence
+import dev.kortex.finance.sms.BankSmsStore
 import dev.kortex.finance.domain.usecase.AttachReceipt
 import dev.kortex.finance.domain.usecase.ReadReceipt
+import dev.kortex.finance.domain.usecase.ImportSms
+import dev.kortex.finance.domain.usecase.PrepareSmsEntry
+import dev.kortex.finance.domain.usecase.ProcessSmsInbox
 import dev.kortex.finance.domain.usecase.ReadSms
+import dev.kortex.finance.domain.usecase.ReceiveSms
+import dev.kortex.finance.domain.usecase.ResolveInboxSms
 import dev.kortex.finance.domain.usecase.SuggestCategory
 import dev.kortex.finance.domain.usecase.SuggestMerchant
 import dev.kortex.finance.domain.read.FinanceDecider
@@ -53,7 +61,7 @@ object FinanceModule {
     fun provideDatabase(@ApplicationContext context: Context): FinanceDatabase =
         Room.databaseBuilder(context, FinanceDatabase::class.java, "finance.db")
             .addCallback(FinanceDatabase.CALLBACK)
-            .addMigrations(FinanceDatabase.MIGRATION_1_2)
+            .addMigrations(FinanceDatabase.MIGRATION_1_2, FinanceDatabase.MIGRATION_2_3, FinanceDatabase.MIGRATION_3_4)
             .build()
 
     @Provides
@@ -65,6 +73,15 @@ object FinanceModule {
 
     @Provides
     fun provideClock(): Clock = Clock.System
+
+    /** Settings › "Add bank SMS automatically"; one instance, read by the SMS receiver and the settings screen. */
+    @Provides
+    @Singleton
+    fun provideBankSmsStore(@ApplicationContext context: Context): BankSmsStore = BankSmsStore(context)
+
+    @Provides
+    @Singleton
+    fun provideSmsInbox(database: FinanceDatabase): SmsInboxRepository = RoomSmsInboxRepository(database.smsInboxDao())
 
     @Provides
     @Singleton
@@ -132,7 +149,7 @@ object FinanceModule {
         RunFinanceEngine(repository, markPaid, clock)
 
     // FinanceReader (the agent's model) and FinanceDecider (the decision model) are bound by the
-    // app, which owns the model settings and keys.
+    // app, which owns the model settings and keys; so is BackgroundSync, since the app owns sync.
 
     @Provides
     fun provideReadSms(reader: FinanceReader, clock: Clock, decider: FinanceDecider) = ReadSms(reader, clock, decider)
@@ -143,6 +160,28 @@ object FinanceModule {
     @Provides
     fun provideSuggestMerchant(repository: FinanceRepository, reader: FinanceReader, decider: FinanceDecider) =
         SuggestMerchant(repository, reader, decider)
+
+    @Provides
+    fun providePrepareSmsEntry(suggestMerchant: SuggestMerchant, clock: Clock) = PrepareSmsEntry(suggestMerchant, clock)
+
+    @Provides
+    fun provideReceiveSms(inbox: SmsInboxRepository) = ReceiveSms(inbox)
+
+    @Provides
+    fun provideImportSms(inbox: SmsInboxRepository) = ImportSms(inbox)
+
+    @Provides
+    fun provideResolveInboxSms(inbox: SmsInboxRepository, deleteTransaction: DeleteTransaction) = ResolveInboxSms(inbox, deleteTransaction)
+
+    @Provides
+    fun provideProcessSmsInbox(
+        inbox: SmsInboxRepository,
+        readSms: ReadSms,
+        prepareSmsEntry: PrepareSmsEntry,
+        addTransaction: AddTransaction,
+        observeFinance: ObserveFinance,
+        clock: Clock,
+    ) = ProcessSmsInbox(inbox, readSms, prepareSmsEntry, addTransaction, observeFinance, clock)
 
     @Provides
     fun provideSuggestCategory(repository: FinanceRepository, decider: FinanceDecider) = SuggestCategory(repository, decider)

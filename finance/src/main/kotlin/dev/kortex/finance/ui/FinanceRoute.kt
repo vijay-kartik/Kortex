@@ -41,8 +41,15 @@ sealed interface FinanceRoute {
     /** Pay card bill against a statement (Figma: Recurring 04). */
     data class PayBill(val statementUid: String) : FinanceRoute
 
-    /** Paste SMS (Figma: Paste SMS 01–09): [text] when shared from Messages, else the clipboard is read once. */
-    data class PasteSms(val text: String? = null) : FinanceRoute
+    /**
+     * Paste SMS (Figma: Paste SMS 01–09): [text] when shared from Messages or opened from To review,
+     * else the clipboard is read once. [inboxId] is the received SMS it came from, which saving
+     * marks done.
+     */
+    data class PasteSms(val text: String? = null, val inboxId: String? = null) : FinanceRoute
+
+    /** Received bank SMS waiting to be checked (docs/SMS_AUTO_PLAN.md, phase 6). */
+    data object SmsReview : FinanceRoute
 
     /** Scan receipt (Figma: Scan receipt 01–06): opens Android's document scanner straight away. */
     data object ScanReceipt : FinanceRoute
@@ -59,7 +66,8 @@ sealed interface FinanceRoute {
         is RecurringForm -> "recurring-form:${uid.orEmpty()}"
         is MarkPaid -> "mark-paid:$recurringUid:$dueOn"
         is PayBill -> "pay-bill:$statementUid"
-        is PasteSms -> "paste-sms:" + text?.let(Text::encode).orEmpty()
+        is PasteSms -> "paste-sms:" + text?.let(Text::encode).orEmpty() + inboxId?.let { ":$it" }.orEmpty()
+        SmsReview -> "sms-review"
         ScanReceipt -> "scan-receipt"
     }
 
@@ -82,7 +90,11 @@ sealed interface FinanceRoute {
                     "recurring-form" -> RecurringForm(parts[1].ifEmpty { null })
                     "mark-paid" -> MarkPaid(parts[1], LocalDate.parse(parts[2]))
                     "pay-bill" -> PayBill(parts[1])
-                    "paste-sms" -> PasteSms(parts.getOrNull(1)?.takeIf { it.isNotEmpty() }?.let(Text::decode))
+                    "paste-sms" -> PasteSms(
+                        parts.getOrNull(1)?.takeIf { it.isNotEmpty() }?.let(Text::decode),
+                        parts.getOrNull(2)?.takeIf { it.isNotEmpty() },
+                    )
+                    "sms-review" -> SmsReview
                     "scan-receipt" -> ScanReceipt
                     else -> null
                 }

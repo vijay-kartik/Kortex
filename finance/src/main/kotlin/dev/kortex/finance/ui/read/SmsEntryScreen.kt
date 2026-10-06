@@ -48,6 +48,7 @@ import dev.kortex.design.Void
 import dev.kortex.design.dashedBorder
 import dev.kortex.finance.domain.read.SmsField
 import dev.kortex.finance.domain.read.SmsKind
+import dev.kortex.finance.domain.usecase.SmsEntryType
 import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.finance.ui.common.AmountLarge
 import dev.kortex.finance.ui.common.ChoiceField
@@ -67,13 +68,14 @@ import dev.kortex.mvi.ObserveEffects
 @Composable
 fun SmsEntryRoute(
     text: String?,
+    inboxId: String?,
     onNavigate: (FinanceRoute) -> Unit,
     onClose: () -> Unit,
     viewModel: SmsEntryViewModel = hiltViewModel(),
 ) {
     val clipboard = LocalClipboardManager.current
     LaunchedEffect(text) {
-        viewModel.start(text)
+        viewModel.start(text, inboxId)
         // The clipboard is read once, only because Paste SMS was tapped (Paste SMS notes › Ways in).
         if (text == null) viewModel.onIntent(SmsEntryIntent.Clipboard(clipboard.getText()?.text))
     }

@@ -15,6 +15,7 @@ import dev.kortex.app.data.finance.JevFinanceDecider
 import dev.kortex.app.data.finance.LlmFinanceReader
 import dev.kortex.app.data.links.JevTagSuggester
 import dev.kortex.app.data.settings.SettingsStore
+import dev.kortex.app.data.sync.BackgroundPush
 import dev.kortex.app.data.topics.GmailEmailDirectory
 import dev.kortex.app.data.topics.LinksLinkCatalog
 import dev.kortex.app.data.topics.LlmTopicSummarizer
@@ -22,6 +23,7 @@ import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.observability.AgentRunStore
 import dev.kortex.core.observability.RoomAgentRunStore
 import dev.kortex.core.store.KortexDatabase
+import dev.kortex.finance.domain.port.BackgroundSync
 import dev.kortex.finance.domain.read.FinanceDecider
 import dev.kortex.finance.domain.read.FinanceReader
 import dev.kortex.links.domain.port.PageReader
@@ -89,4 +91,8 @@ object DataModule {
     @Provides
     @Singleton
     fun provideFinanceDecider(gateway: AiGatewayClient): FinanceDecider = JevFinanceDecider(gateway)
+
+    /** Entries added from bank SMS while the app is closed reach the cloud through a background push. */
+    @Provides
+    fun provideBackgroundSync(@ApplicationContext context: Context): BackgroundSync = BackgroundSync { BackgroundPush.enqueue(context) }
 }

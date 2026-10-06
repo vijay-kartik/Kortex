@@ -12,6 +12,7 @@ import dev.kortex.finance.domain.usecase.AddTransaction
 import dev.kortex.finance.domain.usecase.MerchantGuess
 import dev.kortex.finance.domain.usecase.ReadReceipt
 import dev.kortex.finance.domain.usecase.ReadSms
+import dev.kortex.finance.domain.usecase.SmsMode
 import dev.kortex.finance.domain.usecase.SmsResult
 import dev.kortex.finance.domain.usecase.SuggestCategory
 import dev.kortex.finance.domain.usecase.SuggestMerchant
@@ -20,6 +21,7 @@ import dev.kortex.finance.domain.usecase.TransactionSaveResult
 import java.time.LocalDate
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,12 +64,12 @@ class ReadEntriesTest {
     }
 
     @Test
-    fun `an OTP is never sent anywhere`() = runTest {
+    fun `without the decision model, an OTP is never sent anywhere`() = runTest {
         val reader = FakeReader()
         val result = ReadSms(reader, Fixtures.clock)("123456 is your OTP. Do not share.")
         assertEquals(SmsResult.NotAPayment(SmsKind.OTP), result)
         assertTrue(reader.sent.isEmpty())
-        assertEquals(SmsResult.NotAPayment(SmsKind.UNREADABLE), ReadSms(FinanceReader.None, Fixtures.clock)("hello there"))
+        assertEquals(SmsResult.NotAPayment(SmsKind.UNREADABLE, certain = false), ReadSms(FinanceReader.None, Fixtures.clock)("hello there"))
     }
 
     @Test
@@ -85,10 +87,44 @@ class ReadEntriesTest {
     }
 
     @Test
-    fun `patterns that place an SMS never ask the decision model`() = runTest {
+    fun `the decision model decides the kind, and the patterns read what it calls a payment`() = runTest {
+        val text = "INR 2,000.00 debited from a/c **4471 on 12-Sep-26 at 06:42 PM. Info: AMAZON PAY. Avl Bal INR 10,000.00"
+        val promo = FakeDecider(kind = Decision(SmsKind.PROMO, 0.99))
+        assertEquals(SmsResult.NotAPayment(SmsKind.PROMO), ReadSms(FakeReader(), Fixtures.clock, promo)(text))
+        assertEquals(text, promo.sent.single())
+
+        val reader = FakeReader()
+        val read = ReadSms(reader, Fixtures.clock, FakeDecider(kind = Decision(SmsKind.TRANSACTION, 0.9)))(text) as SmsResult.Read
+        assertEquals(2_000_00L, read.sms.amountMinor)
+        assertFalse(read.sms.fromModel)
+        assertTrue(reader.sent.isEmpty())
+    }
+
+    @Test
+    fun `incoming SMS the patterns place reach neither model`() = runTest {
+        val reader = FakeReader()
         val decider = FakeDecider(kind = Decision(SmsKind.PROMO, 0.99))
-        assertEquals(SmsResult.NotAPayment(SmsKind.OTP), ReadSms(FakeReader(), Fixtures.clock, decider)("123456 is your OTP. Do not share."))
+        val read = ReadSms(reader, Fixtures.clock, decider)
+        assertEquals(SmsResult.NotAPayment(SmsKind.OTP), read("482913 is your OTP for a txn of Rs.1,200.00 at AMAZON. Do not share it.", SmsMode.INCOMING))
+        assertEquals(SmsResult.NotAPayment(SmsKind.PROMO), read("Congratulations! You are pre-approved for a personal loan. Apply now.", SmsMode.INCOMING))
+        val payment = read("INR 2,000.00 debited from a/c **4471 on 12-Sep-26 at 06:42 PM. Info: AMAZON PAY. Avl Bal INR 10,000.00", SmsMode.INCOMING)
+        assertEquals(2_000_00L, (payment as SmsResult.Read).sms.amountMinor)
         assertTrue(decider.sent.isEmpty())
+        assertTrue(reader.sent.isEmpty())
+    }
+
+    @Test
+    fun `an incoming SMS the patterns can't place goes to the decision model, then the LLM`() = runTest {
+        val text = "Your a/c 123456784471 was charged ninety nine rupees for chai"
+        val reader = FakeReader()
+        val sure = FakeDecider(kind = Decision(SmsKind.PROMO, 0.95))
+        assertEquals(SmsResult.NotAPayment(SmsKind.PROMO), ReadSms(reader, Fixtures.clock, sure)(text, SmsMode.INCOMING))
+        assertEquals("Your a/c XXXXXXXX4471 was charged ninety nine rupees for chai", sure.sent.single())
+        assertTrue(reader.sent.isEmpty())
+
+        val read = ReadSms(reader, Fixtures.clock, FakeDecider(kind = Decision(SmsKind.PROMO, 0.6)))(text, SmsMode.INCOMING)
+        assertTrue((read as SmsResult.Read).sms.fromModel)
+        assertTrue(ReadSms(reader, Fixtures.clock)(text, SmsMode.INCOMING) is SmsResult.Read)
     }
 
     @Test

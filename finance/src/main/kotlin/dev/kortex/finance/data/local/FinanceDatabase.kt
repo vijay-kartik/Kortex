@@ -16,14 +16,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SecretEntity::class,
         SyncTombstoneEntity::class,
         SyncControlEntity::class,
+        SmsInboxEntity::class,
     ],
-    version = 2,
+    version = 4,
     exportSchema = false,
 )
 abstract class FinanceDatabase : RoomDatabase() {
     abstract fun financeDao(): FinanceDao
 
     abstract fun financeSyncDao(): FinanceSyncDao
+
+    abstract fun smsInboxDao(): SmsInboxDao
 
     companion object {
         /**
@@ -51,6 +54,25 @@ abstract class FinanceDatabase : RoomDatabase() {
                         "`keyVersion` INTEGER NOT NULL, `updatedAtMillis` INTEGER NOT NULL, `dirty` INTEGER NOT NULL, PRIMARY KEY(`uid`))",
                 )
                 FinanceSyncSchema.createTriggers(db, setOf("secrets"))
+            }
+        }
+
+        /** Received bank SMS (docs/SMS_AUTO_PLAN.md). Local only: no triggers. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `sms_inbox` (`id` TEXT NOT NULL, `sender` TEXT NOT NULL, `body` TEXT, " +
+                        "`receivedAtMillis` INTEGER NOT NULL, `status` TEXT NOT NULL, `reason` TEXT, `transactionUid` TEXT, " +
+                        "PRIMARY KEY(`id`))",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sms_inbox_status` ON `sms_inbox` (`status`)")
+            }
+        }
+
+        /** Earlier SMS read from the phone are kept apart from ones heard as they arrived. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `sms_inbox` ADD COLUMN `imported` INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

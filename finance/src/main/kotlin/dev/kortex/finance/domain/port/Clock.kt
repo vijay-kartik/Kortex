@@ -2,6 +2,7 @@ package dev.kortex.finance.domain.port
 
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 
 /** Wall-clock time and zone, so use cases can be tested at a fixed instant. */
@@ -21,6 +22,10 @@ interface Clock {
      */
     fun millisOn(day: LocalDate): Long =
         if (day == today()) nowMillis() else day.atTime(12, 0).atZone(zone()).toInstant().toEpochMilli()
+
+    /** [day] at [time] when the time is known (an SMS that gives one), else [millisOn]. */
+    fun millisAt(day: LocalDate, time: LocalTime?): Long =
+        time?.let { day.atTime(it).atZone(zone()).toInstant().toEpochMilli() } ?: millisOn(day)
 
     companion object {
         val System: Clock = object : Clock {

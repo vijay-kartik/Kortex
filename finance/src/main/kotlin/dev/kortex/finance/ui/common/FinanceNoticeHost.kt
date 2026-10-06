@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.finance.domain.usecase.DeleteTransaction
+import dev.kortex.finance.domain.usecase.ResolveInboxSms
 import dev.kortex.finance.domain.usecase.UndoOccurrence
 import javax.inject.Inject
 import kotlinx.coroutines.launch
@@ -43,12 +44,14 @@ class FinanceNoticeViewModel @Inject constructor(
     val notices: FinanceNotices,
     private val deleteTransaction: DeleteTransaction,
     private val undoOccurrence: UndoOccurrence,
+    private val resolveInboxSms: ResolveInboxSms,
 ) : ViewModel() {
     fun undo(undo: FinanceUndo) {
         viewModelScope.launch {
             when (undo) {
                 is FinanceUndo.DeleteEntry -> deleteTransaction(undo.transactionUid)
                 is FinanceUndo.RestoreRecurring -> undoOccurrence(undo.previous, undo.paymentUid)
+                is FinanceUndo.RestoreInboxSms -> resolveInboxSms.restore(undo.previous)
             }
         }
     }

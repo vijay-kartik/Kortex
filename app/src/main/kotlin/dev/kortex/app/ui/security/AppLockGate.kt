@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -145,10 +146,10 @@ private fun LockScreen(appLock: AppLock) {
             Modifier.size(72.dp).background(SynapseDim, RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Text("K", color = Synapse, fontSize = 36.sp, fontWeight = FontWeight.SemiBold)
+            Text("K", color = Synapse, fontSize = 36.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(20.dp))
-        Text("Kortex is locked", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        Text("Kortex is locked", color = Ink, style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(12.dp))
         Text(
             "Your chats and saved info stay private.",

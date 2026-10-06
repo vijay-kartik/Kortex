@@ -58,7 +58,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -177,10 +176,7 @@ internal fun CreateLinkForm(
                 title = {
                     Text(
                         "New link",
-                        style = MaterialTheme.typography.headlineSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            lineHeight = 28.sp,
-                        ),
+                        style = MaterialTheme.typography.headlineSmall.copy(lineHeight = 28.sp),
                     )
                 },
                 navigationIcon = {

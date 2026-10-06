@@ -1213,7 +1213,6 @@ fun NativeGmailSettings(
                     Text(
                         "Google Account",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
                     )
                     Text(
                         if (email.isNullOrBlank()) "Not connected" else email,

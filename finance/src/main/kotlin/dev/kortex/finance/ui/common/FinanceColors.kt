@@ -5,6 +5,7 @@ import dev.kortex.design.Alarm
 import dev.kortex.design.Amber
 import dev.kortex.design.Muted
 import dev.kortex.design.Synapse
+import dev.kortex.design.Teal
 
 /** Money in, savings, gains (Theme › Data colours: Growth). */
 val Growth = Color(0xFF4ADE80)
@@ -16,7 +17,7 @@ val Growth = Color(0xFF4ADE80)
 object FinanceColors {
     private val byToken = mapOf(
         "Synapse" to Synapse,
-        "Teal" to Color(0xFF5CC8D6),
+        "Teal" to Teal,
         "Amber" to Amber,
         "Growth" to Growth,
         "Lilac" to Color(0xFFC792EA),

@@ -38,6 +38,8 @@ val Sunken = Color(0xFF1C2333)
 val EdgeStrong = Color(0xFF2E3A57)
 val Amber = Color(0xFFEFB358)
 val Alarm = Color(0xFFFF7182)
+/** Data colour (Theme › Data colours): charts, categories and graph nodes only, never chrome. */
+val Teal = Color(0xFF5CC8D6)
 
 /** Space Grotesk carries the conversation; JetBrains Mono carries the machinery. */
 @OptIn(ExperimentalTextApi::class)

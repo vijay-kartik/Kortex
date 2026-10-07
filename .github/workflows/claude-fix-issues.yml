@@ -43,7 +43,7 @@ jobs:
           for l in "claude-fix|0e8a16|Pull request opened by the Claude fix agent" \
                    "needs-human|d93f0b|The Claude fix agent needs a decision or more detail before it can fix this" \
                    "auto-fix-failed|b60205|The Claude fix agent tried and failed; remove to let it retry" \
-                   "no-auto-fix|ededed|Keep the Claude fix agent away from this issue"; do
+                   "no-auto-fix|ededed|Keep the Claude fix agent away from this issue"                    "claude-staged|5319e7|Moved forward step by step by the Claude comment agent"                    "needs-design|fbca04|Waiting for Figma frames from the design brief to be made and approved"; do
             IFS='|' read -r name color desc <<<"$l"
             gh label create "$name" --color "$color" --description "$desc" --force
           done
@@ -52,7 +52,8 @@ jobs:
             candidates=$ISSUE_OVERRIDE
           else
             # Open issues, oldest first, skipping any that already have a linked PR (open or
-            # closed), an assignee (someone is on it) or one of the opt-out labels.
+            # closed), an assignee (someone is on it) or one of the opt-out labels. Issues the
+            # comment agent is moving forward (claude-staged, needs-design) are left to it.
             candidates=$(gh api graphql -f owner="$GITHUB_REPOSITORY_OWNER" -f name="${GITHUB_REPOSITORY#*/}" -f query='
               query($owner: String!, $name: String!) {
                 repository(owner: $owner, name: $name) {
@@ -68,7 +69,7 @@ jobs:
               }' --jq '.data.repository.issues.nodes[]
                 | select(.closedByPullRequestsReferences.totalCount == 0)
                 | select(.assignees.totalCount == 0)
-                | select(any(.labels.nodes[]; .name == "needs-human" or .name == "auto-fix-failed" or .name == "no-auto-fix") | not)
+                | select(any(.labels.nodes[]; .name == "needs-human" or .name == "auto-fix-failed" or .name == "no-auto-fix" or .name == "claude-staged" or .name == "needs-design") | not)
                 | .number')
           fi
 
@@ -138,9 +139,12 @@ jobs:
             2. Decide whether this can be fixed well in one focused PR. If it cannot (too large,
                ambiguous, needs a product or design decision, needs secrets or console access, or
                the issue is not actually a problem), change no code. Instead, comment on the issue
-               explaining exactly what you need decided or clarified, add the `needs-human` label
+               explaining exactly what you need decided or clarified (number the decisions so the
+               owner can answer by number), add the `needs-human` label
                (`gh issue edit ${{ steps.pick.outputs.issue }} --add-label needs-human`), and stop.
                Large feature requests usually belong here; small, well-specified ones do not.
+               Every comment you post must end with the line `<!-- kortex-agent:fix -->`, so
+               the comment agent can tell it was not written by the owner.
 
             3. Otherwise, implement the fix. Keep the change scoped to the issue: no unrelated
                refactors or formatting changes. Add or update unit tests when the logic involved
@@ -187,5 +191,6 @@ jobs:
           needs_human=$(gh issue view "$ISSUE" --json labels --jq 'any(.labels[]; .name == "needs-human")')
           if [ "$prs" = "0" ] && [ "$needs_human" != "true" ]; then
             gh issue edit "$ISSUE" --add-label auto-fix-failed
-            gh issue comment "$ISSUE" --body "The Claude fix agent couldn't open a PR for this issue ([run log]($RUN_URL)). To let it try again, remove the \`auto-fix-failed\` label and delete the \`claude/issue-$ISSUE\` branch if it exists."
+            marker=$'\n\n<!-- kortex-agent:fix -->' # tells the comment agent a workflow wrote this
+            gh issue comment "$ISSUE" --body "The Claude fix agent couldn't open a PR for this issue ([run log]($RUN_URL)). To let it try again, remove the \`auto-fix-failed\` label and delete the \`claude/issue-$ISSUE\` branch if it exists.$marker"
           fi

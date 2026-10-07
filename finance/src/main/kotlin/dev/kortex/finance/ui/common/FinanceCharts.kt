@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.kortex.design.Edge
 import dev.kortex.design.Ink
@@ -128,13 +129,13 @@ fun SplitBar(segments: List<Pair<Long, Color>>, modifier: Modifier = Modifier, h
 
 /** Utilisation, Income vs Expenses: a track filled to [fraction]. */
 @Composable
-fun ProgressTrack(fraction: Float, color: Color, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(Sunken)) {
+fun ProgressTrack(fraction: Float, color: Color, modifier: Modifier = Modifier, height: Dp = 8.dp) {
+    Box(modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(height / 2)).background(Sunken)) {
         Box(
             Modifier
                 .fillMaxWidth(fraction.coerceIn(0f, 1f))
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(4.dp))
+                .clip(RoundedCornerShape(height / 2))
                 .background(color),
         )
     }

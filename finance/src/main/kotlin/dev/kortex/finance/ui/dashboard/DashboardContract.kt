@@ -1,10 +1,12 @@
 package dev.kortex.finance.ui.dashboard
 
 import dev.kortex.finance.domain.calc.Balances
+import dev.kortex.finance.domain.calc.Budgets
 import dev.kortex.finance.domain.calc.Pending
 import dev.kortex.finance.domain.calc.Spending
 import dev.kortex.finance.domain.usecase.FinanceSnapshot
 import dev.kortex.finance.ui.FinanceRoute
+import dev.kortex.finance.ui.common.BudgetProgressUi
 import dev.kortex.finance.ui.common.FinanceFormat
 import dev.kortex.finance.ui.common.FlowBar
 import java.time.LocalDate
@@ -28,6 +30,20 @@ data class PaceUi(
     val lastMonthShort: String,
 )
 
+/** A budgeted category on the Budgets card: "● Food   ₹5,400 of ₹8,000". */
+data class BudgetRowUi(val uid: String, val name: String, val colorToken: String, val progress: BudgetProgressUi)
+
+/** The Budgets card (Figma: Budgets · 05): the month against the sum of the budgets, then each category. */
+data class BudgetsUi(
+    val overall: BudgetProgressUi,
+    val percentUsed: Int,
+    /** "₹2,540 left" or "₹480 over". */
+    val left: String,
+    /** "Month ends near ₹12,890" */
+    val projection: String,
+    val categories: List<BudgetRowUi>,
+)
+
 /** Dashboard (Figma: finances-dashboard, final: B's tiles and chart, C's insight and pace). */
 data class DashboardState(
     val loading: Boolean = true,
@@ -42,6 +58,8 @@ data class DashboardState(
     val monthNetMinor: Long = 0,
     val insights: List<Insight> = emptyList(),
     val pace: PaceUi? = null,
+    /** Null hides the card: nothing is budgeted. */
+    val budgets: BudgetsUi? = null,
     val shares: List<ShareUi> = emptyList(),
     /** Received bank SMS waiting in To review (docs/SMS_AUTO_PLAN.md, phase 6). */
     val smsToReview: Int = 0,
@@ -53,6 +71,9 @@ sealed interface DashboardIntent {
     data object AddAccount : DashboardIntent
     data object OpenPending : DashboardIntent
     data object OpenSmsReview : DashboardIntent
+
+    /** The Budgets card or its Manage button. */
+    data object OpenCategories : DashboardIntent
 }
 
 sealed interface DashboardEffect {
@@ -61,7 +82,8 @@ sealed interface DashboardEffect {
 
 /** Builds [DashboardState] from the data; pure, so every number is tested against the Figma screens. */
 object DashboardUi {
-    fun build(snapshot: FinanceSnapshot, today: LocalDate): DashboardState {
+    /** [budgets] maps a category's uid to its monthly amount, as [Budgets.status] takes it. */
+    fun build(snapshot: FinanceSnapshot, today: LocalDate, budgets: Map<String, Long> = emptyMap()): DashboardState {
         val txs = snapshot.transactions
         val month = YearMonth.from(today)
         val lastMonth = month.minusMonths(1)
@@ -69,6 +91,7 @@ object DashboardUi {
         val flows = Spending.monthlyFlows(txs, month)
         val current = flows.last()
         val previous = flows[flows.size - 2]
+        val budgetSummary = Budgets.status(txs, snapshot.categories, budgets, month, today)
 
         val insights = buildList {
             val mtd = Spending.monthToDate(txs, today)
@@ -96,6 +119,13 @@ object DashboardUi {
                     else Insight("You spent ", "${-kept}% more", " than $name’s income.", Tone.WARN),
                 )
             }
+            // The largest projected overshoot, at the Pace card's pace.
+            budgetSummary.categories.filter { it.projectedMinor > it.budgetMinor }
+                .maxByOrNull { it.projectedMinor - it.budgetMinor }
+                ?.let { over ->
+                    val amount = FinanceFormat.rupees(over.projectedMinor - over.budgetMinor, paise = false)
+                    add(Insight("${over.name} is on track to go ", "$amount over", " budget.", Tone.WARN))
+                }
         }
 
         val thisCumulative = Spending.cumulativeByDay(txs, month, today.dayOfMonth)
@@ -126,6 +156,19 @@ object DashboardUi {
             monthNetMinor = current.netMinor,
             insights = insights,
             pace = pace,
+            budgets = budgetSummary.overall?.let { overall ->
+                val colors = snapshot.categories.associate { it.uid to it.colorToken }
+                BudgetsUi(
+                    overall = BudgetProgressUi(overall.spentMinor, overall.budgetMinor),
+                    percentUsed = overall.percentUsed,
+                    left = if (overall.leftMinor >= 0) "${FinanceFormat.rupees(overall.leftMinor, paise = false)} left"
+                    else "${FinanceFormat.rupees(-overall.leftMinor, paise = false)} over",
+                    projection = "Month ends near ${FinanceFormat.rupees(overall.projectedMinor, paise = false)}",
+                    categories = budgetSummary.categories.map {
+                        BudgetRowUi(it.categoryUid, it.name, colors.getValue(it.categoryUid), BudgetProgressUi(it.spentMinor, it.budgetMinor))
+                    },
+                )
+            },
             shares = Spending.whereItWent(txs, snapshot.categories, month.atDay(1), today).map {
                 ShareUi(it.category?.name ?: "Other", it.category?.colorToken, it.percent, it.amountMinor)
             },

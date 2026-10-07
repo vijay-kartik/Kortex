@@ -31,12 +31,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -53,7 +49,7 @@ import dev.kortex.finance.R
 import dev.kortex.finance.domain.model.CategoryKind
 import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.finance.ui.common.BudgetLevel
-import dev.kortex.finance.ui.common.BudgetProgressUi
+import dev.kortex.finance.ui.common.BudgetLine
 import dev.kortex.finance.ui.common.FinanceChip
 import dev.kortex.finance.ui.common.FinanceColors
 import dev.kortex.finance.ui.common.FinancePushedScreen
@@ -150,20 +146,6 @@ private fun CategoryGroup(label: String, rows: List<CategoryRowUi>, onIntent: (C
             }
         }
     }
-}
-
-/** "₹5,400 of ₹8,000[suffix]", the spent amount Amber from 80 % and Alarm over budget. */
-@Composable
-private fun BudgetLine(budget: BudgetProgressUi, suffix: String, style: TextStyle = MaterialTheme.typography.bodySmall) {
-    val spentColor = if (budget.level == BudgetLevel.UNDER) Muted else budget.level.color
-    Text(
-        buildAnnotatedString {
-            withStyle(SpanStyle(color = spentColor)) { append(budget.spent) }
-            append(" of ${budget.budget}$suffix")
-        },
-        style = style,
-        color = Muted,
-    )
 }
 
 @Composable

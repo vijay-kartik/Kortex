@@ -25,11 +25,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.design.Edge
@@ -75,7 +73,7 @@ internal fun CloudSyncSection(
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Links & topics backup", style = RowTitle, color = Ink)
+                Text("Links & topics backup", style = MaterialTheme.typography.titleSmall, color = Ink)
                 Text(
                     user?.email ?: "Not signed in",
                     style = MaterialTheme.typography.bodySmall,
@@ -107,5 +105,3 @@ private fun lastSyncedLabel(millis: Long?): String {
     if (now - millis < DateUtils.MINUTE_IN_MILLIS) return "Last synced just now"
     return "Last synced " + DateUtils.getRelativeTimeSpanString(millis, now, DateUtils.MINUTE_IN_MILLIS)
 }
-
-private val RowTitle = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium)

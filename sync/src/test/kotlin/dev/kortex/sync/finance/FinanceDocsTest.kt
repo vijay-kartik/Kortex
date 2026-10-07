@@ -1,6 +1,7 @@
 package dev.kortex.sync.finance
 
 import dev.kortex.finance.data.local.AccountEntity
+import dev.kortex.finance.data.local.BudgetEntity
 import dev.kortex.finance.data.local.CardStatementEntity
 import dev.kortex.finance.data.local.CategoryEntity
 import dev.kortex.finance.data.local.MerchantEntity
@@ -95,5 +96,28 @@ class FinanceDocsTest {
         assertNull(remoteTransaction("t", transactionDoc(expense, serverTime) + ("amountMinor" to 0L)))
         assertNull(remoteTransaction("t", transactionDoc(expense, serverTime) + ("occurredOn" to "29/09/2026")))
         assertNull(remoteTransaction("t", transactionDoc(expense, serverTime) - "accountUid"))
+    }
+
+    @Test
+    fun `budgets on built-in and your categories go up and come back clean`() {
+        val food = BudgetEntity("food", 8_000_00, createdAtMillis = 1_000, updatedAtMillis = 2_000, dirty = 2)
+        val doc = budgetDoc(food, serverTime)
+        assertEquals(setOf("amountMinor", "createdAt", "updatedAt", "serverUpdatedAt", "deleted"), doc.keys)
+        assertEquals(food.copy(dirty = 0), remoteBudget("food", doc)!!.row)
+
+        val changed = BudgetEntity("c1", 2_500_00, createdAtMillis = 1_000, updatedAtMillis = 3_000, dirty = 1)
+        assertEquals(changed.copy(dirty = 0), remoteBudget("c1", budgetDoc(changed, serverTime))!!.row)
+    }
+
+    @Test
+    fun `a cleared budget arrives as a delete, and one of nothing is skipped`() {
+        val cleared = remoteBudget("food", finDeletedDoc(9_000, serverTime))!!
+        assertTrue(cleared.deleted)
+        assertNull(cleared.row)
+        assertEquals(9_000L, cleared.updatedAtMillis)
+
+        val budget = BudgetEntity("food", 8_000_00, createdAtMillis = 1, updatedAtMillis = 2)
+        assertNull(remoteBudget("food", budgetDoc(budget, serverTime) + ("amountMinor" to 0L)))
+        assertNull(remoteBudget("food", budgetDoc(budget, serverTime) - "amountMinor"))
     }
 }

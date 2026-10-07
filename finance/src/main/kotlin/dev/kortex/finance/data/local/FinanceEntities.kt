@@ -155,6 +155,19 @@ data class SecretEntity(
     val dirty: Int = 1,
 )
 
+/**
+ * A category's monthly budget (docs/FINANCE_PLAN.md › Budgets), keyed by the category's uid. Built-in
+ * categories' budgets are tracked and synced like any other row, unlike the categories themselves.
+ */
+@Entity(tableName = "budgets")
+data class BudgetEntity(
+    @PrimaryKey val uid: String,
+    val amountMinor: Long,
+    val createdAtMillis: Long,
+    val updatedAtMillis: Long,
+    val dirty: Int = 1,
+)
+
 /** A row deleted here and not yet pushed as `deleted: true`. Written by the delete triggers only. */
 @Entity(tableName = "sync_tombstones", primaryKeys = ["kind", "uid"])
 data class SyncTombstoneEntity(

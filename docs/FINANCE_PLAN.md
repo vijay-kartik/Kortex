@@ -69,6 +69,9 @@ PARTLY_PAID · PAID · OVERDUE) are derived from CARD_PAYMENTs.
 **Secret** (`finSecrets/{accountUid}`) — `cipherText`, `keyVersion`. A separate collection so
 lists and the extension never read it. Locally the `secrets` table (finance.db v2).
 
+**Budget** (`finBudgets/{categoryUid}`) — `amountMinor`. See *Budgets*. Locally the `budgets` table
+(finance.db v5), keyed by the category's uid.
+
 **Device only:** `sms_sources` (txUid, sender, body — for re-parsing and the underlines),
 `receipts/{txUid}.jpg` (only if *Keep the receipt photo* is checked), sync state in DataStore,
 versioned per-bank SMS packs as assets.
@@ -87,6 +90,7 @@ Room indexes: transactions `(occurredOn)`, `(accountUid, occurredAt)`, `(categor
 | card statement | `stmt_` + hash(cardUid, statementOn) |
 | merchant | hash(payeeKey) |
 | secret | the account's uid |
+| budget | the category's uid |
 
 ## Derived values
 
@@ -118,14 +122,15 @@ users/{uid}/finRecurring/{recurringUid}
 users/{uid}/finStatements/{statementUid}
 users/{uid}/finMerchants/{merchantUid}
 users/{uid}/finSecrets/{accountUid}          cipher text only
+users/{uid}/finBudgets/{categoryUid}         built-in categories' budgets too
 financeKeys/{uid}                            KMS-wrapped data key; outside users/{uid}, functions only
 ```
 
 - **Change tracking** as in `TopicSyncSchema`: `uid` + `dirty` columns, AFTER UPDATE / AFTER DELETE
   triggers gated by `sync_control.applying`, `sync_tombstones(kind, uid)`. Built-in categories are
-  excluded from tracking.
-- **Pull before push.** Pull order: categories → accounts → statements → recurring → merchants →
-  transactions → secrets. Nothing is held back: rows are keyed by document id with no foreign
+  excluded from tracking; their budgets are not.
+- **Pull before push.** Pull order: categories → budgets → accounts → statements → recurring →
+  merchants → transactions → secrets. Nothing is held back: rows are keyed by document id with no foreign
   keys, so a transaction pulled before its account simply names the account's uid until it
   lands. Push: tombstones first, then the same order, batches of ≤ 500.
 - **Last writer wins** per document on `updatedAt`. With balances derived only from entries, two
@@ -138,6 +143,20 @@ financeKeys/{uid}                            KMS-wrapped data key; outside users
   topics; Settings › *Sync now* and onboarding's restore include finance.
 - **Rules:** the existing owner-only `users/{uid}/**` rule covers every path; `financeKeys` is
   outside it. No composite indexes — Firestore is only queried by `serverUpdatedAt`.
+
+## Budgets
+
+Decided in #14; storage and sync in #16.
+
+- **One standing monthly amount per expense category**, built-in or yours. No row means the
+  category isn't budgeted. Income categories can't have one (`SetBudget` refuses them).
+- **Stored in the separate `finBudgets` collection**, keyed by the category's uid, so built-in
+  categories stay unsynced and read-only while their budgets sync like any other record. Clearing
+  a budget deletes the row and pushes a tombstone; deleting your category deletes its budget too.
+- **The overall monthly budget is the sum of the category budgets.** If no category has a budget,
+  the month is not budgeted.
+- **Notices go through the existing daily reminder channel** (the Reminders job above).
+- **The agent gets a separate `budget_status` tool.**
 
 ## How entries get in
 

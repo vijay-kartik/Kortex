@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.Flow
  * Moves finance.db's records to and from `users/{uid}/fin*` (docs/FINANCE_PLAN.md › Firestore).
  * Rows are keyed by their document ids, so nothing is translated, and nothing is held back: a
  * transaction pulled before its account names the account's uid, which resolves once it lands.
- * Built-in categories are seeded on every phone and never synced. Balances aren't stored anywhere,
+ * Built-in categories are seeded on every phone and never synced; their budgets are. Balances aren't stored anywhere,
  * so two phones only ever conflict over the same record, and the last writer wins.
  */
 internal class FinanceSync(
@@ -27,6 +27,7 @@ internal class FinanceSync(
     /** The finance collections, in pull and push order: what's referred to before what refers to it. */
     val collections: List<SyncCollection> = listOf(
         SyncCollection.FinCategories,
+        SyncCollection.FinBudgets,
         SyncCollection.FinAccounts,
         SyncCollection.FinStatements,
         SyncCollection.FinRecurring,
@@ -57,6 +58,7 @@ internal class FinanceSync(
         }
         return when (collection) {
             SyncCollection.FinCategories -> dao.applyPulledCategories(rows(::remoteCategory))
+            SyncCollection.FinBudgets -> dao.applyPulledBudgets(rows(::remoteBudget))
             SyncCollection.FinAccounts -> dao.applyPulledAccounts(rows(::remoteAccount))
             SyncCollection.FinStatements -> dao.applyPulledStatements(rows(::remoteStatement))
             SyncCollection.FinRecurring -> dao.applyPulledRecurring(rows(::remoteRecurring))
@@ -84,6 +86,9 @@ internal class FinanceSync(
         val categories = dao.dirtyCategories().map { row ->
             PendingWrite(doc(SyncCollection.FinCategories, row.uid), categoryDoc(row, now)) { dao.markCategoryPushed(row.uid, row.dirty) }
         }
+        val budgets = dao.dirtyBudgets().map { row ->
+            PendingWrite(doc(SyncCollection.FinBudgets, row.uid), budgetDoc(row, now)) { dao.markBudgetPushed(row.uid, row.dirty) }
+        }
         val accounts = dao.dirtyAccounts().map { row ->
             PendingWrite(doc(SyncCollection.FinAccounts, row.uid), accountDoc(row, now)) { dao.markAccountPushed(row.uid, row.dirty) }
         }
@@ -102,11 +107,12 @@ internal class FinanceSync(
         val secrets = dao.dirtySecrets().map { row ->
             PendingWrite(doc(SyncCollection.FinSecrets, row.uid), secretDoc(row, now)) { dao.markSecretPushed(row.uid, row.dirty) }
         }
-        remote.write(deletes + categories + accounts + statements + recurring + merchants + transactions + secrets)
+        remote.write(deletes + categories + budgets + accounts + statements + recurring + merchants + transactions + secrets)
     }
 
     private fun collectionOf(kind: String): SyncCollection? = when (kind) {
         FinanceSyncSchema.KIND_CATEGORY -> SyncCollection.FinCategories
+        FinanceSyncSchema.KIND_BUDGET -> SyncCollection.FinBudgets
         FinanceSyncSchema.KIND_ACCOUNT -> SyncCollection.FinAccounts
         FinanceSyncSchema.KIND_STATEMENT -> SyncCollection.FinStatements
         FinanceSyncSchema.KIND_RECURRING -> SyncCollection.FinRecurring

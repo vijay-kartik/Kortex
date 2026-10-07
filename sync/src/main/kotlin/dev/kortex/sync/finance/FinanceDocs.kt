@@ -1,6 +1,7 @@
 package dev.kortex.sync.finance
 
 import dev.kortex.finance.data.local.AccountEntity
+import dev.kortex.finance.data.local.BudgetEntity
 import dev.kortex.finance.data.local.CardStatementEntity
 import dev.kortex.finance.data.local.CategoryEntity
 import dev.kortex.finance.data.local.MerchantEntity
@@ -97,6 +98,11 @@ internal fun categoryDoc(c: CategoryEntity, serverTime: Any): Map<String, Any?> 
     "colorToken" to c.colorToken,
     "sortOrder" to c.sortOrder,
 ) + meta(c.createdAtMillis, c.updatedAtMillis, serverTime)
+
+/** `finBudgets/{categoryUid}`: built-in categories' budgets too, under their fixed uids. */
+internal fun budgetDoc(b: BudgetEntity, serverTime: Any): Map<String, Any?> = mapOf(
+    "amountMinor" to b.amountMinor,
+) + meta(b.createdAtMillis, b.updatedAtMillis, serverTime)
 
 internal fun recurringDoc(r: RecurringEntity, serverTime: Any): Map<String, Any?> = mapOf(
     "name" to r.name,
@@ -240,6 +246,16 @@ internal fun remoteCategory(uid: String, d: Map<String, Any?>): RemoteRow<Catego
         colorToken = d.text("colorToken") ?: "Synapse",
         builtIn = false,
         sortOrder = d.long("sortOrder")?.toInt() ?: 0,
+        createdAtMillis = d.long(FinFields.CREATED_AT) ?: updatedAt,
+        updatedAtMillis = updatedAt,
+        dirty = 0,
+    )
+}
+
+internal fun remoteBudget(uid: String, d: Map<String, Any?>): RemoteRow<BudgetEntity>? = read(uid, d) { updatedAt ->
+    BudgetEntity(
+        uid = uid,
+        amountMinor = d.long("amountMinor")?.takeIf { it > 0 } ?: return@read null,
         createdAtMillis = d.long(FinFields.CREATED_AT) ?: updatedAt,
         updatedAtMillis = updatedAt,
         dirty = 0,

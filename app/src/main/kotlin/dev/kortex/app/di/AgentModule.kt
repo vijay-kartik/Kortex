@@ -9,11 +9,11 @@ import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.BuildConfig
 import dev.kortex.app.data.auth.GmailAuthManager
 import dev.kortex.app.data.auth.McpOAuthManager
-import dev.kortex.app.data.local.ChatSessionDao
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.app.data.settings.asLlmProviderSettings
 import dev.kortex.app.domain.agent.financeTools
 import dev.kortex.app.domain.agent.AgentBootstrap
+import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.domain.share.ShareAgentRunner
 import dev.kortex.core.gmail.gmailTool
 import dev.kortex.core.llm.DeepseekProvider
@@ -126,14 +126,14 @@ object AgentModule {
         @ApplicationScope scope: CoroutineScope,
         llm: LlmProvider,
         tools: ToolRegistry,
-        sessionDao: ChatSessionDao,
+        sessions: ChatSessionRepository,
         runStore: AgentRunStore,
     ): ShareAgentRunner = ShareAgentRunner(
         appContext = context,
         scope = scope,
         llm = llm,
         tools = tools,
-        sessionDao = sessionDao,
+        sessions = sessions,
         runStore = runStore,
     )
 }

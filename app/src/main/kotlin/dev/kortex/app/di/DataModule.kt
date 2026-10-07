@@ -8,7 +8,8 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.data.local.AppDatabase
-import dev.kortex.app.data.local.ChatSessionDao
+import dev.kortex.app.data.local.RoomChatSessionRepository
+import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.data.auth.GmailAuthManager
 import dev.kortex.app.data.ai.AiGatewayClient
 import dev.kortex.app.data.finance.JevFinanceDecider
@@ -55,8 +56,11 @@ object DataModule {
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "app.db").build()
 
+    /** Saved chat conversations, for the chat screen and the background share runner alike. */
     @Provides
-    fun provideChatSessionDao(database: AppDatabase): ChatSessionDao = database.chatSessionDao()
+    @Singleton
+    fun provideChatSessionRepository(database: AppDatabase): ChatSessionRepository =
+        RoomChatSessionRepository(database.chatSessionDao())
 
     /** Link tags come from Jev on Vercel AI Gateway; the on-device embeddings stand in offline. */
     @Provides

@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.kortex.design.R
-import dev.kortex.app.data.local.ChatSessionEntity
+import dev.kortex.app.domain.chat.ChatSessionSummary
 import dev.kortex.design.Alarm
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
@@ -53,7 +53,7 @@ fun HistoryScreen(
 ) {
     // Null while the first read is in flight: render nothing rather than the empty state.
     val sessions by vm.sessions.collectAsStateWithLifecycle()
-    var pendingDelete by remember { mutableStateOf<ChatSessionEntity?>(null) }
+    var pendingDelete by remember { mutableStateOf<ChatSessionSummary?>(null) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,

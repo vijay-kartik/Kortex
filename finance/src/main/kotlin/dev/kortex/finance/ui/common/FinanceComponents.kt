@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.kortex.design.Alarm
 import dev.kortex.design.Edge
 import dev.kortex.design.EdgeStrong
 import dev.kortex.design.Grotesk
@@ -187,13 +188,15 @@ fun InputCard(
     keyboardType: KeyboardType = KeyboardType.Text,
     enabled: Boolean = true,
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
+    /** An invalid value: the border and the helper turn Alarm. */
+    error: Boolean = false,
 ) {
     Column(
         modifier
             .fillMaxWidth()
             .clip(CardShape)
             .background(Well)
-            .border(1.dp, Edge, CardShape)
+            .border(1.dp, if (error) Alarm else Edge, CardShape)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -216,7 +219,7 @@ fun InputCard(
         }
         if (helper != null) {
             Spacer(Modifier.height(4.dp))
-            Text(helper, style = MaterialTheme.typography.bodySmall, color = Muted)
+            Text(helper, style = MaterialTheme.typography.bodySmall, color = if (error) Alarm else Muted)
         }
     }
 }

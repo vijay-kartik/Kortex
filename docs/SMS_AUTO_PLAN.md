@@ -150,7 +150,8 @@ Phase 9 notes (earlier SMS):
     That keeps every run well inside a job's 10-minute limit, even with model calls.
   - Live runs never read imported rows, and the import never reads live ones, so the two run
     side by side without double counting.
-  - `BankSms.catchUp` resumes an import a stopped job left behind.
+  - `BankSms.catchUp` resumes an import a stopped job left behind (`KEEP`, so an import still
+    queued or running isn't joined by a second one).
 - **Told once.** No notification per entry. A silent progress notification ("12 of 85 read")
   while it runs, then one summary, "Added 42 entries from earlier SMS · 7 to review", which
   opens To review when any wait there. The cloud push runs once at the end.

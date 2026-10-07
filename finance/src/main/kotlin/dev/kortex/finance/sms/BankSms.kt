@@ -122,14 +122,17 @@ object BankSms {
 
     /**
      * Reads anything a stopped job left waiting, live or imported; the app calls it on start. Does
-     * nothing while off.
+     * nothing while off. An import still queued or running is left alone: the process also starts
+     * to run its next chunk, and a second run appended to it would count the rest twice over.
      */
     fun catchUp(context: Context) {
         val deps = entryPoint(context)
         if (!deps.bankSmsStore().settings.value.enabled) return
         enqueue(context)
         scope.launch {
-            if (deps.smsInbox().pending(imported = true, limit = 1).isNotEmpty()) continueImport(context, Data.EMPTY)
+            if (deps.smsInbox().pending(imported = true, limit = 1).isNotEmpty()) {
+                enqueueImport(context, Data.EMPTY, ExistingWorkPolicy.KEEP)
+            }
         }
     }
 

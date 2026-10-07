@@ -7,7 +7,8 @@ import dev.kortex.finance.domain.model.Transaction
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
-enum class PendingKind { CARD_BILL, SUBSCRIPTION, FIXED }
+/** [BUDGET] is only ever a [Reminder]: a budget is never a pending payment. */
+enum class PendingKind { CARD_BILL, SUBSCRIPTION, FIXED, BUDGET }
 
 /** How a due date is coloured: Amber within 7 days, Alarm once past due. */
 enum class DueUrgency { LATER, SOON, OVERDUE }

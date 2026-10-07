@@ -20,12 +20,15 @@ import dev.kortex.finance.R
 import dev.kortex.finance.domain.calc.PendingKind
 import dev.kortex.finance.domain.calc.Reminder
 import dev.kortex.finance.domain.calc.Reminders
+import dev.kortex.finance.domain.calc.roundDiv
 import dev.kortex.finance.domain.port.Clock
+import dev.kortex.finance.domain.usecase.ObserveBudgets
 import dev.kortex.finance.domain.usecase.ObserveFinance
 import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.finance.ui.common.FinanceFormat
 import java.time.Duration
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.first
@@ -57,8 +60,16 @@ object FinanceReminders {
         return Duration.between(now, next)
     }
 
-    /** "Netflix ₹649 due in 2 days", "KORTEX bill ₹1,400 due today". */
+    /** "Netflix ₹649 due in 2 days", "KORTEX bill ₹1,400 due today", "Food: 85 % of ₹8,000 used". */
     fun title(reminder: Reminder): String {
+        if (reminder.kind == PendingKind.BUDGET) {
+            return if (reminder.threshold == 100) {
+                "${reminder.name} is ${FinanceFormat.rupees(reminder.spentMinor - reminder.amountMinor, paise = false)} over budget"
+            } else {
+                val percent = roundDiv(reminder.spentMinor * 100, reminder.amountMinor)
+                "${reminder.name}: $percent % of ${FinanceFormat.rupees(reminder.amountMinor, paise = false)} used"
+            }
+        }
         val amount = FinanceFormat.rupees(reminder.amountMinor, paise = false)
         val what = if (reminder.kind == PendingKind.CARD_BILL) "${reminder.name} bill $amount" else "${reminder.name} $amount"
         val `when` = when (reminder.daysLeft) {
@@ -70,6 +81,15 @@ object FinanceReminders {
     }
 
     fun text(reminder: Reminder): String = when {
+        reminder.kind == PendingKind.BUDGET -> {
+            val month = FinanceFormat.monthName(YearMonth.from(reminder.dueOn))
+            val budget = FinanceFormat.rupees(reminder.amountMinor, paise = false)
+            if (reminder.spentMinor > reminder.amountMinor) {
+                "${FinanceFormat.rupees(reminder.spentMinor, paise = false)} spent of $budget in $month"
+            } else {
+                "${FinanceFormat.rupees(reminder.amountMinor - reminder.spentMinor, paise = false)} left for $month"
+            }
+        }
         reminder.kind == PendingKind.CARD_BILL -> "Due ${FinanceFormat.weekdayDay(reminder.dueOn)} · tap to pay it"
         reminder.automatic -> "Kortex will mark it paid on ${FinanceFormat.weekdayDay(reminder.dueOn)}"
         else -> "Due ${FinanceFormat.weekdayDay(reminder.dueOn)} · tap to mark it paid"
@@ -80,7 +100,7 @@ object FinanceReminders {
         val manager = NotificationManagerCompat.from(context)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Payment reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Subscriptions, fixed expenses and card bills coming up."
+                description = "Subscriptions, fixed expenses and card bills coming up, and budgets running out."
             },
         )
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
@@ -108,7 +128,16 @@ class FinanceReminderWorker(context: Context, params: WorkerParameters) : Corout
     override suspend fun doWork(): Result {
         val deps = EntryPointAccessors.fromApplication(applicationContext, FinanceReminderEntryPoint::class.java)
         val snapshot = deps.observeFinance()().first()
-        val reminders = Reminders.due(deps.clock().today(), snapshot.accounts, snapshot.recurring, snapshot.statements, snapshot.transactions)
+        val budgets = deps.observeBudgets()().first()
+        val reminders = Reminders.due(
+            deps.clock().today(),
+            snapshot.accounts,
+            snapshot.recurring,
+            snapshot.statements,
+            snapshot.transactions,
+            snapshot.categories,
+            budgets,
+        )
         FinanceReminders.post(applicationContext, reminders)
         return Result.success()
     }
@@ -118,5 +147,6 @@ class FinanceReminderWorker(context: Context, params: WorkerParameters) : Corout
 @InstallIn(SingletonComponent::class)
 interface FinanceReminderEntryPoint {
     fun observeFinance(): ObserveFinance
+    fun observeBudgets(): ObserveBudgets
     fun clock(): Clock
 }

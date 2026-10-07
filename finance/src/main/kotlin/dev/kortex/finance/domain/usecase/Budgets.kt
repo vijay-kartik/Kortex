@@ -2,6 +2,8 @@ package dev.kortex.finance.domain.usecase
 
 import dev.kortex.finance.domain.model.CategoryKind
 import dev.kortex.finance.domain.repository.FinanceRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 sealed interface BudgetSaveResult {
     data object Saved : BudgetSaveResult
@@ -28,4 +30,10 @@ class SetBudget(private val repository: FinanceRepository) {
 /** The category is no longer budgeted; when none is, the month isn't either. */
 class ClearBudget(private val repository: FinanceRepository) {
     suspend operator fun invoke(categoryUid: String) = repository.clearBudget(categoryUid)
+}
+
+/** Each budgeted category's monthly amount by its uid, re-emitted whenever a budget changes. */
+class ObserveBudgets(private val repository: FinanceRepository) {
+    operator fun invoke(): Flow<Map<String, Long>> =
+        repository.observeBudgets().map { budgets -> budgets.associate { it.categoryUid to it.amountMinor } }
 }

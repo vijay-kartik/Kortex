@@ -4,10 +4,12 @@ import dev.kortex.finance.FakeFinanceRepository
 import dev.kortex.finance.Fixtures
 import dev.kortex.finance.Fixtures.TODAY
 import dev.kortex.finance.Fixtures.kortexStatement
+import dev.kortex.finance.domain.model.Budget
 import dev.kortex.finance.domain.model.TransactionSource
 import dev.kortex.finance.domain.model.TransactionType
 import dev.kortex.finance.domain.usecase.AddTransaction
 import dev.kortex.finance.domain.usecase.MarkPaid
+import dev.kortex.finance.domain.usecase.ObserveBudgets
 import dev.kortex.finance.domain.usecase.ObserveFinance
 import java.time.LocalDate
 import kotlinx.coroutines.test.runTest
@@ -20,7 +22,7 @@ import org.junit.Test
 class FinanceAgentTest {
     private val repository = FakeFinanceRepository()
     private val add = AddTransaction(repository, Fixtures.clock)
-    private val agent = FinanceAgent(ObserveFinance(repository), add, MarkPaid(repository, add, Fixtures.clock), Fixtures.clock)
+    private val agent = FinanceAgent(ObserveFinance(repository), ObserveBudgets(repository), add, MarkPaid(repository, add, Fixtures.clock), Fixtures.clock)
 
     @Before
     fun data() {
@@ -81,6 +83,50 @@ class FinanceAgentTest {
         val pending = agent.listPending()
         assertTrue(pending.text.startsWith("₹4,467.00 due in the next 30 days:"))
         assertTrue(pending.text.contains("KORTEX ••8824 bill: ₹1,400.00 due Thu, 15 Oct"))
+    }
+
+    @Test
+    fun `budget status says when the month isn't budgeted`() = runTest {
+        agent.addEntry(false, 42_50, "8824", "Food", "Whole Foods Market", null, null)
+        val answer = agent.budgetStatus(null)
+        assertTrue(answer.ok)
+        assertEquals("September 2026 is not budgeted: no category has a budget.", answer.text)
+        assertEquals("Food has no budget; September 2026 is not budgeted.", agent.budgetStatus("food").text)
+    }
+
+    @Test
+    fun `budget status for one category, matched by name`() = runTest {
+        repository.budgets.value = listOf(Budget("food", 40_00), Budget("travel", 1_000_00))
+        agent.addEntry(false, 42_50, "8824", "Food", "Whole Foods Market", null, null)
+        val answer = agent.budgetStatus("FOOD")
+        assertTrue(answer.ok)
+        assertEquals("September 2026, Food: ₹42.50 of ₹40.00 spent (106%), ₹2.50 over; at this pace ₹43.97 by month-end.", answer.text)
+        assertEquals("Utilities has no budget. Budgeted: Food, Travel.", agent.budgetStatus("utilities").text)
+    }
+
+    @Test
+    fun `budget status for all categories leads with the overall budget`() = runTest {
+        repository.budgets.value = listOf(Budget("food", 4_000_00), Budget("travel", 1_000_00))
+        agent.addEntry(false, 42_50, "8824", "Food", "Whole Foods Market", null, null)
+        val answer = agent.budgetStatus(null)
+        assertTrue(answer.ok)
+        assertEquals(
+            """
+            September 2026, overall: ₹42.50 of ₹5,000.00 spent (1%), ₹4,957.50 left; at this pace ₹43.97 by month-end.
+            Food: ₹42.50 of ₹4,000.00 spent (1%), ₹3,957.50 left; at this pace ₹43.97 by month-end.
+            Travel: ₹0.00 of ₹1,000.00 spent (0%), ₹1,000.00 left; at this pace ₹0.00 by month-end.
+            """.trimIndent(),
+            answer.text,
+        )
+    }
+
+    @Test
+    fun `budget status for an unknown category lists the categories`() = runTest {
+        repository.budgets.value = listOf(Budget("food", 4_000_00))
+        val answer = agent.budgetStatus("Gadgets")
+        assertFalse(answer.ok)
+        assertTrue(answer.text.startsWith("No expense category is called \"Gadgets\". Categories: Food, Travel"))
+        assertFalse(answer.text.contains("Salary"))
     }
 
     @Test

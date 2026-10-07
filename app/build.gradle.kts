@@ -132,4 +132,5 @@ dependencies {
     implementation(libs.richtext.material3)
 
     testImplementation(libs.junit)
+    testImplementation(libs.json)
 }

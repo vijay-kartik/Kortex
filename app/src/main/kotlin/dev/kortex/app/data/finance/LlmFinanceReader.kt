@@ -27,10 +27,13 @@ import org.json.JSONObject
  * digit runs keep their last 4). Anything that goes wrong — no key, offline, a reply that isn't
  * JSON — is null, and finance carries on with its patterns.
  */
-class LlmFinanceReader(
+class LlmFinanceReader internal constructor(
     private val llm: LlmProvider,
-    private val settings: SettingsStore,
+    private val model: suspend () -> String,
+    private val timeoutMs: Long = TIMEOUT_MS,
 ) : FinanceReader {
+
+    constructor(llm: LlmProvider, settings: SettingsStore) : this(llm, { settings.activeModel.first() })
 
     override suspend fun readSms(maskedText: String, today: LocalDate): SmsReading? = ask(SMS_PROMPT, "Today is $today.\nBEGIN SMS\n$maskedText\nEND SMS") { json ->
         val amount = json.minor("amount") ?: return@ask null
@@ -82,10 +85,10 @@ class LlmFinanceReader(
     }
 
     private suspend fun <T> ask(system: String, user: String, read: (JSONObject) -> T?): T? = try {
-        withTimeoutOrNull(TIMEOUT_MS) {
+        withTimeoutOrNull(timeoutMs) {
             val reply = llm.complete(
                 LlmRequest(
-                    model = settings.activeModel.first(),
+                    model = model(),
                     messages = listOf(Message(Message.Role.SYSTEM, system), Message(Message.Role.USER, user)),
                     // Extraction: the same text should read the same way every time.
                     temperature = 0.0,

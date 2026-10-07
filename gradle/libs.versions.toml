@@ -87,6 +87,8 @@ junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "jun
 kotest-assertions = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+# A real org.json for JVM unit tests: Android's stub JSONObject throws "Stub!" off-device.
+json = { module = "org.json:json", version = "20240303" }
 
 richtext-commonmark = { module = "com.halilibo.compose-richtext:richtext-commonmark", version = "0.20.0" }
 richtext-material3 = { module = "com.halilibo.compose-richtext:richtext-ui-material3", version = "0.20.0" }

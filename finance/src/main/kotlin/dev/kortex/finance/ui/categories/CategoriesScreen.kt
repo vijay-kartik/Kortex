@@ -31,7 +31,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,6 +52,8 @@ import dev.kortex.design.Well
 import dev.kortex.finance.R
 import dev.kortex.finance.domain.model.CategoryKind
 import dev.kortex.finance.ui.FinanceRoute
+import dev.kortex.finance.ui.common.BudgetLevel
+import dev.kortex.finance.ui.common.BudgetProgressUi
 import dev.kortex.finance.ui.common.FinanceChip
 import dev.kortex.finance.ui.common.FinanceColors
 import dev.kortex.finance.ui.common.FinancePushedScreen
@@ -54,6 +61,7 @@ import dev.kortex.finance.ui.common.FinanceSheet
 import dev.kortex.finance.ui.common.InputCard
 import dev.kortex.finance.ui.common.NoticeCard
 import dev.kortex.finance.ui.common.PrimaryButton
+import dev.kortex.finance.ui.common.ProgressTrack
 import dev.kortex.finance.ui.common.RadioRow
 import dev.kortex.finance.ui.common.SecondaryButton
 import dev.kortex.finance.ui.common.SectionLabel
@@ -93,7 +101,7 @@ fun CategoriesScreen(state: CategoriesState, onIntent: (CategoriesIntent) -> Uni
         CategoryGroup("Expense · yours", state.expenseYours, onIntent)
         CategoryGroup("Income", state.income, onIntent)
         Text(
-            "Built-in categories can’t be renamed or removed. Tap one of yours to rename, recolour or delete it.",
+            "Tap an expense category to set its monthly budget. Built-in categories can’t be renamed or removed.",
             style = MaterialTheme.typography.labelSmall,
             color = Muted,
             textAlign = TextAlign.Center,
@@ -114,7 +122,7 @@ private fun CategoryGroup(label: String, rows: List<CategoryRowUi>, onIntent: (C
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .then(if (row.builtIn) Modifier else Modifier.clickable(role = Role.Button) { onIntent(CategoriesIntent.Open(row.uid)) })
+                        .then(if (row.opens) Modifier.clickable(role = Role.Button) { onIntent(CategoriesIntent.Open(row.uid)) } else Modifier)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -122,11 +130,19 @@ private fun CategoryGroup(label: String, rows: List<CategoryRowUi>, onIntent: (C
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(row.name, style = MaterialTheme.typography.bodyLarge, color = Ink)
-                        Text(row.subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
+                        val budget = row.budget
+                        if (budget == null) {
+                            Text(row.subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
+                        } else {
+                            BudgetLine(budget, " this month")
+                            Spacer(Modifier.height(6.dp))
+                            ProgressTrack(budget.fraction, budget.level.color)
+                        }
                     }
+                    Spacer(Modifier.width(12.dp))
                     Icon(
-                        painterResource(if (row.builtIn) R.drawable.ic_fin_lock else R.drawable.ic_fin_chevron_right),
-                        contentDescription = if (row.builtIn) "Built in" else null,
+                        painterResource(if (row.opens) R.drawable.ic_fin_chevron_right else R.drawable.ic_fin_lock),
+                        contentDescription = if (row.opens) null else "Built in",
                         tint = Muted,
                         modifier = Modifier.size(16.dp),
                     )
@@ -134,6 +150,20 @@ private fun CategoryGroup(label: String, rows: List<CategoryRowUi>, onIntent: (C
             }
         }
     }
+}
+
+/** "₹5,400 of ₹8,000[suffix]", the spent amount Amber from 80 % and Alarm over budget. */
+@Composable
+private fun BudgetLine(budget: BudgetProgressUi, suffix: String, style: TextStyle = MaterialTheme.typography.bodySmall) {
+    val spentColor = if (budget.level == BudgetLevel.UNDER) Muted else budget.level.color
+    Text(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = spentColor)) { append(budget.spent) }
+            append(" of ${budget.budget}$suffix")
+        },
+        style = style,
+        color = Muted,
+    )
 }
 
 @Composable
@@ -164,7 +194,7 @@ fun CategoryFormScreen(state: CategoryFormState, onIntent: (CategoryFormIntent) 
     FinanceSheet(
         title = state.title,
         onClose = onClose,
-        headerAction = if (state.editing) {
+        headerAction = if (state.editing && !state.builtIn) {
             { SheetButton(DesignR.drawable.ic_trash, "Delete category", { onIntent(CategoryFormIntent.AskDelete) }, tint = Alarm) }
         } else {
             null
@@ -174,10 +204,22 @@ fun CategoryFormScreen(state: CategoryFormState, onIntent: (CategoryFormIntent) 
                 Text(it, style = MaterialTheme.typography.bodySmall, color = Alarm)
                 Spacer(Modifier.height(8.dp))
             }
-            PrimaryButton(state.saveLabel, { onIntent(CategoryFormIntent.Save) }, enabled = !state.saving && !state.loading)
+            if (state.budgetable && state.savedBudgetMinor != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SecondaryButton("Remove budget", { onIntent(CategoryFormIntent.RemoveBudget) }, Modifier.weight(1f))
+                    PrimaryButton(state.saveLabel, { onIntent(CategoryFormIntent.Save) }, Modifier.weight(1f), enabled = state.canSave)
+                }
+            } else {
+                PrimaryButton(state.saveLabel, { onIntent(CategoryFormIntent.Save) }, enabled = state.canSave)
+            }
         },
     ) {
         if (state.loading) return@FinanceSheet
+        if (state.builtIn) {
+            Text("Built in · only the budget can be changed", style = MaterialTheme.typography.bodySmall, color = Muted)
+            BudgetFields(state, onIntent)
+            return@FinanceSheet
+        }
         if (!state.editing) {
             Column {
                 SectionLabel("Type")
@@ -216,6 +258,11 @@ fun CategoryFormScreen(state: CategoryFormState, onIntent: (CategoryFormIntent) 
                 }
             }
         }
+        if (state.budgetable) {
+            // Budgets · 03 puts the budget where the chip preview was.
+            BudgetFields(state, onIntent)
+            return@FinanceSheet
+        }
         Column {
             SectionLabel("Preview")
             Spacer(Modifier.height(10.dp))
@@ -237,6 +284,43 @@ fun CategoryFormScreen(state: CategoryFormState, onIntent: (CategoryFormIntent) 
             )
         }
     }
+}
+
+/** The Monthly budget field and the This month card (Figma: Budgets · 02–04). */
+@Composable
+private fun BudgetFields(state: CategoryFormState, onIntent: (CategoryFormIntent) -> Unit) {
+    InputCard(
+        label = "Monthly budget",
+        value = state.budgetText,
+        onValueChange = { onIntent(CategoryFormIntent.Budget(it)) },
+        placeholder = "₹0",
+        helper = state.budgetHelper,
+        keyboardType = KeyboardType.Decimal,
+        textStyle = MaterialTheme.typography.headlineSmall,
+        error = state.budgetInvalid,
+    )
+    val preview = state.preview ?: return
+    Column(Modifier.fillMaxWidth().clip(GroupShape).background(Panel).border(1.dp, Edge, GroupShape).padding(16.dp)) {
+        SectionLabel("This month")
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { BudgetLine(preview.progress, "", MaterialTheme.typography.bodyLarge) }
+            Text("${preview.percentUsed}%", style = MaterialTheme.typography.labelLarge, color = preview.progress.level.color)
+        }
+        Spacer(Modifier.height(8.dp))
+        ProgressTrack(preview.progress.fraction, preview.progress.level.color)
+        Spacer(Modifier.height(8.dp))
+        Row {
+            Text(
+                preview.left,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (preview.progress.level == BudgetLevel.OVER) Alarm else Muted,
+                modifier = Modifier.weight(1f),
+            )
+            Text(preview.projection, style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
+    }
+    state.previewNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Muted) }
 }
 
 @Composable

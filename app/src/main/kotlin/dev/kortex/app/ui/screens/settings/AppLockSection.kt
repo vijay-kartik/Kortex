@@ -193,7 +193,7 @@ internal fun AppLockSection(
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("App lock", style = RowTitle, color = Ink)
+                        Text("App lock", style = MaterialTheme.typography.titleSmall, color = Ink)
                         Text(
                             when {
                                 unsupported -> "This phone doesn’t support biometric unlock"
@@ -237,7 +237,7 @@ internal fun AppLockSection(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("Hide in recent apps", style = RowTitle, color = Ink)
+                                Text("Hide in recent apps", style = MaterialTheme.typography.titleSmall, color = Ink)
                                 Text(
                                     "Blanks the app preview and blocks screenshots",
                                     style = MaterialTheme.typography.bodySmall,
@@ -281,8 +281,6 @@ internal fun AppLockSection(
         )
     }
 }
-
-private val RowTitle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

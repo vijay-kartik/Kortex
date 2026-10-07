@@ -47,10 +47,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -166,7 +164,7 @@ internal fun BankSmsSection(vm: BankSmsViewModel = hiltViewModel()) {
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Add bank SMS automatically", style = RowTitle, color = Ink)
+                        Text("Add bank SMS automatically", style = MaterialTheme.typography.titleSmall, color = Ink)
                         Text(
                             when {
                                 needsPermission && settings.enabled -> "SMS permission is off, so nothing is being read"
@@ -197,7 +195,7 @@ internal fun BankSmsSection(vm: BankSmsViewModel = hiltViewModel()) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("Save clear ones without asking", style = RowTitle, color = Ink)
+                                Text("Save clear ones without asking", style = MaterialTheme.typography.titleSmall, color = Ink)
                                 Text(
                                     "Off, every bank SMS waits for you to check it",
                                     style = MaterialTheme.typography.bodySmall,
@@ -216,7 +214,7 @@ internal fun BankSmsSection(vm: BankSmsViewModel = hiltViewModel()) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("Add earlier SMS", style = RowTitle, color = Ink)
+                                Text("Add earlier SMS", style = MaterialTheme.typography.titleSmall, color = Ink)
                                 Text(
                                     when {
                                         importing -> "Adding earlier SMS…"
@@ -244,7 +242,7 @@ internal fun BankSmsSection(vm: BankSmsViewModel = hiltViewModel()) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("SMS inbox", style = RowTitle, color = Ink)
+                                Text("SMS inbox", style = MaterialTheme.typography.titleSmall, color = Ink)
                                 Text(
                                     when (toReview) {
                                         0 -> "Nothing waiting for review"
@@ -397,7 +395,7 @@ private fun StartOption(title: String, subtitle: String, selected: Boolean, onCl
         RadioButton(selected = selected, onClick = onClick, colors = RadioButtonDefaults.colors(selectedColor = Synapse))
         Spacer(Modifier.width(8.dp))
         Column {
-            Text(title, style = RowTitle, color = Ink)
+            Text(title, style = MaterialTheme.typography.titleSmall, color = Ink)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
         }
     }
@@ -420,8 +418,6 @@ private fun openAppSettings(context: Context) {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
     )
 }
-
-private val RowTitle = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium)
 
 @Composable
 private fun switchColors() = SwitchDefaults.colors(

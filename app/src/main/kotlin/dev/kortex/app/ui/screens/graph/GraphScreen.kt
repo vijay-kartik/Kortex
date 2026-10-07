@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.res.painterResource
+import dev.kortex.design.Alarm
 import dev.kortex.design.R
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -307,7 +308,7 @@ fun GraphScreen(vm: GraphViewModel = hiltViewModel()) {
                         showResetDialog = false
                     }
                 ) {
-                    Text("Reset", color = Color.Red)
+                    Text("Reset", color = Alarm)
                 }
             },
             dismissButton = {

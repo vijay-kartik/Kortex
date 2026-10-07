@@ -1,7 +1,6 @@
 package dev.kortex.finance.ui.common
 
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
@@ -12,6 +11,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.kortex.design.KortexSnackbarHost
 import dev.kortex.finance.domain.usecase.DeleteTransaction
 import dev.kortex.finance.domain.usecase.ResolveInboxSms
 import dev.kortex.finance.domain.usecase.UndoOccurrence
@@ -36,7 +36,7 @@ fun FinanceNoticeHost(modifier: Modifier = Modifier, viewModel: FinanceNoticeVie
             if (result == SnackbarResult.ActionPerformed) notice.undo?.let(viewModel::undo)
         }
     }
-    SnackbarHost(snackbars, modifier)
+    KortexSnackbarHost(snackbars, modifier)
 }
 
 @HiltViewModel

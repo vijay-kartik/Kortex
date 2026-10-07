@@ -44,8 +44,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
@@ -83,7 +81,7 @@ import android.widget.Toast
 import androidx.compose.ui.graphics.Color.Companion.Green
 import dev.kortex.design.Alarm
 import dev.kortex.design.Edge
-import dev.kortex.design.Ink
+import dev.kortex.design.KortexSnackbarHost
 import dev.kortex.design.Mono
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
@@ -113,11 +111,7 @@ fun SettingsScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = {
-            SnackbarHost(snackbar) {
-                Snackbar(it, containerColor = Ink, contentColor = Void, shape = RoundedCornerShape(10.dp))
-            }
-        },
+        snackbarHost = { KortexSnackbarHost(snackbar) },
         topBar = {
             androidx.compose.material3.TopAppBar(
                 title = { Text("Tools & Settings") },

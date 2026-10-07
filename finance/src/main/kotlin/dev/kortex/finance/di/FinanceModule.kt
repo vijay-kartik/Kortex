@@ -27,6 +27,7 @@ import dev.kortex.finance.domain.usecase.ClearBudget
 import dev.kortex.finance.domain.usecase.DeleteAccount
 import dev.kortex.finance.domain.usecase.DeleteCategory
 import dev.kortex.finance.domain.usecase.DeleteTransaction
+import dev.kortex.finance.domain.usecase.ObserveBudgets
 import dev.kortex.finance.domain.usecase.ObserveFinance
 import dev.kortex.finance.domain.usecase.UpdateAccount
 import dev.kortex.finance.domain.usecase.UpdateCategory
@@ -127,6 +128,9 @@ object FinanceModule {
     fun provideClearBudget(repository: FinanceRepository) = ClearBudget(repository)
 
     @Provides
+    fun provideObserveBudgets(repository: FinanceRepository) = ObserveBudgets(repository)
+
+    @Provides
     fun provideUpdateAccount(repository: FinanceRepository, secrets: SecretBox) = UpdateAccount(repository, secrets)
 
     @Provides
@@ -204,6 +208,11 @@ object FinanceModule {
 
     /** What the agent's finance tools do; the tools themselves are defined in the app. */
     @Provides
-    fun provideFinanceAgent(observeFinance: ObserveFinance, addTransaction: AddTransaction, markPaid: MarkPaid, clock: Clock) =
-        FinanceAgent(observeFinance, addTransaction, markPaid, clock)
+    fun provideFinanceAgent(
+        observeFinance: ObserveFinance,
+        observeBudgets: ObserveBudgets,
+        addTransaction: AddTransaction,
+        markPaid: MarkPaid,
+        clock: Clock,
+    ) = FinanceAgent(observeFinance, observeBudgets, addTransaction, markPaid, clock)
 }

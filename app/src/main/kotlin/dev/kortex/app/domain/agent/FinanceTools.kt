@@ -60,6 +60,10 @@ fun financeTools(finance: FinanceAgent): List<Tool> = listOf(
         param("category", "string", "Only this category's spending", required = false)
         execute { args -> finance.spendingSummary(args.text("period"), args.text("category")).toResult() }
     },
+    tool("budget_status", "This month's budget: how much of each budgeted category is spent and left, and where it's heading by month-end.") {
+        param("category", "string", "Only this category's budget, e.g. Food", required = false)
+        execute { args -> finance.budgetStatus(args.text("category")).toResult() }
+    },
     tool("find_transactions", "Search the user's finance entries by merchant, note or category, optionally between two dates.") {
         param("query", "string", "Text to look for, e.g. 'swiggy'", required = false)
         param("from", "string", "First day, yyyy-MM-dd", required = false)

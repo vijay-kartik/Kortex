@@ -156,7 +156,7 @@ Decided in #14; storage and sync in #16.
 - **The overall monthly budget is the sum of the category budgets.** If no category has a budget,
   the month is not budgeted.
 - **Notices go through the existing daily reminder channel** (the Reminders job above).
-- **The agent gets a separate `budget_status` tool.**
+- **The agent gets a separate `budget_status` tool.** It's in #21 (see *Agent tools*).
 
 ## How entries get in
 
@@ -203,7 +203,7 @@ after sign-in.
 
 `add_expense`, `add_income` and `mark_paid` (`RiskLevel.MEDIUM`, confirm before saving);
 `spending_summary { period, category? }`, `find_transactions { query, from?, to? }`,
-`list_pending` (`LOW`). `analyze_statement` can later feed `add_expense` for statement import.
+`list_pending`, `budget_status { category? }` (`LOW`). `analyze_statement` can later feed `add_expense` for statement import.
 
 ## Phases
 
@@ -326,7 +326,7 @@ after sign-in.
      depend on features.
      - `add_expense`, `add_income` and `mark_paid` are MEDIUM risk, so they're confirmed before
        anything is saved.
-     - `spending_summary`, `find_transactions` and `list_pending` are LOW risk.
+     - `spending_summary`, `find_transactions`, `list_pending` and `budget_status` are LOW risk.
    - **Setup before deploying:**
      1. Create a Cloud KMS key, e.g. `projects/{project}/locations/asia-south1/keyRings/kortex/cryptoKeys/finance-keys`.
      2. Give the functions' service account *Cloud KMS CryptoKey Encrypter/Decrypter* on that key.

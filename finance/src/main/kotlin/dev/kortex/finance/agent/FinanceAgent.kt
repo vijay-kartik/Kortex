@@ -1,5 +1,6 @@
 package dev.kortex.finance.agent
 
+import dev.kortex.finance.domain.calc.Budgets
 import dev.kortex.finance.domain.calc.Pending
 import dev.kortex.finance.domain.calc.PendingKind
 import dev.kortex.finance.domain.calc.Spending
@@ -12,6 +13,7 @@ import dev.kortex.finance.domain.port.Clock
 import dev.kortex.finance.domain.usecase.AddTransaction
 import dev.kortex.finance.domain.usecase.FinanceSnapshot
 import dev.kortex.finance.domain.usecase.MarkPaid
+import dev.kortex.finance.domain.usecase.ObserveBudgets
 import dev.kortex.finance.domain.usecase.ObserveFinance
 import dev.kortex.finance.domain.usecase.OccurrenceResult
 import dev.kortex.finance.domain.usecase.PaymentDraft
@@ -32,6 +34,7 @@ data class AgentAnswer(val ok: Boolean, val text: String)
  */
 class FinanceAgent(
     private val observeFinance: ObserveFinance,
+    private val observeBudgets: ObserveBudgets,
     private val addTransaction: AddTransaction,
     private val markPaid: MarkPaid,
     private val clock: Clock,
@@ -125,6 +128,44 @@ class FinanceAgent(
                 }
             },
         )
+    }
+
+    /**
+     * budget_status: this month's budget against spend, overall and per budgeted category, or just
+     * [category]'s. A month with no category budgets isn't budgeted.
+     */
+    suspend fun budgetStatus(category: String?): AgentAnswer {
+        val today = clock.today()
+        val month = YearMonth.from(today)
+        val snapshot = observeFinance().first()
+        val status = Budgets.status(snapshot.transactions, snapshot.categories, observeBudgets().first(), month, today)
+        val monthLabel = FinanceFormat.monthYear(month)
+        if (category != null) {
+            val expenseCategories = snapshot.categories.filter { it.kind == CategoryKind.EXPENSE }
+            val match = expenseCategories.firstOrNull { it.name.equals(category.trim(), ignoreCase = true) || it.uid == category }
+                ?: return AgentAnswer(false, "No expense category is called \"$category\". Categories: ${expenseCategories.joinToString { it.name }}.")
+            val row = status.categories.firstOrNull { it.categoryUid == match.uid }
+                ?: return AgentAnswer(
+                    true,
+                    if (status.overall == null) "${match.name} has no budget; $monthLabel is not budgeted."
+                    else "${match.name} has no budget. Budgeted: ${status.categories.joinToString { it.name }}.",
+                )
+            return AgentAnswer(true, "$monthLabel, " + budgetLine(row.name, row.budgetMinor, row.spentMinor, row.leftMinor, row.percentUsed, row.projectedMinor))
+        }
+        val overall = status.overall ?: return AgentAnswer(true, "$monthLabel is not budgeted: no category has a budget.")
+        val lines = status.categories.joinToString("\n") {
+            budgetLine(it.name, it.budgetMinor, it.spentMinor, it.leftMinor, it.percentUsed, it.projectedMinor)
+        }
+        return AgentAnswer(
+            true,
+            "$monthLabel, " + budgetLine("overall", overall.budgetMinor, overall.spentMinor, overall.leftMinor, overall.percentUsed, overall.projectedMinor) + "\n$lines",
+        )
+    }
+
+    /** "Food: ₹3,200.00 of ₹4,000.00 spent (80%), ₹800.00 left; at this pace ₹4,100.00 by month-end." */
+    private fun budgetLine(name: String, budgetMinor: Long, spentMinor: Long, leftMinor: Long, percent: Int, projectedMinor: Long): String {
+        val left = if (leftMinor < 0) "${money(-leftMinor)} over" else "${money(leftMinor)} left"
+        return "$name: ${money(spentMinor)} of ${money(budgetMinor)} spent ($percent%), $left; at this pace ${money(projectedMinor)} by month-end."
     }
 
     /** find_transactions: matches merchant, note or category name; newest first. */

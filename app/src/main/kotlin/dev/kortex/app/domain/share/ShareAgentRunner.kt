@@ -7,8 +7,6 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import dev.kortex.app.data.local.ChatSessionDao
-import dev.kortex.app.data.local.ChatSessionEntity
 import dev.kortex.core.log.AndroidLogger
 import dev.kortex.core.Agent
 import dev.kortex.core.graph.AgentContext
@@ -22,13 +20,12 @@ import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
 import dev.kortex.design.R
 import dev.kortex.app.MainActivity
+import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.domain.chat.ChatTurn
 import dev.kortex.app.domain.chat.ReasoningLine
 import dev.kortex.app.domain.chat.ReasoningStats
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.util.UUID
 
 /**
@@ -44,11 +41,9 @@ class ShareAgentRunner(
     private val scope: CoroutineScope,
     private val llm: LlmProvider,
     private val tools: ToolRegistry,
-    private val sessionDao: ChatSessionDao,
+    private val sessions: ChatSessionRepository,
     private val runStore: dev.kortex.core.observability.AgentRunStore,
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
-
     /** Fire-and-forget: starts the run and immediately returns the new session's id. */
     fun submit(query: String, attachment: Attachment): String {
         val sessionId = UUID.randomUUID().toString()
@@ -106,14 +101,7 @@ class ShareAgentRunner(
                     },
                 )
 
-            sessionDao.upsert(
-                ChatSessionEntity(
-                    id = sessionId,
-                    title = title,
-                    turnsJson = json.encodeToString(turns),
-                    updatedAtMillis = System.currentTimeMillis(),
-                )
-            )
+            sessions.save(sessionId, turns, fallbackTitle = title)
             notifyDone(sessionId, title, turns.last().message.content)
         }
         return sessionId

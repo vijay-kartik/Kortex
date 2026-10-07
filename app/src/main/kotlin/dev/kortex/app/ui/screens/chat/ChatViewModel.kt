@@ -29,13 +29,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import dev.kortex.app.data.local.ChatSessionEntity
-import dev.kortex.app.data.local.ChatSessionDao
 import dev.kortex.core.observability.AgentRunStore
 import dev.kortex.app.data.settings.SettingsStore
+import dev.kortex.app.domain.chat.ChatSessionRepository
+import dev.kortex.app.domain.chat.ChatSessionSummary
 import dev.kortex.app.domain.chat.ChatTurn
 import dev.kortex.app.domain.chat.ReasoningLine
 import dev.kortex.app.domain.chat.ReasoningStats
@@ -78,7 +77,7 @@ class ChatViewModel @Inject constructor(
     private val provider: LlmProvider,
     private val tools: ToolRegistry,
     private val settingsStore: SettingsStore,
-    private val sessionDao: ChatSessionDao,
+    private val sessionRepository: ChatSessionRepository,
     private val runTraceStore: AgentRunStore,
 ) : AndroidViewModel(application) {
 
@@ -113,10 +112,9 @@ class ChatViewModel @Inject constructor(
      * Saved conversations, newest first. Null until Room's first read, so History can tell
      * "still loading" from "no conversations". Kept warm briefly so switching tabs reuses it.
      */
-    val sessions: StateFlow<List<ChatSessionEntity>?> = sessionDao.getAll()
+    val sessions: StateFlow<List<ChatSessionSummary>?> = sessionRepository.observeSummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private var currentSessionId: String = UUID.randomUUID().toString()
-    private val json = Json { ignoreUnknownKeys = true }
 
     private val approver = Approver { name, args ->
         _ui.update { it.copy(pendingApproval = "$name $args") }
@@ -259,11 +257,10 @@ class ChatViewModel @Inject constructor(
 
     fun loadSession(sessionId: String) {
         viewModelScope.launch {
-            val session = sessionDao.getById(sessionId)
+            val session = sessionRepository.get(sessionId)
             if (session != null) {
                 currentSessionId = session.id
-                val loadedTurns = json.decodeFromString<List<ChatTurn>>(session.turnsJson)
-                _ui.update { it.copy(turns = loadedTurns, busy = false, status = null) }
+                _ui.update { it.copy(turns = session.turns, busy = false, status = null) }
             }
         }
     }
@@ -272,7 +269,7 @@ class ChatViewModel @Inject constructor(
      *  the chat screen isn't left pointing at a session that no longer exists. */
     fun deleteSession(sessionId: String) {
         viewModelScope.launch {
-            sessionDao.deleteById(sessionId)
+            sessionRepository.delete(sessionId)
             if (sessionId == currentSessionId) startNewSession()
         }
     }
@@ -372,27 +369,19 @@ class ChatViewModel @Inject constructor(
             val answer = result.messages
                 .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
 
-            _ui.update { cur ->
-                val newTurns = cur.turns + listOfNotNull(answer?.let { ChatTurn(it, liveLines.toList(), statsNow()) })
-                viewModelScope.launch {
-                    val title = if (newTurns.size <= 2) agentQuery.take(40) else sessionDao.getById(currentSessionId)?.title ?: agentQuery.take(40)
-                    sessionDao.upsert(
-                        ChatSessionEntity(
-                            id = currentSessionId,
-                            title = title,
-                            turnsJson = json.encodeToString(newTurns),
-                            updatedAtMillis = System.currentTimeMillis()
-                        )
-                    )
-                }
+            val answerTurn = answer?.let { ChatTurn(it, liveLines.toList(), statsNow()) }
+            val newTurns = _ui.updateAndGet { cur ->
                 cur.copy(
-                    turns = newTurns,
+                    turns = cur.turns + listOfNotNull(answerTurn),
                     liveReasoning = emptyList(),
                     liveStats = ReasoningStats(),
                     busy = false,
                     status = null,
                 )
-            }
+            }.turns
+            // Saved outside the update: its lambda can rerun on contention, the save must not.
+            val sessionId = currentSessionId
+            viewModelScope.launch { sessionRepository.save(sessionId, newTurns, fallbackTitle = agentQuery) }
         }
     }
 }

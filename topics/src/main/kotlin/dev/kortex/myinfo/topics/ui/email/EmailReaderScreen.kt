@@ -29,7 +29,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -58,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.kortex.design.Edge
 import dev.kortex.design.Ink
 import dev.kortex.design.InkSoft
+import dev.kortex.design.KortexSnackbarHost
 import dev.kortex.design.KortexTheme
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
@@ -129,7 +129,7 @@ fun EmailReaderScreen(
     Scaffold(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbars) },
+        snackbarHost = { KortexSnackbarHost(snackbars) },
         topBar = { ReaderTopBar(onBack = onBack, onOpenMailApp = { onIntent(EmailReaderIntent.OpenMailApp) }) },
     ) { padding ->
         Column(

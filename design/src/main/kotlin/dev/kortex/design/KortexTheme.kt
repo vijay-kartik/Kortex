@@ -70,14 +70,28 @@ private val scheme = darkColorScheme(
     onPrimary = Void,
     primaryContainer = SynapseDim,
     onPrimaryContainer = Ink,
+    // Date pickers and chips read the secondary roles; keep them on the one accent.
+    secondary = Synapse,
+    onSecondary = Void,
+    secondaryContainer = SynapseDim,
+    onSecondaryContainer = Ink,
     background = Void,
     onBackground = Ink,
     surface = Void,
     onSurface = Ink,
     surfaceVariant = Panel,
     onSurfaceVariant = Muted,
+    // Every container role is set so no M3 baseline (purple-tinted) surface leaks through:
+    // dialogs and date pickers read High, sheets read Low.
     surfaceContainerHighest = Panel,
+    surfaceContainerHigh = Panel,
     surfaceContainer = Panel,
+    surfaceContainerLow = Panel,
+    surfaceContainerLowest = Well,
+    // Snackbars (Figma: Finances snackbar).
+    inverseSurface = EdgeStrong,
+    inverseOnSurface = Ink,
+    inversePrimary = Synapse,
     outline = Edge,
     outlineVariant = Edge,
     tertiary = Amber,

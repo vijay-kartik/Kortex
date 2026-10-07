@@ -30,7 +30,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
@@ -85,6 +84,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTube
 import dev.kortex.design.Edge
 import dev.kortex.design.Ink
 import dev.kortex.design.InkSoft
+import dev.kortex.design.KortexSnackbarHost
 import dev.kortex.design.KortexTheme
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
@@ -213,7 +213,7 @@ fun VideoPlayerScreen(
     Scaffold(
         modifier = modifier,
         containerColor = if (fullScreen) Color.Black else MaterialTheme.colorScheme.background,
-        snackbarHost = { if (!fullScreen) SnackbarHost(snackbars, Modifier.navigationBarsPadding()) },
+        snackbarHost = { if (!fullScreen) KortexSnackbarHost(snackbars, Modifier.navigationBarsPadding()) },
         topBar = { if (!fullScreen) PlayerTopBar(state.topicName, onBack) },
     ) { padding ->
         Column(

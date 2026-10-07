@@ -349,3 +349,20 @@ fun InsightLine(before: String, highlight: String, after: String, highlightColor
         modifier = modifier,
     )
 }
+
+/** "₹5,400 of ₹8,000[suffix]", the spent amount Amber from 80 % and Alarm over budget. */
+@Composable
+fun BudgetLine(budget: BudgetProgressUi, suffix: String, style: TextStyle = MaterialTheme.typography.bodySmall, modifier: Modifier = Modifier) {
+    val spentColor = if (budget.level == BudgetLevel.UNDER) Muted else budget.level.color
+    Text(
+        androidx.compose.ui.text.buildAnnotatedString {
+            pushStyle(androidx.compose.ui.text.SpanStyle(color = spentColor))
+            append(budget.spent)
+            pop()
+            append(" of ${budget.budget}$suffix")
+        },
+        style = style,
+        color = Muted,
+        modifier = modifier,
+    )
+}

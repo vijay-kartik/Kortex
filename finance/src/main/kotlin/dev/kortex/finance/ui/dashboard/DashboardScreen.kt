@@ -1,6 +1,7 @@
 package dev.kortex.finance.ui.dashboard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +47,8 @@ import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.finance.ui.common.AmountMedium
 import dev.kortex.finance.ui.common.AmountMono
 import dev.kortex.finance.ui.common.BottomBarClearance
+import dev.kortex.finance.ui.common.BudgetLine
+import dev.kortex.finance.ui.common.BudgetProgressUi
 import dev.kortex.finance.ui.common.CashFlowChart
 import dev.kortex.finance.ui.common.FinanceCard
 import dev.kortex.finance.ui.common.FinanceColors
@@ -55,6 +59,7 @@ import dev.kortex.finance.ui.common.IconTile
 import dev.kortex.finance.ui.common.InsightLine
 import dev.kortex.finance.ui.common.PaceChart
 import dev.kortex.finance.ui.common.PrimaryButton
+import dev.kortex.finance.ui.common.ProgressTrack
 import dev.kortex.finance.ui.common.SectionLabel
 import dev.kortex.finance.ui.common.SplitBar
 import dev.kortex.mvi.ObserveEffects
@@ -132,6 +137,7 @@ fun DashboardScreen(state: DashboardState, onIntent: (DashboardIntent) -> Unit, 
             }
         }
         state.pace?.let { pace -> item { PaceCard(pace) } }
+        state.budgets?.let { budgets -> item { BudgetsCard(budgets, onOpen = { onIntent(DashboardIntent.OpenCategories) }) } }
         if (state.shares.isNotEmpty()) item { WhereItWentCard(state.shares) }
     }
 }
@@ -243,6 +249,50 @@ private fun PaceCard(pace: PaceUi) {
     }
 }
 
+/** Figma: Budgets · 05. The whole card and Manage both open Categories. */
+@Composable
+private fun BudgetsCard(budgets: BudgetsUi, onOpen: () -> Unit) {
+    FinanceCard(onClick = onOpen) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Budgets", style = MaterialTheme.typography.titleMedium, color = Ink, modifier = Modifier.weight(1f))
+            Text(
+                "Manage",
+                style = MaterialTheme.typography.labelLarge,
+                color = Synapse,
+                modifier = Modifier.clickable(role = Role.Button, onClick = onOpen),
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        val overall = budgets.overall
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BudgetLine(overall, " this month", modifier = Modifier.weight(1f))
+            Text("${budgets.percentUsed}%", style = AmountMono.copy(fontSize = 11.sp, lineHeight = 15.sp), color = overall.level.color)
+        }
+        Spacer(Modifier.height(8.dp))
+        ProgressTrack(overall.fraction, overall.level.color, height = 6.dp)
+        Spacer(Modifier.height(8.dp))
+        Row {
+            Text(budgets.left, style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.weight(1f))
+            Text(budgets.projection, style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
+        HorizontalDivider(color = Edge, modifier = Modifier.padding(vertical = 14.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            budgets.categories.forEach { row ->
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(FinanceColors.of(row.colorToken)))
+                        Spacer(Modifier.width(8.dp))
+                        Text(row.name, style = MaterialTheme.typography.titleSmall, color = Ink, modifier = Modifier.weight(1f))
+                        BudgetLine(row.progress, "")
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    ProgressTrack(row.progress.fraction, row.progress.level.color, height = 4.dp)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun WhereItWentCard(shares: List<ShareUi>, modifier: Modifier = Modifier, title: String = "Where it went") {
     FinanceCard(modifier) {
@@ -302,6 +352,18 @@ private fun DashboardPreview() {
                     insights = listOf(
                         Insight("You’ve spent ", "₹438 less", " than August by day 29.", Tone.GOOD),
                         Insight("You kept ", "41%", " of September’s income — 8 points more than August.", Tone.GOOD),
+                        Insight("Shopping is on track to go ", "₹634 over", " budget.", Tone.WARN),
+                    ),
+                    budgets = BudgetsUi(
+                        overall = BudgetProgressUi(12_460_00, 15_000_00),
+                        percentUsed = 83,
+                        left = "₹2,540 left",
+                        projection = "Month ends near ₹12,890",
+                        categories = listOf(
+                            BudgetRowUi("food", "Food", "Synapse", BudgetProgressUi(5_400_00, 8_000_00)),
+                            BudgetRowUi("travel", "Travel", "Teal", BudgetProgressUi(2_580_00, 3_000_00)),
+                            BudgetRowUi("shop", "Shopping", "Lilac", BudgetProgressUi(4_480_00, 4_000_00)),
+                        ),
                     ),
                     shares = listOf(ShareUi("Food", "Synapse", 39, 1_240_50), ShareUi("Travel", "Teal", 19, 604_00), ShareUi("Other", null, 42, 1_336_00)),
                 ),

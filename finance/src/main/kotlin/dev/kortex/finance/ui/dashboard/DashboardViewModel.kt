@@ -4,6 +4,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.finance.domain.model.AccountKind
 import dev.kortex.finance.domain.port.Clock
 import dev.kortex.finance.domain.repository.SmsInboxRepository
+import dev.kortex.finance.domain.usecase.ObserveBudgets
 import dev.kortex.finance.domain.usecase.ObserveFinance
 import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.mvi.MviViewModel
@@ -13,13 +14,14 @@ import kotlinx.coroutines.flow.combine
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     observeFinance: ObserveFinance,
+    observeBudgets: ObserveBudgets,
     inbox: SmsInboxRepository,
     clock: Clock,
 ) : MviViewModel<DashboardState, DashboardIntent, DashboardEffect>(DashboardState()) {
 
     init {
-        combine(observeFinance(), inbox.observeToReview()) { snapshot, toReview ->
-            DashboardUi.build(snapshot, clock.today()).copy(smsToReview = toReview.size)
+        combine(observeFinance(), observeBudgets(), inbox.observeToReview()) { snapshot, budgets, toReview ->
+            DashboardUi.build(snapshot, clock.today(), budgets).copy(smsToReview = toReview.size)
         }.reduceInto { it }
     }
 
@@ -30,6 +32,7 @@ class DashboardViewModel @Inject constructor(
             DashboardIntent.AddAccount -> FinanceRoute.AddAccount(AccountKind.BANK)
             DashboardIntent.OpenPending -> FinanceRoute.Pending
             DashboardIntent.OpenSmsReview -> FinanceRoute.SmsReview
+            DashboardIntent.OpenCategories -> FinanceRoute.Categories
         }
         sendEffect(DashboardEffect.Navigate(route))
     }

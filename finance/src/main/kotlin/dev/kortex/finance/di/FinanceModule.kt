@@ -23,6 +23,7 @@ import dev.kortex.finance.domain.repository.SmsInboxRepository
 import dev.kortex.finance.domain.usecase.AddAccount
 import dev.kortex.finance.domain.usecase.AddCategory
 import dev.kortex.finance.domain.usecase.AddTransaction
+import dev.kortex.finance.domain.usecase.ClearBudget
 import dev.kortex.finance.domain.usecase.DeleteAccount
 import dev.kortex.finance.domain.usecase.DeleteCategory
 import dev.kortex.finance.domain.usecase.DeleteTransaction
@@ -34,6 +35,7 @@ import dev.kortex.finance.domain.usecase.MarkPaid
 import dev.kortex.finance.domain.usecase.PayCardBill
 import dev.kortex.finance.domain.usecase.RunFinanceEngine
 import dev.kortex.finance.domain.usecase.SaveRecurring
+import dev.kortex.finance.domain.usecase.SetBudget
 import dev.kortex.finance.domain.usecase.SkipOccurrence
 import dev.kortex.finance.domain.usecase.UndoOccurrence
 import dev.kortex.finance.sms.BankSmsStore
@@ -61,7 +63,12 @@ object FinanceModule {
     fun provideDatabase(@ApplicationContext context: Context): FinanceDatabase =
         Room.databaseBuilder(context, FinanceDatabase::class.java, "finance.db")
             .addCallback(FinanceDatabase.CALLBACK)
-            .addMigrations(FinanceDatabase.MIGRATION_1_2, FinanceDatabase.MIGRATION_2_3, FinanceDatabase.MIGRATION_3_4)
+            .addMigrations(
+                FinanceDatabase.MIGRATION_1_2,
+                FinanceDatabase.MIGRATION_2_3,
+                FinanceDatabase.MIGRATION_3_4,
+                FinanceDatabase.MIGRATION_4_5,
+            )
             .build()
 
     @Provides
@@ -112,6 +119,12 @@ object FinanceModule {
 
     @Provides
     fun provideDeleteCategory(repository: FinanceRepository) = DeleteCategory(repository)
+
+    @Provides
+    fun provideSetBudget(repository: FinanceRepository) = SetBudget(repository)
+
+    @Provides
+    fun provideClearBudget(repository: FinanceRepository) = ClearBudget(repository)
 
     @Provides
     fun provideUpdateAccount(repository: FinanceRepository, secrets: SecretBox) = UpdateAccount(repository, secrets)

@@ -1,6 +1,7 @@
 package dev.kortex.finance.domain.repository
 
 import dev.kortex.finance.domain.model.Account
+import dev.kortex.finance.domain.model.Budget
 import dev.kortex.finance.domain.model.CardStatement
 import dev.kortex.finance.domain.model.Category
 import dev.kortex.finance.domain.model.Merchant
@@ -25,6 +26,9 @@ interface FinanceRepository {
     fun observeRecurring(): Flow<List<Recurring>>
 
     fun observeStatements(): Flow<List<CardStatement>>
+
+    /** One per budgeted category; a category with none isn't budgeted. */
+    fun observeBudgets(): Flow<List<Budget>>
 
     suspend fun getAccount(uid: String): Account?
 
@@ -92,4 +96,10 @@ interface FinanceRepository {
      * replaces figures an SMS or an edit already set.
      */
     suspend fun addStatementsIfAbsent(statements: List<CardStatement>)
+
+    /** Sets or changes [categoryUid]'s monthly budget. Callers check it's an expense category. */
+    suspend fun setBudget(categoryUid: String, amountMinor: Long)
+
+    /** [categoryUid] is no longer budgeted. */
+    suspend fun clearBudget(categoryUid: String)
 }

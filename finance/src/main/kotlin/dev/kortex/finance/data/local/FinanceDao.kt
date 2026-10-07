@@ -26,6 +26,9 @@ abstract class FinanceDao {
     @Query("SELECT * FROM card_statements ORDER BY statementOn DESC")
     abstract fun observeStatements(): Flow<List<CardStatementEntity>>
 
+    @Query("SELECT * FROM budgets")
+    abstract fun observeBudgets(): Flow<List<BudgetEntity>>
+
     @Query("SELECT * FROM accounts WHERE uid = :uid")
     abstract suspend fun getAccount(uid: String): AccountEntity?
 
@@ -113,6 +116,25 @@ abstract class FinanceDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insertStatementsIfAbsent(statements: List<CardStatementEntity>)
 
+    @Query("SELECT * FROM budgets WHERE uid = :uid")
+    abstract suspend fun getBudget(uid: String): BudgetEntity?
+
+    @Upsert
+    abstract suspend fun upsertBudget(budget: BudgetEntity)
+
+    /** Clearing a budget; the delete trigger leaves the tombstone that removes it everywhere. */
+    @Query("DELETE FROM budgets WHERE uid = :uid")
+    abstract suspend fun deleteBudget(uid: String)
+
+    /** A changed amount keeps the stored change count and creation time, as the other saves do. */
+    @Transaction
+    open suspend fun saveBudget(budget: BudgetEntity) {
+        val existing = getBudget(budget.uid)
+        upsertBudget(
+            budget.copy(createdAtMillis = existing?.createdAtMillis ?: budget.createdAtMillis, dirty = existing?.dirty ?: 1),
+        )
+    }
+
     // A row's `dirty` counts changes not yet pushed, and a push marks it clean only if the count
     // is what it read. Saving a row from its entity would reset the count to the entity's 1, so
     // these keep the stored count and let the trigger move it on.
@@ -180,12 +202,16 @@ abstract class FinanceDao {
         merchant?.let { saveMerchant(it) }
     }
 
-    /** Moves everything that used the category to [moveTo] (null: Uncategorised), then deletes it. */
+    /**
+     * Moves everything that used the category to [moveTo] (null: Uncategorised), then deletes it and
+     * its budget. Built-ins are never deleted, so their budgets stay.
+     */
     @Transaction
     open suspend fun deleteCategoryMoving(uid: String, moveTo: String?) {
         moveTransactions(uid, moveTo)
         moveRecurring(uid, moveTo)
         moveMerchants(uid, moveTo)
+        if (getCategory(uid)?.builtIn == false) deleteBudget(uid)
         deleteCategory(uid)
     }
 

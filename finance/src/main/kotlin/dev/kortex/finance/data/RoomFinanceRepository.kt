@@ -5,6 +5,7 @@ import dev.kortex.finance.data.local.SecretEntity
 import dev.kortex.finance.data.local.toDomain
 import dev.kortex.finance.data.local.toEntity
 import dev.kortex.finance.domain.model.Account
+import dev.kortex.finance.domain.model.Budget
 import dev.kortex.finance.domain.model.CardStatement
 import dev.kortex.finance.domain.model.Category
 import dev.kortex.finance.domain.model.Merchant
@@ -31,6 +32,8 @@ class RoomFinanceRepository(
     override fun observeRecurring(): Flow<List<Recurring>> = dao.observeRecurring().map { rows -> rows.map { it.toDomain() } }
 
     override fun observeStatements(): Flow<List<CardStatement>> = dao.observeStatements().map { rows -> rows.map { it.toDomain() } }
+
+    override fun observeBudgets(): Flow<List<Budget>> = dao.observeBudgets().map { rows -> rows.map { it.toDomain() } }
 
     override suspend fun getAccount(uid: String): Account? = dao.getAccount(uid)?.toDomain()
 
@@ -99,4 +102,9 @@ class RoomFinanceRepository(
     override suspend fun addStatementsIfAbsent(statements: List<CardStatement>) {
         if (statements.isNotEmpty()) dao.insertStatementsIfAbsent(statements.map { it.toEntity() })
     }
+
+    override suspend fun setBudget(categoryUid: String, amountMinor: Long) =
+        dao.saveBudget(Budget(categoryUid, amountMinor).toEntity(clock.nowMillis()))
+
+    override suspend fun clearBudget(categoryUid: String) = dao.deleteBudget(categoryUid)
 }

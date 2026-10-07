@@ -3,6 +3,7 @@ package dev.kortex.finance.data.local
 import dev.kortex.finance.domain.model.Account
 import dev.kortex.finance.domain.model.AccountKind
 import dev.kortex.finance.domain.model.BankType
+import dev.kortex.finance.domain.model.Budget
 import dev.kortex.finance.domain.model.CardStatement
 import dev.kortex.finance.domain.model.Category
 import dev.kortex.finance.domain.model.CategoryKind
@@ -209,6 +210,12 @@ internal fun CardStatement.toEntity() = CardStatementEntity(
 internal fun MerchantEntity.toDomain() = Merchant(uid, payeeKey, displayName, categoryUid, updatedAtMillis)
 
 internal fun Merchant.toEntity() = MerchantEntity(uid, payeeKey, displayName, categoryUid, updatedAtMillis)
+
+internal fun BudgetEntity.toDomain() = Budget(categoryUid = uid, amountMinor = amountMinor)
+
+/** [nowMillis] is the creation time too; saving an existing budget keeps its own. */
+internal fun Budget.toEntity(nowMillis: Long) =
+    BudgetEntity(uid = categoryUid, amountMinor = amountMinor, createdAtMillis = nowMillis, updatedAtMillis = nowMillis)
 
 private fun encodeReceiptItems(items: List<ReceiptItem>): String =
     JSONArray(

@@ -1,6 +1,7 @@
 package dev.kortex.finance
 
 import dev.kortex.finance.domain.model.Account
+import dev.kortex.finance.domain.model.Budget
 import dev.kortex.finance.domain.model.BuiltInCategories
 import dev.kortex.finance.domain.model.CardStatement
 import dev.kortex.finance.domain.model.Category
@@ -21,12 +22,14 @@ class FakeFinanceRepository : FinanceRepository {
     val recurring = MutableStateFlow<List<Recurring>>(emptyList())
     val statements = MutableStateFlow<List<CardStatement>>(emptyList())
     val merchants = MutableStateFlow<List<Merchant>>(emptyList())
+    val budgets = MutableStateFlow<List<Budget>>(emptyList())
 
     override fun observeAccounts(): Flow<List<Account>> = accounts
     override fun observeTransactions(): Flow<List<Transaction>> = transactions
     override fun observeCategories(): Flow<List<Category>> = categories
     override fun observeRecurring(): Flow<List<Recurring>> = recurring
     override fun observeStatements(): Flow<List<CardStatement>> = statements
+    override fun observeBudgets(): Flow<List<Budget>> = budgets
 
     override suspend fun getAccount(uid: String) = accounts.value.find { it.uid == uid }
     override suspend fun getTransaction(uid: String) = transactions.value.find { it.uid == uid }
@@ -72,6 +75,7 @@ class FakeFinanceRepository : FinanceRepository {
         transactions.update { list -> list.map { if (it.categoryUid == uid) it.copy(categoryUid = moveTo) else it } }
         recurring.update { list -> list.map { if (it.categoryUid == uid) it.copy(categoryUid = moveTo) else it } }
         merchants.update { list -> list.map { if (it.categoryUid == uid) it.copy(categoryUid = moveTo) else it } }
+        if (!BuiltInCategories.isBuiltIn(uid)) budgets.update { list -> list.filterNot { it.categoryUid == uid } }
         categories.update { list -> list.filterNot { it.uid == uid } }
     }
 
@@ -91,4 +95,9 @@ class FakeFinanceRepository : FinanceRepository {
 
     override suspend fun addStatementsIfAbsent(statements: List<CardStatement>) =
         this.statements.update { list -> list + statements.filter { new -> list.none { it.uid == new.uid } } }
+
+    override suspend fun setBudget(categoryUid: String, amountMinor: Long) =
+        budgets.update { list -> list.filterNot { it.categoryUid == categoryUid } + Budget(categoryUid, amountMinor) }
+
+    override suspend fun clearBudget(categoryUid: String) = budgets.update { list -> list.filterNot { it.categoryUid == categoryUid } }
 }

@@ -17,8 +17,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SyncTombstoneEntity::class,
         SyncControlEntity::class,
         SmsInboxEntity::class,
+        BudgetEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class FinanceDatabase : RoomDatabase() {
@@ -73,6 +74,17 @@ abstract class FinanceDatabase : RoomDatabase() {
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `sms_inbox` ADD COLUMN `imported` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /** Monthly category budgets (docs/FINANCE_PLAN.md › Budgets), synced as `finBudgets`. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `budgets` (`uid` TEXT NOT NULL, `amountMinor` INTEGER NOT NULL, " +
+                        "`createdAtMillis` INTEGER NOT NULL, `updatedAtMillis` INTEGER NOT NULL, `dirty` INTEGER NOT NULL, PRIMARY KEY(`uid`))",
+                )
+                FinanceSyncSchema.createTriggers(db, setOf("budgets"))
             }
         }
     }

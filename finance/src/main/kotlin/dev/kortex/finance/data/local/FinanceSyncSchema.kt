@@ -16,6 +16,7 @@ object FinanceSyncSchema {
     const val KIND_STATEMENT = "finStatement"
     const val KIND_MERCHANT = "finMerchant"
     const val KIND_SECRET = "finSecret"
+    const val KIND_BUDGET = "finBudget"
 
     private class Tracked(val table: String, val kind: String, val columns: List<String>, val extraWhen: String? = null)
 
@@ -49,6 +50,8 @@ object FinanceSyncSchema {
         ),
         Tracked("merchants", KIND_MERCHANT, listOf("payeeKey", "displayName", "categoryUid")),
         Tracked("secrets", KIND_SECRET, listOf("cipherText", "keyVersion")),
+        // No builtIn filter: a budget on Food syncs like one on your own category.
+        Tracked("budgets", KIND_BUDGET, listOf("amountMinor")),
     )
 
     internal fun seedControl(db: SupportSQLiteDatabase) {

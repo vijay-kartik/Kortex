@@ -37,7 +37,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.res.painterResource
 import dev.kortex.design.Alarm
+import dev.kortex.design.Amber
+import dev.kortex.design.Edge
+import dev.kortex.design.Ink
+import dev.kortex.design.InkSoft
+import dev.kortex.design.Muted
+import dev.kortex.design.Panel
 import dev.kortex.design.R
+import dev.kortex.design.Synapse
+import dev.kortex.design.Teal
+import dev.kortex.design.Void
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -45,9 +54,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -234,7 +241,7 @@ fun GraphScreen(vm: GraphViewModel = hiltViewModel()) {
         vm.loadGraph()
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF090A0C))) {
+    Box(modifier = Modifier.fillMaxSize().background(Void)) {
         if (nodes.isEmpty()) {
             // Blank until the first load finishes, rather than flashing "Graph is empty."
             if (loaded) {
@@ -242,7 +249,7 @@ fun GraphScreen(vm: GraphViewModel = hiltViewModel()) {
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Graph is empty.", color = Color(0xFF587291))
+                    Text("Graph is empty.", color = Muted)
                 }
             }
         } else {
@@ -256,12 +263,12 @@ fun GraphScreen(vm: GraphViewModel = hiltViewModel()) {
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(24.dp)
-                .background(Color(0xFF16191E).copy(alpha = 0.8f), shape = RoundedCornerShape(8.dp))
-                .border(1.dp, Color(0xFF2A2F3A), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .background(Panel.copy(alpha = 0.8f), shape = RoundedCornerShape(8.dp))
+                .border(1.dp, Edge, RoundedCornerShape(8.dp))
                 .padding(16.dp)
         ) {
-            Text("KORTEX SEMANTIC NETWORK", style = MaterialTheme.typography.labelMedium.copy(color = Color(0xFFE2C044), letterSpacing = 1.sp))
-            Text("NODES: ${nodes.size} // EDGES: ${edges.size}", style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF8B949E), letterSpacing = 1.sp), modifier = Modifier.padding(top = 4.dp))
+            Text("KORTEX SEMANTIC NETWORK", style = MaterialTheme.typography.labelMedium.copy(color = Amber, letterSpacing = 1.sp))
+            Text("NODES: ${nodes.size} // EDGES: ${edges.size}", style = MaterialTheme.typography.labelSmall.copy(color = Muted, letterSpacing = 1.sp), modifier = Modifier.padding(top = 4.dp))
         }
 
         selectedNodeDetails?.let { details ->
@@ -269,16 +276,16 @@ fun GraphScreen(vm: GraphViewModel = hiltViewModel()) {
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(24.dp)
-                    .background(Color(0xFF16191E).copy(alpha = 0.95f), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                    .border(1.dp, Color(0xFF2A2F3A), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .background(Panel.copy(alpha = 0.95f), shape = RoundedCornerShape(8.dp))
+                    .border(1.dp, Edge, RoundedCornerShape(8.dp))
                     .padding(16.dp)
             ) {
-                Text(details.node.type.name, style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFFE2C044), letterSpacing = 1.sp))
-                Text(details.node.label, style = MaterialTheme.typography.titleMedium.copy(color = Color.White), modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
-                
+                Text(details.node.type.name, style = MaterialTheme.typography.labelSmall.copy(color = Amber, letterSpacing = 1.sp))
+                Text(details.node.label, style = MaterialTheme.typography.titleMedium.copy(color = Ink), modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+
                 details.details.forEach { (k, v) ->
-                    Text("$k:", style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF8B949E)))
-                    Text(v, style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFC5C6C7)), modifier = Modifier.padding(bottom = 6.dp))
+                    Text("$k:", style = MaterialTheme.typography.labelSmall.copy(color = Muted))
+                    Text(v, style = MaterialTheme.typography.bodySmall.copy(color = InkSoft), modifier = Modifier.padding(bottom = 6.dp))
                 }
             }
         }
@@ -291,7 +298,7 @@ fun GraphScreen(vm: GraphViewModel = hiltViewModel()) {
             Icon(
                 painter = painterResource(R.drawable.ic_tune),
                 contentDescription = "Memory Settings",
-                tint = Color(0xFF8B949E)
+                tint = Muted
             )
         }
     }
@@ -326,7 +333,9 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
     var canvasWidth by remember { mutableStateOf(0f) }
     var canvasHeight by remember { mutableStateOf(0f) }
     val textMeasurer = rememberTextMeasurer()
-    
+    // Read outside the Canvas: its draw lambda isn't composable, so it can't reach the theme.
+    val labelStyle = MaterialTheme.typography.labelMedium.copy(color = InkSoft, fontSize = 11.sp)
+
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var draggedNodeId by remember { mutableStateOf<Long?>(null) }
@@ -438,7 +447,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
     Canvas(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF090A0C))
+            .background(Void)
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, _ ->
                     if (draggedNodeId == null) {
@@ -498,7 +507,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
             val target = nodes.find { it.id == edge.targetId }
             if (source != null && target != null) {
                 val isActiveEdge = draggedNodeId != null && (source.id == draggedNodeId || target.id == draggedNodeId)
-                val edgeColor = if (isActiveEdge) Color(0xFF587291).copy(alpha = 0.8f) else Color(0xFF2A2F3A).copy(alpha = 0.6f)
+                val edgeColor = if (isActiveEdge) Synapse.copy(alpha = 0.8f) else Edge.copy(alpha = 0.6f)
                 
                 val path = Path().apply {
                     moveTo(source.x, source.y)
@@ -518,12 +527,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
 
         // Draw nodes
         for (node in nodes) {
-            val nodeColor = when (node.type.category) {
-                NodeCategory.IDENTITY -> Color(0xFFE2C044) // Gold
-                NodeCategory.EVENT -> Color(0xFFD96C06) // Terracotta
-                NodeCategory.KNOWLEDGE -> Color(0xFF587291) // Slate Blue
-                else -> Color(0xFF8B949E) // Gray
-            }
+            val nodeColor = node.type.category.color()
 
             val isActiveNode = node.id == draggedNodeId
             val radius = 20f
@@ -554,7 +558,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
             
             // Inner circle (Solid dark)
             drawCircle(
-                color = Color(0xFF090A0C),
+                color = Void,
                 radius = radius,
                 center = Offset(node.x, node.y)
             )
@@ -568,8 +572,8 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
 
             // Text Label
             val textLayoutResult = textMeasurer.measure(
-                text = node.label.uppercase(),
-                style = TextStyle(color = Color(0xFFC5C6C7), fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp)
+                text = node.label,
+                style = labelStyle
             )
             
             // Label background for readability
@@ -579,7 +583,7 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
             val ty = node.y + 28f
             
             drawRoundRect(
-                color = Color(0xFF090A0C).copy(alpha = 0.85f),
+                color = Void.copy(alpha = 0.85f),
                 topLeft = Offset(tx - 6f, ty - 2f),
                 size = Size(tw + 12f, th + 4f),
                 cornerRadius = CornerRadius(4f)
@@ -591,4 +595,12 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
             )
         }
     }
+}
+
+/** Node colour by category, from the Theme page palette (Figma: Theme › Kortex — Colors, Data colours). */
+internal fun NodeCategory.color(): Color = when (this) {
+    NodeCategory.IDENTITY -> Synapse
+    NodeCategory.EVENT -> Amber
+    NodeCategory.KNOWLEDGE -> Teal
+    NodeCategory.ASSET -> Muted
 }

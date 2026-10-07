@@ -3,6 +3,8 @@ package dev.kortex.finance.domain.calc
 import dev.kortex.finance.Fixtures
 import dev.kortex.finance.Fixtures.TODAY
 import dev.kortex.finance.Fixtures.kortexStatement
+import dev.kortex.finance.domain.model.BuiltInCategories
+import dev.kortex.finance.domain.model.Transaction
 import dev.kortex.finance.domain.model.TransactionType
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -45,5 +47,67 @@ class RemindersTest {
 
         val paid = Fixtures.tx(TransactionType.CARD_PAYMENT, 1_400_00, TODAY, "checking", to = "kortex", statementUid = kortexStatement.uid)
         assertTrue(Reminders.due(oct12, accounts, emptyList(), listOf(kortexStatement), listOf(paid)).isEmpty())
+    }
+
+    private val budgets = mapOf("food" to 8_000_00L)
+
+    private fun food(amountMinor: Long, on: LocalDate) = Fixtures.tx(TransactionType.EXPENSE, amountMinor, on, "cash", category = "food")
+
+    /** Each day's budget reminders, as the daily job would see them with [txs] recorded. */
+    private fun budgetReminders(today: LocalDate, txs: List<Transaction>) =
+        Reminders.due(today, accounts, emptyList(), emptyList(), txs, BuiltInCategories.all, budgets).filter { it.kind == PendingKind.BUDGET }
+
+    @Test
+    fun `a budget is reminded only on the day it reaches 80 percent and the day it goes over`() {
+        val txs = listOf(
+            food(6_000_00, LocalDate.of(2026, 9, 10)),
+            food(500_00, LocalDate.of(2026, 9, 14)),
+            food(1_000_00, LocalDate.of(2026, 9, 18)),
+            food(1_000_00, LocalDate.of(2026, 9, 22)),
+        )
+        assertTrue(budgetReminders(LocalDate.of(2026, 9, 10), txs).isEmpty())
+        val near = budgetReminders(LocalDate.of(2026, 9, 14), txs).single()
+        assertEquals("bud:food:2026-09:80", near.key)
+        assertEquals("Food", near.name)
+        assertEquals(8_000_00L, near.amountMinor)
+        assertEquals(6_500_00L, near.spentMinor)
+        assertEquals(80, near.threshold)
+        assertTrue(budgetReminders(LocalDate.of(2026, 9, 15), txs).isEmpty())
+        // Exactly at the budget isn't over it.
+        assertTrue(budgetReminders(LocalDate.of(2026, 9, 18), txs).isEmpty())
+        val over = budgetReminders(LocalDate.of(2026, 9, 22), txs).single()
+        assertEquals("bud:food:2026-09:100", over.key)
+        assertEquals(8_500_00L, over.spentMinor)
+        assertTrue(budgetReminders(LocalDate.of(2026, 9, 23), txs).isEmpty())
+    }
+
+    @Test
+    fun `spend that jumps from under 80 percent to over budget gets both reminders that day only`() {
+        val txs = listOf(food(1_000_00, LocalDate.of(2026, 9, 2)), food(7_500_00, LocalDate.of(2026, 9, 9)))
+        assertEquals(
+            listOf("bud:food:2026-09:80", "bud:food:2026-09:100"),
+            budgetReminders(LocalDate.of(2026, 9, 9), txs).map { it.key },
+        )
+        assertTrue(budgetReminders(LocalDate.of(2026, 9, 10), txs).isEmpty())
+    }
+
+    @Test
+    fun `only this month counts, so the 1st starts from nothing`() {
+        val txs = listOf(food(9_000_00, LocalDate.of(2026, 9, 30)), food(8_500_00, LocalDate.of(2026, 10, 1)))
+        assertEquals(
+            listOf("bud:food:2026-10:80", "bud:food:2026-10:100"),
+            budgetReminders(LocalDate.of(2026, 10, 1), txs).map { it.key },
+        )
+    }
+
+    @Test
+    fun `later spend and unbudgeted categories don't count`() {
+        // Recorded ahead of time: it isn't spent until its day.
+        assertTrue(budgetReminders(LocalDate.of(2026, 9, 9), listOf(food(9_000_00, LocalDate.of(2026, 9, 20)))).isEmpty())
+        val travel = Fixtures.tx(TransactionType.EXPENSE, 50_000_00, LocalDate.of(2026, 9, 9), "cash", category = "travel")
+        assertTrue(budgetReminders(LocalDate.of(2026, 9, 9), listOf(travel)).isEmpty())
+        // Without budgets, only the payment and bill reminders.
+        val spent = listOf(food(9_000_00, TODAY))
+        assertTrue(Reminders.due(TODAY, accounts, emptyList(), emptyList(), spent, BuiltInCategories.all, emptyMap()).isEmpty())
     }
 }

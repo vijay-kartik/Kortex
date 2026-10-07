@@ -24,6 +24,16 @@ class FinanceRemindersTest {
     }
 
     @Test
+    fun budgetsSayHowMuchIsUsedOrOver() {
+        val near = Reminder("n", PendingKind.BUDGET, "Food", 8_000_00, LocalDate.of(2026, 10, 14), 0, spentMinor = 6_800_00, threshold = 80)
+        assertEquals("Food: 85 % of ₹8,000 used", FinanceReminders.title(near))
+        assertEquals("₹1,200 left for October", FinanceReminders.text(near))
+        val over = near.copy(spentMinor = 8_600_00, threshold = 100)
+        assertEquals("Food is ₹600 over budget", FinanceReminders.title(over))
+        assertEquals("₹8,600 spent of ₹8,000 in October", FinanceReminders.text(over))
+    }
+
+    @Test
     fun theJobStartsAtTheNextNineOClock() {
         val zone = ZoneId.of("Asia/Kolkata")
         val morning = ZonedDateTime.of(2026, 9, 29, 7, 30, 0, 0, zone)

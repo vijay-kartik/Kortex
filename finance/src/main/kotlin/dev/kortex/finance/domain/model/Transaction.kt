@@ -15,7 +15,17 @@ enum class TransactionType {
     CARD_PAYMENT,
 }
 
-enum class TransactionSource { MANUAL, SMS, RECEIPT, RECURRING, AGENT, API }
+enum class TransactionSource {
+    MANUAL,
+    SMS,
+    RECEIPT,
+    RECURRING,
+    AGENT,
+    API,
+
+    /** Imported from an account statement by Kortex for Mac (Add account from statement). */
+    STATEMENT,
+}
 
 data class ReceiptItem(val name: String, val quantity: Int, val amountMinor: Long)
 

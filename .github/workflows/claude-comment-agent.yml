@@ -155,7 +155,7 @@ jobs:
           claude_args: |
             --model claude-opus-5-5
             --max-turns 120
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(jq:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git ls-remote:*),Bash(git add:*),Bash(git rm:*),Bash(git mv:*),Bash(git commit:*),Bash(git checkout -b claude/issue-${{ env.ISSUE }}-:*),Bash(git push -u origin claude/issue-${{ env.ISSUE }}-:*),Bash(./gradlew:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue comment ${{ env.ISSUE }}:*),Bash(gh issue edit:*),Bash(gh issue create:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr create:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(jq:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git ls-remote:*),Bash(git add:*),Bash(git rm:*),Bash(git mv:*),Bash(git commit:*),Bash(git checkout -b claude/issue-${{ env.ISSUE }}-*),Bash(git push -u origin claude/issue-${{ env.ISSUE }}-*),Bash(./gradlew:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue comment ${{ env.ISSUE }}:*),Bash(gh issue edit:*),Bash(gh issue create:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr create:*)"
           prompt: |
             You are the comment agent for the Kortex repository (${{ github.repository }}): a
             multi-module Kotlin/Android app (Jetpack Compose, MVI). The owner just commented on

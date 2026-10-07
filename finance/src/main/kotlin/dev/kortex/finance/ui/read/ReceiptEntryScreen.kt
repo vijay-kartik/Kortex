@@ -217,6 +217,7 @@ private fun Duplicate(state: ReceiptEntryState, onIntent: (ReceiptEntryIntent) -
     val existing = state.duplicate ?: return
     val source = when (existing.source) {
         dev.kortex.finance.domain.model.TransactionSource.SMS -> "an SMS"
+        dev.kortex.finance.domain.model.TransactionSource.STATEMENT -> "an account statement"
         else -> "by hand"
     }
     NoticeCard(

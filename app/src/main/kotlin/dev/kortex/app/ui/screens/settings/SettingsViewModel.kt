@@ -2,21 +2,17 @@ package dev.kortex.app.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.kortex.core.log.AndroidLogger
-import dev.kortex.core.mcp.McpServer
-import dev.kortex.core.mcp.McpToolConnector
-import dev.kortex.core.tool.ToolRegistry
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.kortex.app.data.auth.McpOAuthManager
-import dev.kortex.app.di.McpAuthFailures
+import dev.kortex.app.domain.agent.McpConnections
+import dev.kortex.app.domain.agent.McpServerInfo
+import dev.kortex.app.domain.agent.ServerStatus
 import dev.kortex.app.domain.security.AppLock
 import dev.kortex.app.domain.security.AppLockSettings
 import dev.kortex.app.domain.security.LockAfter
 import dev.kortex.core.llm.EmbeddingProvider
 import dev.kortex.core.llm.LlmProvider
+import dev.kortex.core.tool.Tool
 import javax.inject.Inject
-import dev.kortex.core.mcp.mcpServers
-import dev.kortex.app.data.settings.CustomMcpServer
 import dev.kortex.app.data.settings.SettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -44,8 +40,6 @@ data class ServerEntry(
     val hasOAuthSession: Boolean = false,
 )
 
-enum class ServerStatus { CONNECTING, CONNECTED, ERROR, NEEDS_AUTH }
-
 data class SettingsUi(
     val builtinTools: List<ToolEntry> = emptyList(),
     val servers: List<ServerEntry> = emptyList(),
@@ -67,49 +61,22 @@ data class SettingsUi(
     val testLlmResult: String? = null,
 )
 
-// ── Names of the four builtins, so we can partition them in the UI ──────
-
-private val BUILTIN_NAMES = setOf(
-    "calculator", 
-    "web_search", 
-    "open_url", 
-    "current_time", 
-    "create_reminder", 
-    "create_calendar_event",
-    "gmail_search",
-    "save_knowledge",
-    "memory_search",
-    "format_itinerary",
-    "whatsapp_send_message"
-)
-
 // ── ViewModel ───────────────────────────────────────────────────────────
 
 /**
- * Drives the MCP-settings sheet. Reads the injected [ToolRegistry] and [SettingsStore]
- * and exposes a reactive [SettingsUi]. Mutations (add/remove server,
- * toggle tool) are written to DataStore, and AgentBootstrap's collector keeps the
- * registry in sync.
+ * Drives the settings sheet. Maps [McpConnections] state, [SettingsStore] preferences and
+ * [AppLock] into a reactive [SettingsUi]. MCP actions (add/remove server, sign in/out) go to
+ * [McpConnections]; tool toggles are written to DataStore, and AgentBootstrap's collector
+ * keeps the registry in sync.
  */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val tools: ToolRegistry,
     private val store: SettingsStore,
     private val embedder: EmbeddingProvider,
     private val llm: LlmProvider,
-    private val mcpOAuthManager: McpOAuthManager,
+    private val mcpConnections: McpConnections,
     private val appLock: AppLock,
-    @McpAuthFailures private val mcpAuthFailures: MutableStateFlow<Set<String>>,
 ) : ViewModel() {
-
-    /**
-     * Per-server connection status, keyed by server name. Starts empty; updated as servers
-     * are connected at init and when the user adds a new one.
-     */
-    private val _serverStatus = MutableStateFlow<Map<String, ServerStatus>>(emptyMap())
-
-    /** Discovered tools per MCP server, keyed by server name. */
-    private val _serverTools = MutableStateFlow<Map<String, List<ToolEntry>>>(emptyMap())
 
     /** UI-only flags (dialog visibility etc.). */
     private val _flags = MutableStateFlow(FlagsState())
@@ -124,7 +91,7 @@ class SettingsViewModel @Inject constructor(
 
     private data class ServerStateBlock(
         val disabledTools: Set<String>,
-        val customServers: List<CustomMcpServer>,
+        val servers: List<McpServerInfo>,
         val statuses: Map<String, ServerStatus>,
         val oauthUrls: Set<String>
     )
@@ -138,8 +105,8 @@ class SettingsViewModel @Inject constructor(
     )
 
     val ui: StateFlow<SettingsUi> = combine(
-        combine(store.disabledTools, store.customServers, _serverStatus, store.oauthStates) { a, b, c, d -> ServerStateBlock(a, b, c, d.keys) },
-        combine(_serverTools, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
+        combine(store.disabledTools, mcpConnections.servers, mcpConnections.statuses, mcpConnections.signedInUrls) { a, b, c, d -> ServerStateBlock(a, b, c, d) },
+        combine(mcpConnections.toolsByServer, _flags, store.activeModel) { d, e, f -> Triple(d, e, f) },
         combine(
             combine(store.activeProvider, store.ollamaUrl, store.ollamaToken, store.openaiApiKey) { p, u, t, k -> listOf(p, u, t ?: "", k ?: "") },
             store.ollamaCloudApiKey
@@ -150,33 +117,23 @@ class SettingsViewModel @Inject constructor(
             )
         },
         combine(store.gmailAccountEmail, _testEmbeddingResult, _testLlmResult) { gmail, testRes, llmRes -> listOf(gmail, testRes, llmRes) },
-    ) { (disabled, customServers, statuses, oauthUrls), (serverTools, flags, activeModel), prefs, fourthBlock ->
+    ) { (disabled, servers, statuses, oauthUrls), (serverTools, flags, activeModel), prefs, fourthBlock ->
         val gmailAccountEmail = fourthBlock[0] as String?
         val testEmbeddingResult = fourthBlock[1] as String?
         val testLlmResult = fourthBlock[2] as String?
 
-        // Built-in tools
-        val builtins = tools.allIncludingDisabled()
-            .filter { it.name in BUILTIN_NAMES }
-            .map { ToolEntry(it.name, it.description, it.name !in disabled) }
+        fun Tool.toEntry() = ToolEntry(name, description, enabled = name !in disabled)
+
+        // Built-in tools: every registered tool no MCP server owns.
+        val builtins = mcpConnections.builtinTools().map { it.toEntry() }
 
         // MCP servers (default + custom) — merge connection status + discovered tools
-        val defaultEntries = mcpServers.map { srv ->
+        val serverEntries = servers.map { srv ->
             ServerEntry(
                 name = srv.name,
                 url = srv.url,
-                isDefault = true,
-                tools = serverTools[srv.name]?.map { it.copy(enabled = it.name !in disabled) } ?: emptyList(),
-                status = statuses[srv.name] ?: ServerStatus.CONNECTING,
-                hasOAuthSession = srv.url in oauthUrls,
-            )
-        }
-        val customEntries = customServers.map { srv ->
-            ServerEntry(
-                name = srv.name,
-                url = srv.url,
-                isDefault = false,
-                tools = serverTools[srv.name]?.map { it.copy(enabled = it.name !in disabled) } ?: emptyList(),
+                isDefault = srv.isDefault,
+                tools = serverTools[srv.name]?.map { it.toEntry() } ?: emptyList(),
                 status = statuses[srv.name] ?: ServerStatus.CONNECTING,
                 hasOAuthSession = srv.url in oauthUrls,
             )
@@ -184,7 +141,7 @@ class SettingsViewModel @Inject constructor(
 
         SettingsUi(
             builtinTools = builtins,
-            servers = defaultEntries + customEntries,
+            servers = serverEntries,
             showAddDialog = flags.showAddDialog,
             pendingDelete = flags.pendingDelete,
             activeModel = activeModel,
@@ -198,52 +155,6 @@ class SettingsViewModel @Inject constructor(
             testLlmResult = testLlmResult,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUi())
-
-    init {
-        // Populate the tool entries for servers that AgentBootstrap already connected.
-        // We walk the registry and partition tools by their server-name prefix.
-        viewModelScope.launch {
-            // Give AgentBootstrap a moment to finish connecting (it races in parallel).
-            // A more robust approach would be an event bus, but this is sufficient: the
-            // combine re-fires whenever _serverTools changes, so late arrivals show up.
-            kotlinx.coroutines.delay(1_500)
-            refreshToolEntries()
-        }
-        
-        // Reconnect servers when their OAuth state changes (e.g. after a sign-in callback)
-        viewModelScope.launch {
-            var previousStates = store.oauthStates.first()
-            store.oauthStates.collect { currentStates ->
-                for ((url, state) in currentStates) {
-                    val prev = previousStates[url]
-                    if (state != null && (prev == null || prev.accessToken != state.accessToken)) {
-                        val customServers = store.customServers.first()
-                        val serverModel = customServers.find { it.url == url }
-                        if (serverModel != null) {
-                            val mcpServer = dev.kortex.core.mcp.McpServer(
-                                name = serverModel.name,
-                                url = serverModel.url,
-                                bearerToken = serverModel.bearerToken,
-                                tokenProvider = mcpOAuthManager.tokenProviderFor(url)
-                            )
-                            connectServer(mcpServer)
-                        }
-                    }
-                }
-                previousStates = currentStates
-            }
-        }
-        
-        // Track servers that failed auth on startup
-        viewModelScope.launch {
-            mcpAuthFailures.collect { failures ->
-                if (failures.isNotEmpty()) {
-                    val updates = failures.associateWith { ServerStatus.NEEDS_AUTH }
-                    _serverStatus.update { it + updates }
-                }
-            }
-        }
-    }
 
     // ── public actions ──────────────────────────────────────────────────
 
@@ -269,7 +180,7 @@ class SettingsViewModel @Inject constructor(
 
     fun toggleServer(serverName: String, enabled: Boolean) {
         viewModelScope.launch {
-            val toolsToToggle = _serverTools.value[serverName]?.map { it.name } ?: emptyList()
+            val toolsToToggle = mcpConnections.toolsByServer.value[serverName]?.map { it.name } ?: emptyList()
             if (toolsToToggle.isNotEmpty()) {
                 store.setServerToolsDisabled(toolsToToggle, disabled = !enabled)
             }
@@ -362,17 +273,8 @@ class SettingsViewModel @Inject constructor(
         _flags.update { it.copy(showAddDialog = false) }
         if (name.isBlank() || url.isBlank()) return
 
-        val server = CustomMcpServer(name = name.trim(), url = url.trim(), bearerToken = bearerToken?.trim()?.ifBlank { null })
         viewModelScope.launch {
-            store.addServer(server)
-            connectServer(
-                McpServer(
-                    name = server.name,
-                    url = server.url,
-                    bearerToken = server.bearerToken,
-                    tokenProvider = mcpOAuthManager.tokenProviderFor(server.url)
-                )
-            )
+            mcpConnections.add(name.trim(), url.trim(), bearerToken?.trim()?.ifBlank { null })
         }
     }
 
@@ -381,118 +283,14 @@ class SettingsViewModel @Inject constructor(
 
     fun confirmDelete(serverName: String) {
         _flags.update { it.copy(pendingDelete = null) }
-        viewModelScope.launch {
-            // Unregister all tools belonging to this server from the shared registry.
-            val prefix = sanitize(serverName) + "_"
-            tools.allIncludingDisabled()
-                .filter { it.name.startsWith(prefix) }
-                .forEach { tools.unregister(it.name) }
-
-            _serverStatus.update { it - serverName }
-            _serverTools.update { it - serverName }
-            mcpAuthFailures.update { it - serverName }
-            store.removeServer(serverName)
-        }
+        viewModelScope.launch { mcpConnections.remove(serverName) }
     }
 
     fun signIn(serverName: String) {
-        viewModelScope.launch {
-            val customServers = store.customServers.first()
-            val serverModel = customServers.find { it.name == serverName } ?: return@launch
-            val mcpServer = dev.kortex.core.mcp.McpServer(
-                name = serverModel.name,
-                url = serverModel.url,
-                bearerToken = serverModel.bearerToken,
-                tokenProvider = mcpOAuthManager.tokenProviderFor(serverModel.url)
-            )
-            mcpOAuthManager.beginSignIn(mcpServer)
-        }
+        viewModelScope.launch { mcpConnections.signIn(serverName) }
     }
 
     fun signOut(serverName: String) {
-        viewModelScope.launch {
-            val customServers = store.customServers.first()
-            val serverModelUrl = customServers.find { it.name == serverName }?.url
-                ?: mcpServers.find { it.name == serverName }?.url
-                ?: return@launch
-            
-            store.setOauthState(serverModelUrl, null)
-            
-            val prefix = sanitize(serverName) + "_"
-            tools.allIncludingDisabled()
-                .filter { it.name.startsWith(prefix) }
-                .forEach { tools.unregister(it.name) }
-                
-            _serverStatus.update { it + (serverName to ServerStatus.NEEDS_AUTH) }
-            _serverTools.update { it - serverName }
-        }
+        viewModelScope.launch { mcpConnections.signOut(serverName) }
     }
-
-    // ── internals ───────────────────────────────────────────────────────
-
-    private suspend fun connectServer(server: McpServer) {
-        _serverStatus.update { it + (server.name to ServerStatus.CONNECTING) }
-        try {
-            val count = McpToolConnector(tools, AndroidLogger).connect(server)
-            _serverStatus.update {
-                it + (server.name to if (count > 0) ServerStatus.CONNECTED else ServerStatus.ERROR)
-            }
-            if (count > 0) {
-                mcpAuthFailures.update { it - server.name }
-            }
-        } catch (e: dev.kortex.core.mcp.McpUnauthorizedException) {
-            _serverStatus.update { it + (server.name to ServerStatus.NEEDS_AUTH) }
-            mcpAuthFailures.update { it + server.name }
-        } catch (e: Exception) {
-            _serverStatus.update { it + (server.name to ServerStatus.ERROR) }
-        }
-        refreshToolEntries()
-    }
-
-    /**
-     * Scans the shared [ToolRegistry] and groups non-builtin tools by their server-name
-     * prefix (the `server_tool` naming convention from [McpToolConnector]).
-     *
-     * Matches against the *actual* set of known server names (defaults + persisted custom
-     * servers + Composio, if configured) rather than servers already tracked in
-     * [_serverStatus] — that map only gets entries from [connectServer] calls made by this
-     * ViewModel, so a server connected by AgentBootstrap's separate startup pass (the
-     * normal case for anything saved from a prior session) would otherwise never be
-     * discoverable here and would sit on "Connecting…" forever despite being live.
-     */
-    private suspend fun refreshToolEntries() {
-        val knownServerNames = mcpServers.map { it.name } +
-            store.customServers.first().map { it.name }
-
-        val grouped = mutableMapOf<String, MutableList<ToolEntry>>()
-        val disabled = tools.disabledNames()
-
-        for (tool in tools.allIncludingDisabled()) {
-            if (tool.name in BUILTIN_NAMES) continue
-            // Find which server this tool belongs to by prefix match
-            val serverName = knownServerNames.firstOrNull { srvName ->
-                tool.name.startsWith(sanitize(srvName) + "_")
-            }
-            if (serverName != null) {
-                grouped.getOrPut(serverName) { mutableListOf() }
-                    .add(ToolEntry(tool.name, tool.description, tool.name !in disabled))
-            }
-        }
-
-        // Update statuses for servers that connected successfully but we haven't tracked yet
-        val currentStatuses = _serverStatus.value
-        val newStatuses = mutableMapOf<String, ServerStatus>()
-        for (srvName in grouped.keys) {
-            if (srvName !in currentStatuses) {
-                newStatuses[srvName] = ServerStatus.CONNECTED
-            }
-        }
-        if (newStatuses.isNotEmpty()) {
-            _serverStatus.update { it + newStatuses }
-        }
-
-        _serverTools.update { grouped }
-    }
-
-    private fun sanitize(s: String) = s.replace(Regex("[^A-Za-z0-9_-]"), "_")
 }

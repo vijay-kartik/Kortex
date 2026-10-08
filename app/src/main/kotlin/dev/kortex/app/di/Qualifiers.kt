@@ -6,8 +6,3 @@ import javax.inject.Qualifier
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class ApplicationScope
-
-/** Shared `MutableStateFlow<Set<String>>` of MCP server names that failed with an auth error at startup. */
-@Qualifier
-@Retention(AnnotationRetention.BINARY)
-annotation class McpAuthFailures

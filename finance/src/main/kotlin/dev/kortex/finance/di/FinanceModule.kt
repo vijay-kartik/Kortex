@@ -13,8 +13,12 @@ import dev.kortex.finance.data.RoomSmsInboxRepository
 import dev.kortex.finance.data.local.FinanceDao
 import dev.kortex.finance.data.local.FinanceDatabase
 import dev.kortex.finance.data.local.FinanceSyncDao
+import dev.kortex.finance.data.scan.FileReceiptPhotoStore
+import dev.kortex.finance.data.scan.MlKitReceiptImageReader
 import dev.kortex.finance.data.secure.KeystoreSecretBox
 import dev.kortex.finance.domain.port.FinanceKeySource
+import dev.kortex.finance.domain.port.ReceiptImageReader
+import dev.kortex.finance.domain.port.ReceiptPhotoStore
 import dev.kortex.finance.domain.port.SecretBox
 import dev.kortex.finance.domain.usecase.RevealNumber
 import dev.kortex.finance.domain.port.Clock
@@ -205,6 +209,12 @@ object FinanceModule {
 
     @Provides
     fun provideAttachReceipt(repository: FinanceRepository) = AttachReceipt(repository)
+
+    @Provides
+    fun provideReceiptImageReader(@ApplicationContext context: Context): ReceiptImageReader = MlKitReceiptImageReader(context)
+
+    @Provides
+    fun provideReceiptPhotoStore(@ApplicationContext context: Context): ReceiptPhotoStore = FileReceiptPhotoStore(context)
 
     /** What the agent's finance tools do; the tools themselves are defined in the app. */
     @Provides

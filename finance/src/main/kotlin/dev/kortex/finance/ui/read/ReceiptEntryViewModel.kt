@@ -1,18 +1,16 @@
 package dev.kortex.finance.ui.read
 
-import android.content.Context
-import android.net.Uri
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.kortex.finance.domain.FinanceIds
 import dev.kortex.finance.domain.model.AccountKind
 import dev.kortex.finance.domain.model.CategoryKind
 import dev.kortex.finance.domain.model.Receipt
-import dev.kortex.finance.domain.model.ReceiptPhoto
 import dev.kortex.finance.domain.model.TransactionSource
 import dev.kortex.finance.domain.model.TransactionType
 import dev.kortex.finance.domain.port.Clock
+import dev.kortex.finance.domain.port.ReceiptImageReader
+import dev.kortex.finance.domain.port.ReceiptPhotoStore
 import dev.kortex.finance.domain.read.EntryMatching
 import dev.kortex.finance.domain.read.Instrument
 import dev.kortex.finance.domain.usecase.AddTransaction
@@ -35,15 +33,14 @@ import dev.kortex.finance.ui.entry.AddEntryState
 import dev.kortex.finance.ui.entry.CategoryOption
 import dev.kortex.finance.ui.recurring.RecurringLabels
 import dev.kortex.mvi.MviViewModel
-import java.time.LocalDate
-import java.time.LocalTime
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @HiltViewModel
 class ReceiptEntryViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    private val imageReader: ReceiptImageReader,
+    private val photoStore: ReceiptPhotoStore,
     private val observeFinance: ObserveFinance,
     private val readReceipt: ReadReceipt,
     private val suggestMerchant: SuggestMerchant,
@@ -109,7 +106,7 @@ class ReceiptEntryViewModel @Inject constructor(
     private fun read(pages: List<String>) {
         setState { copy(stage = ReceiptStage.Reading, pages = pages, error = null) }
         viewModelScope.launch {
-            val text = runCatching { ReceiptScanning.recognise(context, pages.map(Uri::parse)) }.getOrDefault("")
+            val text = imageReader.text(pages)
             val receipt = readReceipt(text)
             if (receipt.unreadable) {
                 setState { copy(stage = ReceiptStage.Unreadable, receipt = receipt) }
@@ -151,7 +148,7 @@ class ReceiptEntryViewModel @Inject constructor(
         viewModelScope.launch {
             val snapshot = observeFinance().first()
             val existing = EntryMatching.duplicateOf(
-                amount, account, occurredAt(state.date, state.time), state.time != null, null,
+                amount, account, clock.millisAt(state.date, state.time), state.time != null, null,
                 snapshot.transactions.filter { it.type == TransactionType.EXPENSE && it.receipt == null },
                 EntryMatching.RECEIPT_DUPLICATE_MINUTES, clock::dayOf,
             ) ?: return@launch
@@ -183,8 +180,7 @@ class ReceiptEntryViewModel @Inject constructor(
     private suspend fun receiptFor(transactionUid: String): Receipt {
         val state = currentState
         val photo = state.pages.firstOrNull()?.takeIf { state.keepPhoto }
-            ?.let { ReceiptScanning.keep(context, Uri.parse(it), transactionUid) }
-            ?.let { ReceiptPhoto(it, "image/jpeg") }
+            ?.let { photoStore.keep(it, transactionUid) }
         return Receipt(
             itemCount = state.receipt.items.sumOf { it.quantity },
             items = state.receipt.items,
@@ -209,7 +205,7 @@ class ReceiptEntryViewModel @Inject constructor(
                     categoryUid = state.categoryUid,
                     merchant = state.merchant,
                     note = state.note,
-                    occurredAtMillis = occurredAt(state.date, state.time),
+                    occurredAtMillis = clock.millisAt(state.date, state.time),
                     source = TransactionSource.RECEIPT,
                     receipt = receiptFor(uid),
                     uid = uid,
@@ -238,7 +234,4 @@ class ReceiptEntryViewModel @Inject constructor(
             }
         }
     }
-
-    private fun occurredAt(date: LocalDate, time: LocalTime?): Long =
-        time?.let { date.atTime(it).atZone(clock.zone()).toInstant().toEpochMilli() } ?: clock.millisOn(date)
 }

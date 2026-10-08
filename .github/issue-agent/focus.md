@@ -6,7 +6,7 @@ on the next run once it is on `main`.
 
 The agent runs every 4 hours (6 times a day, first run at 04:00 IST) and files one issue
 per run. Each run is assigned the next area in this list, wrapping back to 1 after the
-last, so with 9 areas every area comes up once every 1.5 days. If a run finds nothing
+last, so with 10 areas every area comes up about once every 1.7 days. If a run finds nothing
 worth filing in its area, it moves on to the next area in the list.
 
 Keep each area on the form `N. **Title** — description`: the workflow reads the bold
@@ -28,6 +28,18 @@ titles to build the rotation and the `area:<title>` labels.
 7. **Clean architecture** — Code must follow clean architecture everywhere. Clean code principles and SOLID principles as well.
 8. **Code duplication** — Any duplication in code if it can be reduced, must be reduced. Though not at the cost of code readability.
 9. **New Features** — Suggest incremental improvements in the existing features, and also request for new features with the mindset of bettering this product.
+10. **Memory management** — memory leaks and memory the app holds longer or in larger
+   amounts than it needs. Leaks: Activity/View/Context references kept by singletons,
+   companion objects or long-lived Hilt bindings (Application context should be used
+   instead); listeners, callbacks, BroadcastReceivers and ContentObservers that are never
+   unregistered; `callbackFlow` without `awaitClose`; `GlobalScope` or hand-made
+   `CoroutineScope`s that are never cancelled; Flows collected without lifecycle awareness
+   (`collectAsState` where `collectAsStateWithLifecycle` belongs); players, WebViews and
+   other native resources that are never released; Cursors and streams not closed with
+   `use {}`. Inefficient use: bitmaps decoded at full size instead of downsampled, whole
+   tables or lists loaded into memory where paging or a bounded query would do, in-memory
+   caches and maps with no size limit, and large objects held in `remember`, ViewModel
+   state or `StateFlow`s after the screen no longer needs them.
 
 
 ## Out of scope

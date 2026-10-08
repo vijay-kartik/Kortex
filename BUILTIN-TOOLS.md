@@ -150,6 +150,39 @@ and registers them on the shared registry.
   scope is missing (403).
 - **Status:** Registered in `AgentModule` on top of `defaultTools()`.
 
+## Links tools — `app/.../domain/agent/LinksTools.kt`
+
+`linksTools(links)` gives the agent the user's Links library (the Links tab). The tools are
+thin; the work is in `LinksAgent` (`links/.../domain/agent/LinksAgent.kt`), on the same use
+cases the Links tab and Topics use, and unit-tested in `LinksAgentTest`. Registered in
+`AgentModule` next to `financeTools(finance)`.
+
+### `find_links`
+- **Description:** Search saved links by a word in the title, address or a tag name
+  (`Link.matches`, ignoring case), optionally only those carrying given tags. Newest first.
+- **Params:** `query` (string, optional); `tag` (string, optional, comma-separated — a link
+  must carry all of them, ignoring case); `limit` (integer, optional, 1–50, default 10).
+- **Risk:** LOW.
+- **Behavior:** One line per link: title, address, tags and the day it was saved, then
+  "…and N more" past the limit. With no match it says so and lists the existing tag names
+  so the model can retry with real ones.
+
+### `list_link_tags`
+- **Description:** Every tag with how many links carry it (`ObserveTagCounts`), by name.
+- **Params:** none.
+- **Risk:** LOW.
+
+### `save_link`
+- **Description:** Save a web address to Links.
+- **Params:** `url` (string, required, full http(s) address); `title` (string, optional — the
+  page's own title, else the address, when left out); `tags` (string, optional,
+  comma-separated; new tags are created).
+- **Risk:** **MEDIUM** — the user approves before anything is saved.
+- **Behavior:** Goes through `FindOrSaveLink`, the use case Topics' `LinksLinkCatalog`
+  saves with too. An address already saved (matched by `linkUrlKey`) is reported with its
+  existing title and tags and left unchanged; nothing is duplicated. Editing or deleting
+  links from chat is not supported.
+
 ## Adding a new builtin tool (checklist)
 
 1. Create a factory in `core/tool/builtin/` (or `core/tool/android/` if it needs a `Context`)

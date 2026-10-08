@@ -19,7 +19,6 @@ import dev.kortex.app.domain.agent.McpConnections
 import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.domain.share.ShareAgentRunner
 import dev.kortex.core.gmail.gmailTool
-import dev.kortex.core.llm.DeepseekProvider
 import dev.kortex.core.llm.DynamicLlmProvider
 import dev.kortex.core.llm.EmbeddingGemmaProvider
 import dev.kortex.core.llm.EmbeddingProvider
@@ -50,14 +49,12 @@ import kotlinx.coroutines.flow.first
 @InstallIn(SingletonComponent::class)
 object AgentModule {
 
-    // LLM provider — OpenAI when a key is configured, else Deepseek, else the stub.
+    // LLM provider — OpenAI when a key is configured, else the stub.
     @Provides
     @Singleton
     fun provideLlmProvider(settingsStore: SettingsStore): LlmProvider {
         val defaultProvider = BuildConfig.OPENAI_API_KEY.takeIf { it.isNotBlank() }
             ?.let { OpenAiProvider(apiKey = it, logger = AndroidLogger) }
-            ?: BuildConfig.DEEPSEEK_API_KEY.takeIf { it.isNotBlank() }
-            ?.let { DeepseekProvider(apiKey = it, logger = AndroidLogger) }
             ?: StubLlmProvider()
         return DynamicLlmProvider(
             settings = settingsStore.asLlmProviderSettings(),

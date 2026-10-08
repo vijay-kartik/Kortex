@@ -71,8 +71,6 @@ object Models {
         "kimi-k2.7-code",
         "minimax-m3",
         // Text-only
-        "deepseek-v4-pro",
-        "deepseek-v4-flash",
         "gpt-oss:120b",
         "gpt-oss:20b",
         "qwen3-coder:480b",

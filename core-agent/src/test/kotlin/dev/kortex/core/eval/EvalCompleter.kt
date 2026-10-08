@@ -1,6 +1,5 @@
 package dev.kortex.core.eval
 
-import dev.kortex.core.llm.DeepseekProvider
 import dev.kortex.core.llm.LlmChunk
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.LlmRequest
@@ -62,16 +61,13 @@ object EvalMode {
     val isLive: Boolean get() = System.getenv("KORTEX_EVAL_LIVE") == "1"
 
     /**
-     * Live provider selection mirrors the app's `AgentModule.provideLlmProvider`: OpenAI if
-     * `OPENAI_API_KEY` is set, else Deepseek via `DEEPSEEK_API_KEY` (env vars here,
-     * since tests don't see local.properties/BuildConfig).
+     * Live provider selection mirrors the app's `AgentModule.provideLlmProvider`: OpenAI via
+     * `OPENAI_API_KEY` (an env var here, since tests don't see local.properties/BuildConfig).
      */
     fun resolveCompleter(): EvalCompleter {
         if (!isLive) return RecordedCompleter()
         val openAi = System.getenv("OPENAI_API_KEY")?.takeIf { it.isNotBlank() }
         if (openAi != null) return LiveCompleter(OpenAiProvider(apiKey = openAi))
-        val deepseek = System.getenv("DEEPSEEK_API_KEY")?.takeIf { it.isNotBlank() }
-        if (deepseek != null) return LiveCompleter(DeepseekProvider(apiKey = deepseek))
-        error("KORTEX_EVAL_LIVE=1 but neither OPENAI_API_KEY nor DEEPSEEK_API_KEY is set")
+        error("KORTEX_EVAL_LIVE=1 but OPENAI_API_KEY is not set")
     }
 }

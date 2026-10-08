@@ -26,12 +26,12 @@ the HTML test report) to see the per-case pass/fail lines.
 
 ## Running live evals
 
-Set `KORTEX_EVAL_LIVE=1` plus an API key (OpenAI is preferred if both are set, mirroring
-`AgentModule.provideLlmProvider`), then run the same test class:
+Set `KORTEX_EVAL_LIVE=1` plus `OPENAI_API_KEY` (mirroring `AgentModule.provideLlmProvider`),
+then run the same test class:
 
 ```powershell
 $env:KORTEX_EVAL_LIVE = "1"
-$env:OPENAI_API_KEY = "sk-..."   # or $env:DEEPSEEK_API_KEY = "..."
+$env:OPENAI_API_KEY = "sk-..."
 .\gradlew.bat :core-agent:testDebugUnitTest --tests "dev.kortex.core.eval.PromptEvalTest"
 ```
 
@@ -134,14 +134,14 @@ Case ids are stable so LIVE runs compare models on identical inputs.
 
 `ReflectEvalSuite` takes the reviewer model as a constructor param. The live-only test
 `reflect model comparison FAST vs REASONING (live only)` in `PromptEvalTest` runs the same 10
-cases twice — reviewer on `Models.FAST` (`gpt-4o-mini` / `deepseek-v4-flash`) and on
-`Models.REASONING` (`gpt-4o` / `deepseek-v4-pro`) — and prints per-model accuracy plus the two
+cases twice — reviewer on `Models.FAST` (`gpt-4o-mini`) and on
+`Models.REASONING` (`gpt-4o`) — and prints per-model accuracy plus the two
 costly failure modes: **false-REVISE** (expected OK, got REVISE — wastes a full ReAct revision
 loop) and **missed-REVISE** (expected REVISE, got OK — a wrong answer reaches the user).
 
 ```powershell
 $env:KORTEX_EVAL_LIVE = "1"
-$env:OPENAI_API_KEY = "sk-..."   # or $env:DEEPSEEK_API_KEY = "..."
+$env:OPENAI_API_KEY = "sk-..."
 .\gradlew.bat :core-agent:testDebugUnitTest --tests "dev.kortex.core.eval.PromptEvalTest"
 ```
 

@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test
  * `src/test/resources/eval/`, and each suite's accuracy must not drop below the committed
  * baseline. Known-failure cases are printed but never scored.
  *
- * LIVE mode (`KORTEX_EVAL_LIVE=1` plus `OPENAI_API_KEY` or `DEEPSEEK_API_KEY`): the same
+ * LIVE mode (`KORTEX_EVAL_LIVE=1` plus `OPENAI_API_KEY`): the same
  * cases run against a real provider; scores are printed but NOT asserted (live baselines
  * are tracked in docs/eval-baselines.md). See that doc for the exact commands.
  */
@@ -50,7 +50,7 @@ class PromptEvalTest {
     fun `reflect model comparison FAST vs REASONING (live only)`() = runTest {
         Assumptions.assumeTrue(
             EvalMode.isLive,
-            "Live-only: set KORTEX_EVAL_LIVE=1 and OPENAI_API_KEY or DEEPSEEK_API_KEY",
+            "Live-only: set KORTEX_EVAL_LIVE=1 and OPENAI_API_KEY",
         )
         val completer = EvalMode.resolveCompleter()
         val runs = listOf(

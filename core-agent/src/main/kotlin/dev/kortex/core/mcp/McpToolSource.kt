@@ -41,9 +41,14 @@ class McpToolConnector(
     private val logger: Logger = Logger.CONSOLE,
 ) {
     /** Best-effort: a dead server logs a warning and contributes zero tools. */
-    suspend fun connectAll(servers: List<McpServer>): Int = servers.sumOf { connect(it) }
+    suspend fun connectAll(servers: List<McpServer>): Int = servers.sumOf { connect(it).size }
 
-    suspend fun connect(server: McpServer): Int = runCatching {
+    /**
+     * Registers [server]'s tools and returns the names they were registered under, so callers
+     * know which tools the server owns without re-deriving the naming rule. Empty when the
+     * server is unreachable; throws [McpUnauthorizedException] when it needs sign-in.
+     */
+    suspend fun connect(server: McpServer): List<String> = runCatching {
         val client = McpClient(
             serverUrl = server.url,
             tokenProvider = server.tokenProvider ?: server.bearerToken?.let { token -> { _ -> token } },
@@ -51,13 +56,13 @@ class McpToolConnector(
             logger = logger
         )
         val tools = client.listTools()
-        tools.forEach { registry.register(mcpTool(client, it, server)) }
+        val registered = tools.map { desc -> mcpTool(client, desc, server).also { registry.register(it) }.name }
         logger.i(TAG, "'${server.name}': ${tools.size} tool(s) registered [${tools.joinToString { it.name }}]")
-        tools.size
+        registered
     }.getOrElse { err ->
         if (err is McpUnauthorizedException) throw err
         logger.w(TAG, "'${server.name}' unavailable, continuing without it: ${err.message}")
-        0
+        emptyList()
     }
 
     companion object {

@@ -26,7 +26,6 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
 
 /** App-wide infrastructure: coroutine scope, settings persistence and auth managers. */
 @Module
@@ -37,12 +36,6 @@ object AppModule {
     @Singleton
     @ApplicationScope
     fun provideApplicationScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    /** Written by ChatViewModel's startup MCP connect pass, read by SettingsViewModel. */
-    @Provides
-    @Singleton
-    @McpAuthFailures
-    fun provideMcpAuthFailures(): MutableStateFlow<Set<String>> = MutableStateFlow(emptySet())
 
     // MCP settings persistence (user-added servers + disabled tool names).
     @Provides

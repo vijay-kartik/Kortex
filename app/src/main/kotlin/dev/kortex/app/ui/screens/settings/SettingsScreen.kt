@@ -74,6 +74,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.kortex.app.data.auth.GmailAuthManager
+import dev.kortex.app.domain.agent.ServerStatus
 import dev.kortex.design.Amber
 import dev.kortex.design.R
 import kotlinx.coroutines.launch

@@ -9,10 +9,12 @@ import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.BuildConfig
 import dev.kortex.app.data.auth.GmailAuthManager
 import dev.kortex.app.data.auth.McpOAuthManager
+import dev.kortex.app.data.settings.McpServerStore
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.app.data.settings.asLlmProviderSettings
 import dev.kortex.app.domain.agent.financeTools
 import dev.kortex.app.domain.agent.AgentBootstrap
+import dev.kortex.app.domain.agent.McpConnections
 import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.domain.share.ShareAgentRunner
 import dev.kortex.core.gmail.gmailTool
@@ -24,6 +26,7 @@ import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.OpenAiProvider
 import dev.kortex.core.llm.StubLlmProvider
 import dev.kortex.core.log.AndroidLogger
+import dev.kortex.core.mcp.McpToolConnector
 import dev.kortex.core.observability.AgentRunStore
 import dev.kortex.core.tool.ToolRegistry
 import dev.kortex.core.tool.android.calendarEventTool
@@ -38,7 +41,6 @@ import dev.kortex.graph_tools.SaveItineraryTool
 import dev.kortex.finance.agent.FinanceAgent
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 
 /** The agent's LLM, embeddings, shared tool registry and background share runner. */
@@ -101,6 +103,23 @@ object AgentModule {
             ),
     )
 
+    /** The one owner of MCP connections, shared by AgentBootstrap and Settings. */
+    @Provides
+    @Singleton
+    fun provideMcpConnections(
+        tools: ToolRegistry,
+        settingsStore: SettingsStore,
+        mcpOAuthManager: McpOAuthManager,
+    ): McpConnections {
+        val connector = McpToolConnector(tools, AndroidLogger)
+        return McpConnections(
+            tools = tools,
+            repository = McpServerStore(settingsStore, mcpOAuthManager),
+            connectServer = { connector.connect(it) },
+            logger = AndroidLogger,
+        )
+    }
+
     /** App-wide tool/MCP/model setup; started from KortexApp so it doesn't depend on any screen. */
     @Provides
     @Singleton
@@ -108,14 +127,12 @@ object AgentModule {
         @ApplicationScope scope: CoroutineScope,
         tools: ToolRegistry,
         settingsStore: SettingsStore,
-        mcpOAuthManager: McpOAuthManager,
-        @McpAuthFailures mcpAuthFailures: MutableStateFlow<Set<String>>,
+        mcpConnections: McpConnections,
     ): AgentBootstrap = AgentBootstrap(
         scope = scope,
         tools = tools,
         settingsStore = settingsStore,
-        mcpOAuthManager = mcpOAuthManager,
-        mcpAuthFailures = mcpAuthFailures,
+        mcpConnections = mcpConnections,
     )
 
     /** Background agent runs for files shared into Kortex from other apps. */

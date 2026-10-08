@@ -1,11 +1,13 @@
 package dev.kortex.app.data.topics
 
 import dev.kortex.links.domain.model.Link
-import dev.kortex.links.domain.model.LinkDraft
 import dev.kortex.links.domain.model.PageMetadata
+import dev.kortex.links.domain.port.Clock
 import dev.kortex.links.domain.port.PageReader
 import dev.kortex.links.domain.port.TagSuggester
 import dev.kortex.links.domain.repository.LinksRepository
+import dev.kortex.links.domain.usecase.FindOrSaveLink
+import dev.kortex.links.domain.usecase.FindOrSaveResult
 import dev.kortex.myinfo.topics.domain.model.LinkLookup
 import dev.kortex.myinfo.topics.domain.model.SavedLink
 import dev.kortex.myinfo.topics.domain.port.LinkCatalog
@@ -26,28 +28,30 @@ class LinksLinkCatalog(
 ) : LinkCatalog {
     // The page read for the last lookup, so saving right after it doesn't read the page again.
     @Volatile private var lastPage: PageMetadata? = null
+    private val findOrSaveLink = FindOrSaveLink(
+        links,
+        object : PageReader {
+            override suspend fun read(url: String): PageMetadata = page(url)
+        },
+        Clock.System,
+    )
 
     override fun observeLinks(): Flow<Map<Long, SavedLink>> =
         links.observeLinks().map { saved -> saved.associate { it.id to it.toSavedLink() } }
 
     override fun observeTagNames(): Flow<List<String>> = links.observeTagNames()
 
-    override suspend fun findOrSave(url: String, title: String?, tags: List<String>?): Long {
-        val existing = links.observeSavedLink(url).first()
-        if (existing != null) {
-            // Rewriting an unchanged set would still mark the link for sync, so only real edits go through.
-            if (tags != null && !sameTags(tags, existing.tags)) links.setLinkTags(existing.id, tags)
-            return existing.id
+    override suspend fun findOrSave(url: String, title: String?, tags: List<String>?): Long =
+        when (val result = findOrSaveLink(url, title, tags)) {
+            is FindOrSaveResult.Saved -> result.link.id
+            is FindOrSaveResult.AlreadySaved -> {
+                val existing = result.link
+                // Rewriting an unchanged set would still mark the link for sync, so only real edits go through.
+                if (tags != null && !sameTags(tags, existing.tags)) links.setLinkTags(existing.id, tags)
+                existing.id
+            }
+            FindOrSaveResult.Failed -> error("Link for $url was not saved")
         }
-        val pageTitle = title ?: page(url).title
-        // saveLink answers AlreadySaved if the address was saved between the check and here; either
-        // way the link now exists. It only attaches tags that exist already, so the tags are set
-        // afterwards, which creates any new ones.
-        links.saveLink(LinkDraft(url = url, title = pageTitle ?: url, tags = emptyList()), System.currentTimeMillis())
-        val id = checkNotNull(links.observeSavedLink(url).first()) { "Link for $url was not saved" }.id
-        if (!tags.isNullOrEmpty()) links.setLinkTags(id, tags)
-        return id
-    }
 
     override suspend fun lookUp(url: String): LinkLookup {
         links.observeSavedLink(url).first()?.let { saved ->

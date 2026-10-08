@@ -13,6 +13,7 @@ import dev.kortex.links.data.LinkSyncDao
 import dev.kortex.links.data.LinksDatabase
 import dev.kortex.links.data.RoomLinksRepository
 import dev.kortex.links.data.TagDao
+import dev.kortex.links.domain.agent.LinksAgent
 import dev.kortex.links.domain.port.Clock
 import dev.kortex.links.domain.port.ImageDownloads
 import dev.kortex.links.domain.port.PageReader
@@ -21,6 +22,7 @@ import dev.kortex.links.domain.repository.LinksRepository
 import dev.kortex.links.domain.usecase.AnalyzeLink
 import dev.kortex.links.domain.usecase.CreateTag
 import dev.kortex.links.domain.usecase.DeleteLink
+import dev.kortex.links.domain.usecase.FindOrSaveLink
 import dev.kortex.links.domain.usecase.ObserveDuplicate
 import dev.kortex.links.domain.usecase.ObserveLinks
 import dev.kortex.links.domain.usecase.ObserveTagCounts
@@ -97,6 +99,14 @@ abstract class LinksModule {
 
         @Provides
         fun provideSaveLink(repository: LinksRepository, clock: Clock) = SaveLink(repository, clock)
+
+        @Provides
+        fun provideFindOrSaveLink(repository: LinksRepository, pages: PageReader, clock: Clock) =
+            FindOrSaveLink(repository, pages, clock)
+
+        @Provides
+        fun provideLinksAgent(observeLinks: ObserveLinks, observeTagCounts: ObserveTagCounts, findOrSaveLink: FindOrSaveLink) =
+            LinksAgent(observeLinks, observeTagCounts, findOrSaveLink)
 
         @Provides
         fun provideObserveDuplicate(repository: LinksRepository) = ObserveDuplicate(repository)

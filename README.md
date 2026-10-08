@@ -13,20 +13,15 @@ full architecture, the 21-pattern → component map, and the phased roadmap.
   Human-in-the-Loop approval dialog, and a stub LLM provider for Phase 0.
 
 ## Status: Phase 1 (real LLM)
-The graph runs end-to-end through either the **Deepseek** or **OpenAI** provider (Ktor + Chat Completions function calling). 
+The graph runs end-to-end through the **OpenAI** provider (Ktor + Chat Completions function calling).
 
-- **Deepseek**: Uses `deepseek-v4-pro` (reasoning) / `deepseek-v4-flash` (routing) via `DeepseekProvider`.
 - **OpenAI**: Uses `gpt-4o` (reasoning) / `gpt-4o-mini` (routing) via `OpenAiProvider`.
 
-The provider is selected dynamically based on configured keys behind the `LlmProvider` interface, falling back to a stub if no keys are found.
+Ollama (local) and Ollama Cloud can be picked in Settings; they reuse `OpenAiProvider` behind the `LlmProvider` interface. With no OpenAI key configured the app falls back to a stub.
 
 ## Building
 1. Add your API key to `local.properties` (gitignored):
    ```properties
-   # For Deepseek (preferred if present)
-   DEEPSEEK_API_KEY=sk-...
-
-   # Or for OpenAI
    OPENAI_API_KEY=sk-...
    ```
 2. Open in Android Studio (Ladybug+), let it sync, run the `app` config on a device/emulator.

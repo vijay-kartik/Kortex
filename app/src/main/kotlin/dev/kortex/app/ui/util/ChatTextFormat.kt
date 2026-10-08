@@ -6,7 +6,7 @@ import dev.kortex.core.state.Message
 
 /** Short lowercase source tags keep the trace legible: `llm`, `tool`, `react`, `reflect`… */
 internal fun traceTag(tag: String) = when (tag) {
-    "OpenAiProvider", "DeepseekProvider" -> "llm"
+    "OpenAiProvider" -> "llm"
     "ToolGovernor" -> "tool"
     else -> tag.removeSuffix("Node").lowercase()
 }

@@ -9,7 +9,8 @@ name: Claude comment agent
 #
 # What it does with a human comment, decided from the whole thread:
 #   reply   answer the comment, or say which decisions are still open
-#   design  post a Figma design brief and wait for the owner to approve the frames
+#   design  post a Claude Code prompt that makes the Figma frames, and wait for the owner
+#           to run it and approve the frames
 #   code    open a PR with the next foundational step ("Part of #N", not "Fixes")
 #   split   file focused sub-issues that the fix agent then picks up on its own
 #   none    nothing to do (thanks, acknowledgements)
@@ -104,15 +105,18 @@ jobs:
           echo "url=$(jq -r .html_url comment.json)" >> "$GITHUB_OUTPUT"
           echo "command=$command" >> "$GITHUB_OUTPUT"
 
-      - name: Export the Figma file
+      - name: Find and export the Figma file
+        id: figma
         if: steps.comment.outputs.source == 'human'
         continue-on-error: true
         env:
           FIGMA_TOKEN: ${{ secrets.FIGMA_TOKEN }}
         run: |
+          url=$(grep -oE 'https://www\.figma\.com/(design|file)/[A-Za-z0-9]+(/[A-Za-z0-9._-]+)?' .github/issue-agent/focus.md | head -1)
+          if [ -z "$url" ]; then echo "No Figma link in focus.md; skipping"; exit 0; fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          key=$(echo "$url" | cut -d/ -f5)
           if [ -z "$FIGMA_TOKEN" ]; then echo "FIGMA_TOKEN secret not set; skipping Figma export"; exit 0; fi
-          key=$(grep -oE 'figma\.com/(design|file)/[A-Za-z0-9]+' .github/issue-agent/focus.md | head -1 | cut -d/ -f3)
-          if [ -z "$key" ]; then echo "No Figma link in focus.md; skipping"; exit 0; fi
           mkdir -p .figma-export
           curl -sSf -H "X-Figma-Token: $FIGMA_TOKEN" "https://api.figma.com/v1/files/$key" -o .figma-export/file.json
           echo "Exported Figma file $key ($(du -h .figma-export/file.json | cut -f1))"
@@ -181,11 +185,12 @@ jobs:
               unanswered. Answer it, and list exactly which decisions are still open. Keep
               `needs-human` while decisions are open.
             - **design**: the work changes UI, and no Figma design for it has been approved in
-              the thread. Write a Figma design brief (format below), post it, add
+              the thread, or the owner asked for changes to frames made from an earlier
+              prompt. Write a Figma design prompt (see Design prompt below), post it, add
               `needs-design`, and remove `needs-human` if every product decision is settled.
-              The brief is the step that makes the Figma change: you cannot edit Figma from CI
-              (Figma's MCP server needs interactive OAuth), so the owner runs the brief in
-              Claude Code with the Figma MCP and then approves the frames with a comment.
+              You cannot edit Figma from CI (Figma's MCP server only signs in through a
+              browser), so the owner pastes your prompt into Claude Code with the Figma MCP,
+              lets it make the frames, and then approves them with a comment.
             - **code**: decisions are settled and, if UI is involved, the owner has approved the
               design. Implement the next step of the work (see Code below). If earlier step PRs
               exist, do the step after them. If a step PR is still open and unmerged, don't
@@ -209,27 +214,87 @@ jobs:
             - Keep comments short and specific. Number open decisions so the owner can answer
               by number.
 
-            ## Design brief format (action: design)
-            The Figma file is linked in `.github/issue-agent/focus.md`. If
-            `.figma-export/file.json` exists it is that file exported through the Figma REST
-            API: explore it with `jq` (it is large, never read it whole) to find the existing
-            frames, components and styles to build on, and cite their node ids. Check the
-            `:design` module's theme for the tokens to use.
+            ## Design prompt (action: design)
+            The owner makes the frames by pasting a prompt you write into Claude Code on their
+            own machine, where the Figma MCP is connected. That Claude has none of your
+            context: it has not read the issue, it may not have this repository open, and it
+            sees nothing but your prompt. So the prompt must carry everything needed to design
+            the feature without guessing.
 
-                ## Figma design brief
-                **File:** <Figma link> · **Page:** <page name>
-                **Base on:** existing frames/components to copy or reuse, with node ids
-                **Frames to add or change:** one bullet per frame, with what is on it
-                **States:** empty, normal, edge and error states to show
-                **Copy:** the exact strings
-                **Tokens:** colours, type styles, spacing and radii from `:design`
-                **Out of scope:** what not to design yet
+            Gather this first:
+            - **The feature**: what the issue proposes and every decision settled in the
+              thread. If a product decision that shapes the UI is still open, do **reply**
+              instead.
+            - **The Figma file**: ${{ steps.figma.outputs.url || 'the link in `.github/issue-agent/focus.md`' }}.
+              If `.figma-export/file.json` exists it is that file exported through the Figma
+              REST API: explore it with `jq` (it is large, never read it whole). Find its
+              pages, the existing screens closest to this feature, the components and styles
+              to reuse, and the frame size existing phone screens use. Refer to nodes by name
+              and node id, and link them as `<file url>?node-id=<id with ":" replaced by "-">`.
+            - **The tokens**: read the `:design` module's theme (colours, typography, spacing,
+              shapes) and take the actual values (hex, sp, dp), not just the Kotlin names.
+            - **The screens in code**: read the Compose screens this feature touches, so the
+              frames match what the app shows today, and note the shared components to use.
+            - **Earlier prompts in this thread**: if frames were already made and the owner
+              asked for changes, the new prompt opens the existing page, names the frames to
+              change and says exactly what changes. It does not start over.
+
+            Post one comment in this format:
+
+                ## Figma design prompt
+                **File:** <Figma link> · **Page:** `#<issue number> <short feature name>`
+                **Frames:** one bullet per frame the prompt makes
+                What the prompt asks for, in 2–3 sentences.
 
                 ### Run it
-                Paste this into Claude Code (with the Figma MCP connected):
-                > <a self-contained prompt that makes these frames in the file above>
+                Open Claude Code with the Figma MCP connected, paste the prompt below and let
+                it run. Check the page in Figma, then reply here with the frame links and
+                `approved` (or what to change).
 
-                Reply on this issue with the frame links, then `approved` (or what to change).
+                ````text
+                <the prompt>
+                ````
+
+            Write the prompt addressed to Claude, with these sections in this order. Be
+            specific everywhere: exact strings, exact values, node ids. Never use four
+            backticks inside it, since they would end the code block.
+
+            1. **Goal**: one paragraph on the feature, who uses it and why, and that the job is
+               to design it in Figma on its own page, not to write code.
+            2. **File and page**: the file link. Create a new page named
+               `#<issue number> <short feature name>` (for a follow-up, open that existing
+               page instead). Do not change anything on other pages; copy from them what
+               it needs.
+            3. **Before drawing**: load the `figma-use` skill before the first `use_figma`
+               call, and `figma-generate-design` for building screens. If those skills are not
+               installed, read `skill://figma/figma-use/SKILL.md` and
+               `skill://figma/figma-generate-design/SKILL.md` from the Figma MCP. Then inspect
+               the reference frames with `get_metadata` and `get_screenshot`, and list the
+               file's components, variables and styles so it builds from them.
+            4. **Context**: the feature and the settled decisions (numbered), the existing
+               screens it extends with node ids, and what the app shows there today.
+            5. **Design system**: components to reuse (name and node id), the variables and
+               styles to bind, and a fallback table of the `:design` token values: colour hex
+               per role for light and dark, type styles (font, size, weight, line height),
+               the spacing scale and corner radii. Bind fills, text and spacing to the
+               file's variables and styles; use a raw value only where the file has none.
+            6. **Frames**: one subsection per frame, with its name (`<Screen> / <State>`), its
+               size (the size existing phone screens use), and its content from top to
+               bottom: each element, the component it uses and its exact copy. Cover every
+               state the feature needs: empty, loading, normal, long text or many items, and
+               error. Add dark variants only if the file has dark frames for the screens it
+               extends.
+            7. **Build rules**: auto layout on every container; layer names that match the
+               Compose components; component instances, not detached copies; no hidden layers
+               or leftover placeholders; frames placed left to right in flow order, with a
+               text label above each row of states.
+            8. **Out of scope**: what not to design yet.
+            9. **Check the work**: screenshot every frame with `get_screenshot`, compare it
+               with this prompt and the reference frames (spacing, alignment, text overflow,
+               contrast) and fix what is off.
+            10. **Report**: finish with every frame made, each with its link
+                (`<file url>?node-id=<id>`), and anything in the prompt it could not do or had
+                to guess.
 
             ## Code (action: code)
             - Pick the smallest foundational slice that the rest of the work builds on and that

@@ -2,9 +2,8 @@ name: Claude issue agent
 
 on:
   schedule:
-    # Every 4 hours, 6 runs a day, first one at 04:00 IST:
-    # 04:00 08:00 12:00 16:00 20:00 00:00 IST = 22:30 02:30 06:30 10:30 14:30 18:30 UTC.
-    - cron: "30 2-22/4 * * *"
+    # Every hour, 24 runs a day, on the hour in IST: xx:30 UTC = xx:00 IST.
+    - cron: "30 * * * *"
   workflow_dispatch: # lets you trigger a run by hand from the Actions tab
     inputs:
       area:
@@ -48,11 +47,11 @@ jobs:
           if [ -n "$AREA_OVERRIDE" ]; then
             n=$AREA_OVERRIDE
           else
-            # One slot per 4-hour block, with blocks starting at 02:00, 06:00, ... UTC just before
-            # each scheduled run, so a run GitHub starts late still lands in its own slot.
-            # Consecutive runs walk down the list, and the rotation carries on across days
-            # instead of restarting at area 1 each morning.
-            n=$(( ($(date -u +%s) + 7200) / 14400 % count + 1 ))
+            # One slot per 1-hour block, with blocks starting at xx:20 UTC just before each
+            # scheduled run at xx:30, so a run GitHub starts up to ~50 minutes late still lands
+            # in its own slot. Consecutive runs walk down the list, and the rotation carries on
+            # across days instead of restarting at area 1 each morning.
+            n=$(( ($(date -u +%s) - 1200) / 3600 % count + 1 ))
           fi
           if [ "$n" -lt 1 ] || [ "$n" -gt "$count" ]; then echo "Area must be between 1 and $count"; exit 1; fi
 
@@ -95,7 +94,7 @@ jobs:
             --allowedTools "Read,Glob,Grep,Write,Bash(jq:*),Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*),Bash(gh search issues:*)"
           prompt: |
             You are auditing the Kortex repository (${{ github.repository }}): a multi-module
-            Kotlin/Android app (Jetpack Compose, MVI). This workflow runs every 4 hours, and each
+            Kotlin/Android app (Jetpack Compose, MVI). This workflow runs every hour, and each
             run files exactly ONE GitHub issue. You cannot build or run the app; do not try to
             run Gradle.
 

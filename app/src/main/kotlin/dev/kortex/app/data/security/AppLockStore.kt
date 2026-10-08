@@ -2,6 +2,7 @@ package dev.kortex.app.data.security
 
 import android.content.Context
 import dev.kortex.app.domain.security.AppLockSettings
+import dev.kortex.app.domain.security.AppLockSettingsRepository
 import dev.kortex.app.domain.security.LockAfter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,14 +13,14 @@ import kotlinx.coroutines.flow.updateAndGet
  * App-lock settings, kept on this device only. SharedPreferences rather than DataStore because
  * a cold start must know synchronously whether to lock before anything is drawn.
  */
-class AppLockStore(context: Context) {
+class AppLockStore(context: Context) : AppLockSettingsRepository {
 
     private val prefs = context.getSharedPreferences("app_lock", Context.MODE_PRIVATE)
 
     private val _settings = MutableStateFlow(load())
-    val settings: StateFlow<AppLockSettings> = _settings.asStateFlow()
+    override val settings: StateFlow<AppLockSettings> = _settings.asStateFlow()
 
-    fun update(transform: (AppLockSettings) -> AppLockSettings) {
+    override fun update(transform: (AppLockSettings) -> AppLockSettings) {
         val next = _settings.updateAndGet(transform)
         prefs.edit()
             .putBoolean(KEY_ENABLED, next.enabled)

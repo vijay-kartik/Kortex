@@ -1,6 +1,7 @@
 package dev.kortex.app.di
 
 import android.content.Context
+import android.os.SystemClock
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -75,7 +76,8 @@ object AppModule {
     /** Biometric app lock: one lock state shared by every activity. */
     @Provides
     @Singleton
-    fun provideAppLock(@ApplicationContext context: Context): AppLock = AppLock(AppLockStore(context))
+    fun provideAppLock(@ApplicationContext context: Context): AppLock =
+        AppLock(AppLockStore(context), clock = SystemClock::elapsedRealtime)
 
     // Gmail OAuth2 token management (uses device's Google accounts).
     @Provides

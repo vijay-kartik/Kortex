@@ -1,7 +1,5 @@
 package dev.kortex.app.domain.security
 
-import android.os.SystemClock
-import dev.kortex.app.data.security.AppLockStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,14 +20,22 @@ data class AppLockSettings(
     val hideInRecents: Boolean = true,
 )
 
+/** Where the app-lock settings live; read synchronously so a cold start knows whether to lock. */
+interface AppLockSettingsRepository {
+    val settings: StateFlow<AppLockSettings>
+
+    fun update(transform: (AppLockSettings) -> AppLockSettings)
+}
+
 /**
  * App-wide lock state. Starts locked on a cold start when app lock is on, and locks again when
  * the app comes back after [AppLockSettings.lockAfter] in the background. KortexApp feeds it the
  * process lifecycle; every activity draws behind `AppLockGate`, which does the unlocking.
  */
 class AppLock(
-    private val store: AppLockStore,
-    private val clock: () -> Long = SystemClock::elapsedRealtime,
+    private val store: AppLockSettingsRepository,
+    /** Monotonic millis (`SystemClock::elapsedRealtime` in the app), so changing the device time can't skip a relock. */
+    private val clock: () -> Long,
 ) {
     val settings: StateFlow<AppLockSettings> = store.settings
 

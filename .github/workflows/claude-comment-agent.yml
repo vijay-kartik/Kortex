@@ -149,6 +149,7 @@ jobs:
           fi
 
       - uses: anthropics/claude-code-action@v1
+        id: claude
         if: steps.comment.outputs.source == 'human'
         with:
           # Use ONE of these. The OAuth token bills your Claude Pro/Max plan
@@ -328,3 +329,12 @@ jobs:
             - Comment on the parent with a checklist of the new issues (`- [ ] #N title`).
 
             Finish with a short summary: the action you chose, why, and the links you created.
+
+      # The action hides Claude's output; this prints what it did (tool calls, blocked
+      # commands, token usage, its last message) to the log and the run summary.
+      - name: Show what Claude did
+        if: always() && steps.comment.outputs.source == 'human'
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: .github/scripts/claude-run-report.sh "${EXECUTION_FILE:-$RUNNER_TEMP/claude-execution-output.json}"

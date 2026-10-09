@@ -82,6 +82,7 @@ jobs:
           echo "Exported Figma file $key ($(du -h .figma-export/file.json | cut -f1))"
 
       - uses: anthropics/claude-code-action@v1
+        id: claude
         with:
           # Use ONE of these. The OAuth token bills your Claude Pro/Max plan
           # (create it with `claude setup-token`); the API key bills the Anthropic API.
@@ -159,3 +160,12 @@ jobs:
             6. Finish with a short summary: the assigned area, the area you filed under (and why
                you moved on, if different), and the issue number and title. If you filed nothing,
                list what you checked.
+
+      # The action hides Claude's output; this prints what it did (tool calls, blocked
+      # commands, token usage, its last message) to the log and the run summary.
+      - name: Show what Claude did
+        if: always()
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: .github/scripts/claude-run-report.sh "${EXECUTION_FILE:-$RUNNER_TEMP/claude-execution-output.json}"

@@ -113,6 +113,7 @@ jobs:
           fi
 
       - uses: anthropics/claude-code-action@v1
+        id: claude
         if: steps.pick.outputs.issue != ''
         with:
           # Use ONE of these. The OAuth token bills your Claude Pro/Max plan
@@ -181,6 +182,16 @@ jobs:
 
             7. Finish with the PR URL, or with why you stopped without one.
 
+      # The action hides Claude's output; this prints what it did (tool calls, blocked
+      # commands, token usage, its last message) to the log and the run summary, and writes
+      # a short excerpt for the comment below.
+      - name: Show what Claude did
+        if: always() && steps.pick.outputs.issue != ''
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: .github/scripts/claude-run-report.sh "${EXECUTION_FILE:-$RUNNER_TEMP/claude-execution-output.json}" "$RUNNER_TEMP/claude-notes.md"
+
       - name: Flag the issue if no PR came out of this run
         if: always() && steps.pick.outputs.issue != ''
         env:
@@ -191,6 +202,11 @@ jobs:
           needs_human=$(gh issue view "$ISSUE" --json labels --jq 'any(.labels[]; .name == "needs-human")')
           if [ "$prs" = "0" ] && [ "$needs_human" != "true" ]; then
             gh issue edit "$ISSUE" --add-label auto-fix-failed
-            marker=$'\n\n<!-- kortex-agent:fix -->' # tells the comment agent a workflow wrote this
-            gh issue comment "$ISSUE" --body "The Claude fix agent couldn't open a PR for this issue ([run log]($RUN_URL)). To let it try again, remove the \`auto-fix-failed\` label and delete the \`claude/issue-$ISSUE\` branch if it exists.$marker"
+            {
+              echo "The Claude fix agent couldn't open a PR for this issue. The full transcript is on the [run summary]($RUN_URL). To let it try again, remove the \`auto-fix-failed\` label and delete the \`claude/issue-$ISSUE\` branch if it exists."
+              if [ -s "$RUNNER_TEMP/claude-notes.md" ]; then echo; cat "$RUNNER_TEMP/claude-notes.md"; fi
+              echo
+              echo "<!-- kortex-agent:fix -->" # tells the comment agent a workflow wrote this
+            } > "$RUNNER_TEMP/failure-comment.md"
+            gh issue comment "$ISSUE" --body-file "$RUNNER_TEMP/failure-comment.md"
           fi

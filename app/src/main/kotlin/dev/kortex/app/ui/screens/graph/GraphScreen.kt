@@ -2,12 +2,6 @@ package dev.kortex.app.ui.screens.graph
 
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -76,9 +71,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.math.max
+import kotlinx.coroutines.withContext
 import kotlin.math.sqrt
 import kotlin.random.Random
 
@@ -131,8 +125,8 @@ class GraphViewModel @Inject constructor(
             val node = _nodes.value.find { it.id == nodeId } ?: return@launch
             val connectedEdges = _edges.value.filter { it.sourceId == nodeId || it.targetId == nodeId }
             
-            val registryBox = boxStore.boxFor(GraphRegistryEntity::class.java)
-            val reg = registryBox.all.find { it.graphKey == nodeId }
+            // graphKey is the registry's @Id, so this is a direct lookup.
+            val reg = boxStore.boxFor(GraphRegistryEntity::class.java).get(nodeId)
             
             val detailsMap = mutableMapOf<String, String>()
             if (reg != null) {
@@ -335,10 +329,21 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
     val textMeasurer = rememberTextMeasurer()
     // Read outside the Canvas: its draw lambda isn't composable, so it can't reach the theme.
     val labelStyle = MaterialTheme.typography.labelMedium.copy(color = InkSoft, fontSize = 11.sp)
+    // Labels don't change while the layout moves, so lay them out once per graph rather than every frame.
+    val labelLayouts = remember(nodes, labelStyle, textMeasurer) {
+        nodes.map { textMeasurer.measure(text = it.label, style = labelStyle) }
+    }
 
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var draggedNodeId by remember { mutableStateOf<Long?>(null) }
+
+    val nodeIndex = remember(nodes) { nodes.withIndex().associate { (i, node) -> node.id to i } }
+    val resolvedEdges = remember(nodeIndex, edges) { resolveEdges(nodeIndex, edges) }
+    // Node positions are plain vars, so the Canvas reads this to redraw when the layout or a drag moves them.
+    var layoutFrame by remember { mutableIntStateOf(0) }
+    // Bumped when a drag starts or ends, to wake a layout that has already settled.
+    var layoutWake by remember { mutableIntStateOf(0) }
 
     // Setup positions if not initialized
     LaunchedEffect(nodes, canvasWidth, canvasHeight) {
@@ -352,97 +357,41 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
         }
     }
 
-    // Force-directed layout physics loop
-    LaunchedEffect(nodes, edges) {
+    // Force-directed layout physics loop. Each tick's math runs off the main thread on a
+    // copy of the positions; the loop stops once the layout settles or after a bounded
+    // number of ticks, and restarts when the graph changes or a drag starts or ends.
+    LaunchedEffect(nodes, resolvedEdges, layoutWake) {
         if (nodes.isEmpty()) return@LaunchedEffect
-        while (isActive) {
-            val k = 0.015f // Weaker spring constant
-            val repulsion = 80000f // Higher repulsion constant for infinite canvas
-            val damping = 0.85f // Damping to stabilize
-
-            // Repulsion between all nodes
-            for (i in nodes.indices) {
-                for (j in i + 1 until nodes.size) {
-                    val n1 = nodes[i]
-                    val n2 = nodes[j]
-                    val dx = n1.x - n2.x
-                    val dy = n1.y - n2.y
-                    val distSq = max(dx * dx + dy * dy, 10f)
-                    val dist = sqrt(distSq)
-                    val force = repulsion / distSq
-                    
-                    val fx = force * (dx / dist)
-                    val fy = force * (dy / dist)
-                    
-                    n1.vx += fx
-                    n1.vy += fy
-                    n2.vx -= fx
-                    n2.vy -= fy
-                }
+        val state = LayoutState(nodes.size)
+        repeat(MAX_LAYOUT_ITERATIONS) {
+            nodes.forEachIndexed { i, node ->
+                state.x[i] = node.x
+                state.y[i] = node.y
+                state.vx[i] = node.vx
+                state.vy[i] = node.vy
             }
-
-            // Attraction along edges
-            for (edge in edges) {
-                val n1 = nodes.find { it.id == edge.sourceId } ?: continue
-                val n2 = nodes.find { it.id == edge.targetId } ?: continue
-                val dx = n2.x - n1.x
-                val dy = n2.y - n1.y
-                val dist = max(sqrt(dx * dx + dy * dy), 1f)
-                val targetDist = 400f
-                val force = (dist - targetDist) * k
-                
-                val fx = force * (dx / dist)
-                val fy = force * (dy / dist)
-                
-                n1.vx += fx
-                n1.vy += fy
-                n2.vx -= fx
-                n2.vy -= fy
-            }
-
-            // Center gravity to keep graph on screen
+            val pinned = draggedNodeId?.let { nodeIndex[it] } ?: -1
             val cx = canvasWidth / 2f
             val cy = canvasHeight / 2f
-            val gravity = 0.002f // Very weak gravity to allow expansion
-            for (node in nodes) {
-                node.vx += (cx - node.x) * gravity
-                node.vy += (cy - node.y) * gravity
+            val energy = withContext(Dispatchers.Default) {
+                stepForceLayout(state, resolvedEdges, pinned, cx, cy)
             }
-
-            // Apply velocity
-            for (node in nodes) {
-                if (node.id == draggedNodeId) {
-                    node.vx = 0f
-                    node.vy = 0f
-                    continue
+            // Leave a dragged node where the finger put it, even if the drag began mid-tick.
+            val dragged = draggedNodeId?.let { nodeIndex[it] } ?: -1
+            nodes.forEachIndexed { i, node ->
+                if (i != pinned && i != dragged) {
+                    node.x = state.x[i]
+                    node.y = state.y[i]
+                    node.vx = state.vx[i]
+                    node.vy = state.vy[i]
                 }
-                node.vx *= damping
-                node.vy *= damping
-                node.x += node.vx
-                node.y += node.vy
-                
-                // Boundaries
-                // Infinite Canvas Boundaries
-                node.x = node.x.coerceIn(-10000f, 10000f)
-                node.y = node.y.coerceIn(-10000f, 10000f)
             }
+            layoutFrame++
 
+            if (draggedNodeId == null && isLayoutSettled(energy, nodes.size)) return@LaunchedEffect
             delay(16) // ~60fps
         }
     }
-
-
-    
-    // Subtle ambient pulsing animation for nodes
-    val infiniteTransition = rememberInfiniteTransition()
-    val pulseRatio by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
 
     Canvas(
         modifier = Modifier
@@ -471,22 +420,30 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
                         }
                         if (clicked != null) {
                             draggedNodeId = clicked.id
+                            layoutWake++
                             onNodeSelected(clicked.id)
                         } else {
                             onNodeSelected(null)
                         }
                     },
-                    onDragEnd = { draggedNodeId = null },
-                    onDragCancel = { draggedNodeId = null }
+                    onDragEnd = {
+                        if (draggedNodeId != null) layoutWake++
+                        draggedNodeId = null
+                    },
+                    onDragCancel = {
+                        if (draggedNodeId != null) layoutWake++
+                        draggedNodeId = null
+                    }
                 ) { change, dragAmount ->
                     change.consume()
                     draggedNodeId?.let { id ->
-                        val node = nodes.find { it.id == id }
+                        val node = nodeIndex[id]?.let { nodes[it] }
                         if (node != null) {
                             node.x += dragAmount.x / scale
                             node.y += dragAmount.y / scale
                             node.vx = 0f
                             node.vy = 0f
+                            layoutFrame++
                         }
                     }
                 }
@@ -500,42 +457,41 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
     ) {
         canvasWidth = size.width
         canvasHeight = size.height
+        layoutFrame // Read so the Canvas redraws whenever node positions change.
 
         // Draw edges (curved paths)
-        for (edge in edges) {
-            val source = nodes.find { it.id == edge.sourceId }
-            val target = nodes.find { it.id == edge.targetId }
-            if (source != null && target != null) {
-                val isActiveEdge = draggedNodeId != null && (source.id == draggedNodeId || target.id == draggedNodeId)
-                val edgeColor = if (isActiveEdge) Synapse.copy(alpha = 0.8f) else Edge.copy(alpha = 0.6f)
-                
-                val path = Path().apply {
-                    moveTo(source.x, source.y)
-                    // Bezier curve for organic feel
-                    val ctrlX = (source.x + target.x) / 2f + (target.y - source.y) * 0.2f
-                    val ctrlY = (source.y + target.y) / 2f + (source.x - target.x) * 0.2f
-                    quadraticBezierTo(ctrlX, ctrlY, target.x, target.y)
-                }
-                
-                drawPath(
-                    path = path,
-                    color = edgeColor,
-                    style = Stroke(width = if (isActiveEdge) 3f else 1.5f)
-                )
+        for (e in 0 until resolvedEdges.size) {
+            val source = nodes[resolvedEdges.source[e]]
+            val target = nodes[resolvedEdges.target[e]]
+            val isActiveEdge = draggedNodeId != null && (source.id == draggedNodeId || target.id == draggedNodeId)
+            val edgeColor = if (isActiveEdge) Synapse.copy(alpha = 0.8f) else Edge.copy(alpha = 0.6f)
+
+            val path = Path().apply {
+                moveTo(source.x, source.y)
+                // Bezier curve for organic feel
+                val ctrlX = (source.x + target.x) / 2f + (target.y - source.y) * 0.2f
+                val ctrlY = (source.y + target.y) / 2f + (source.x - target.x) * 0.2f
+                quadraticBezierTo(ctrlX, ctrlY, target.x, target.y)
             }
+
+            drawPath(
+                path = path,
+                color = edgeColor,
+                style = Stroke(width = if (isActiveEdge) 3f else 1.5f)
+            )
         }
 
         // Draw nodes
-        for (node in nodes) {
+        nodes.forEachIndexed { i, node ->
             val nodeColor = node.type.category.color()
 
             val isActiveNode = node.id == draggedNodeId
             val radius = 20f
-            
-            // Ambient pulse effect
+
+            // Ambient halo (static, so a settled graph doesn't redraw every frame)
             drawCircle(
                 color = nodeColor.copy(alpha = 0.15f),
-                radius = radius * 1.4f * pulseRatio,
+                radius = radius * 1.4f,
                 center = Offset(node.x, node.y)
             )
             
@@ -571,11 +527,8 @@ fun ForceDirectedGraphCanvas(nodes: List<GraphUiNode>, edges: List<GraphUiEdge>,
             )
 
             // Text Label
-            val textLayoutResult = textMeasurer.measure(
-                text = node.label,
-                style = labelStyle
-            )
-            
+            val textLayoutResult = labelLayouts[i]
+
             // Label background for readability
             val tw = textLayoutResult.size.width
             val th = textLayoutResult.size.height

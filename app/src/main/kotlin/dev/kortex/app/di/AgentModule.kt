@@ -19,6 +19,7 @@ import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.domain.gmail.GmailAccess
 import dev.kortex.app.domain.gmail.GmailToken
 import dev.kortex.app.domain.share.ShareAgentRunner
+import dev.kortex.app.ui.notifications.ShareResultNotifications
 import dev.kortex.core.gmail.gmailTool
 import dev.kortex.core.llm.DynamicLlmProvider
 import dev.kortex.core.llm.EmbeddingGemmaProvider
@@ -140,11 +141,12 @@ object AgentModule {
         sessions: ChatSessionRepository,
         runStore: AgentRunStore,
     ): ShareAgentRunner = ShareAgentRunner(
-        appContext = context,
         scope = scope,
         llm = llm,
         tools = tools,
         sessions = sessions,
         runStore = runStore,
+        notifier = ShareResultNotifications(context),
+        logger = AndroidLogger,
     )
 }

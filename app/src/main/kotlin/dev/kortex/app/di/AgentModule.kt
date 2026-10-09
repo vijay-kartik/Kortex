@@ -7,7 +7,6 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.BuildConfig
-import dev.kortex.app.data.auth.GmailAuthManager
 import dev.kortex.app.data.auth.McpOAuthManager
 import dev.kortex.app.data.settings.McpServerStore
 import dev.kortex.app.data.settings.SettingsStore
@@ -17,6 +16,8 @@ import dev.kortex.app.domain.agent.linksTools
 import dev.kortex.app.domain.agent.AgentBootstrap
 import dev.kortex.app.domain.agent.McpConnections
 import dev.kortex.app.domain.chat.ChatSessionRepository
+import dev.kortex.app.domain.gmail.GmailAccess
+import dev.kortex.app.domain.gmail.GmailToken
 import dev.kortex.app.domain.share.ShareAgentRunner
 import dev.kortex.core.gmail.gmailTool
 import dev.kortex.core.llm.DynamicLlmProvider
@@ -42,7 +43,6 @@ import dev.kortex.finance.agent.FinanceAgent
 import dev.kortex.links.domain.agent.LinksAgent
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.first
 
 /** The agent's LLM, embeddings, shared tool registry and background share runner. */
 @Module
@@ -78,8 +78,7 @@ object AgentModule {
         graphBuilder: GraphBuilder,
         predicateVocabulary: PredicateVocabulary,
         embedder: EmbeddingProvider,
-        settingsStore: SettingsStore,
-        gmailAuth: GmailAuthManager,
+        gmail: GmailAccess,
         finance: FinanceAgent,
         links: LinksAgent,
     ): ToolRegistry = ToolRegistry(
@@ -93,14 +92,8 @@ object AgentModule {
             calendarEventTool(context) +
             gmailTool(
                 context = context,
-                tokenProvider = {
-                    val email = settingsStore.gmailAccountEmail.first()?.trim()
-                        ?.takeIf { it.isNotBlank() } ?: return@gmailTool null
-                    when (val result = gmailAuth.getToken(email)) {
-                        is GmailAuthManager.AuthResult.Success -> result.token
-                        else -> null
-                    }
-                },
+                tokenProvider = { (gmail.token() as? GmailToken.Granted)?.token },
+                invalidateToken = gmail::invalidate,
             ),
     )
 

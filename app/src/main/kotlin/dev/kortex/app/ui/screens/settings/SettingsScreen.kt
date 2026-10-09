@@ -54,6 +54,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,7 +74,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.navigation.compose.hiltViewModel
-import dev.kortex.app.data.auth.GmailAuthManager
 import dev.kortex.app.domain.agent.ServerStatus
 import dev.kortex.design.Amber
 import dev.kortex.design.R
@@ -210,7 +210,6 @@ fun SettingsScreen(
             item {
                 NativeGmailSettings(
                     email = ui.gmailAccountEmail,
-                    onConnect = { vm.setGmailAccountEmail(it) },
                     onDisconnect = { vm.setGmailAccountEmail(null) }
                 )
             }
@@ -1141,43 +1140,31 @@ private fun EmbeddingInfo(
 @Composable
 fun NativeGmailSettings(
     email: String?,
-    onConnect: (String) -> Unit,
     onDisconnect: () -> Unit,
+    vm: GmailConnectViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val authManager = remember { GmailAuthManager(context) }
-    var pendingEmail by remember { mutableStateOf<String?>(null) }
 
     val consentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            pendingEmail?.let { acc ->
-                scope.launch {
-                    when (authManager.getToken(acc)) {
-                        is GmailAuthManager.AuthResult.Success -> onConnect(acc)
-                        else -> Toast.makeText(context, "Failed to get token after consent.", Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-        }
+        vm.onConsentResult(result.resultCode == Activity.RESULT_OK)
     }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
-            if (!accountName.isNullOrBlank()) {
-                pendingEmail = accountName
-                scope.launch {
-                    when (val authRes = authManager.getToken(accountName)) {
-                        is GmailAuthManager.AuthResult.Success -> onConnect(accountName)
-                        is GmailAuthManager.AuthResult.NeedsConsent -> consentLauncher.launch(authRes.intent)
-                        is GmailAuthManager.AuthResult.Error -> Toast.makeText(context, "Error: ${authRes.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
+            vm.onAccountPicked(result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME))
+        }
+    }
+
+    LaunchedEffect(vm) {
+        vm.effects.collect { effect ->
+            when (effect) {
+                is GmailConnectViewModel.Effect.PickAccount -> launcher.launch(effect.intent)
+                is GmailConnectViewModel.Effect.AskConsent -> consentLauncher.launch(effect.intent)
+                is GmailConnectViewModel.Effect.Message -> Toast.makeText(context, effect.text, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -1240,10 +1227,7 @@ fun NativeGmailSettings(
                     }
                 } else {
                     FilledTonalButton(
-                        onClick = {
-                            val intent = GmailAuthManager(context).pickGoogleAccountIntent()
-                            launcher.launch(intent)
-                        },
+                        onClick = vm::connect,
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = SynapseDim,
                             contentColor = Synapse

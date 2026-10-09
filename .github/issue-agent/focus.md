@@ -6,7 +6,7 @@ on the next run once it is on `main`.
 
 The agent runs every hour (24 times a day, on the hour in IST) and files one issue
 per run. Each run is assigned the next area in this list, wrapping back to 1 after the
-last, so with 10 areas every area comes up once every 10 hours. If a run finds nothing
+last, so with 11 areas every area comes up once every 11 hours. If a run finds nothing
 worth filing in its area, it moves on to the next area in the list.
 
 Keep each area on the form `N. **Title** — description`: the workflow reads the bold
@@ -40,6 +40,19 @@ titles to build the rotation and the `area:<title>` labels.
    tables or lists loaded into memory where paging or a bounded query would do, in-memory
    caches and maps with no size limit, and large objects held in `remember`, ViewModel
    state or `StateFlow`s after the screen no longer needs them.
+11. **App size** — files, resources and dependencies left behind by refactors and
+   changed or removed features. Unused: drawables, layouts, strings, colours, dimens,
+   raw files and assets; Kotlin files, classes and Composables nothing calls; Gradle
+   dependencies and version-catalog entries no module uses; empty or orphaned modules.
+   Oversized: large PNG/JPEG resources that could be vector drawables or WebP, assets
+   shipped in every density when one would do, and release builds without
+   `isMinifyEnabled`/`isShrinkResources`. Work through the project slowly and
+   incrementally: each issue covers one small, self-contained batch (one module or one
+   resource type), not a project-wide sweep. Before calling anything unused, Grep for
+   every way it can be referenced — `R.<type>.<name>`, `@<type>/<name>` in XML and the
+   manifest, `painterResource`/`stringResource`, `getIdentifier` and other name-based
+   lookups, reflection, and other modules — and leave out anything that might be loaded
+   dynamically.
 
 
 ## Out of scope

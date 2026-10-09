@@ -55,6 +55,7 @@ class OpenAiProvider(
 
     private val client: HttpClient = defaultClient()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val pdfPageCache = PdfPageCache()
 
     override suspend fun complete(req: LlmRequest, logger: Logger?): LlmResponse {
         val log = logger ?: this.logger
@@ -162,20 +163,14 @@ class OpenAiProvider(
                             // Host has no PDF content type (e.g. Ollama) — render pages to
                             // images instead of a text placeholder, so the model actually
                             // sees the document rather than guessing at a local file path.
-                            val tmp = java.io.File.createTempFile("attach_pdf", ".pdf").apply {
-                                writeBytes(java.util.Base64.getDecoder().decode(attachment.dataBase64))
-                            }
-                            try {
-                                renderPdfPagesAsImages(tmp, attachment.filename ?: "document").forEach { page ->
-                                    add(buildJsonObject {
-                                        put("type", "image_url")
-                                        putJsonObject("image_url") {
-                                            put("url", "data:${page.mimeType};base64,${page.dataBase64}")
-                                        }
-                                    })
-                                }
-                            } finally {
-                                tmp.delete()
+                            // Cached, since every request re-sends the whole history.
+                            pdfPageCache.pagesFor(attachment).forEach { page ->
+                                add(buildJsonObject {
+                                    put("type", "image_url")
+                                    putJsonObject("image_url") {
+                                        put("url", "data:${page.mimeType};base64,${page.dataBase64}")
+                                    }
+                                })
                             }
                         }
                         // Dictated voice notes carry a transcript and no audio bytes; send the

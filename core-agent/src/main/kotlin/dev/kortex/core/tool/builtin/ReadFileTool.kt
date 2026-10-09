@@ -10,9 +10,15 @@ import dev.kortex.core.tool.tool
 import java.io.File
 import java.util.Base64
 
+/** Largest file attached whole (base64) to the conversation. PDFs and text are read
+ *  incrementally and bounded by page/char caps instead, so they aren't held to this. */
+internal const val MAX_ATTACHED_FILE_BYTES = 10L * 1024 * 1024
+
+private const val MAX_TEXT_CHARS = 100_000
+
 fun readFileTool(): Tool = tool(
     name = "read_file",
-    description = "Reads a local file from the device (like downloaded PDFs, text, or images) and attaches its content to the conversation so you can analyze it.",
+    description = "Reads a local file from the device (like downloaded PDFs, text, or images) and attaches its content to the conversation so you can analyze it. Images and other non-text files over 10 MB are refused.",
 ) {
     param("file_path", "string", "The absolute path to the local file to read.")
     risk(RiskLevel.LOW)
@@ -26,7 +32,6 @@ fun readFileTool(): Tool = tool(
         }
         
         try {
-            val bytes = file.readBytes()
             val ext = file.extension.lowercase()
             val mimeType = when (ext) {
                 "pdf" -> "application/pdf"
@@ -53,11 +58,29 @@ fun readFileTool(): Tool = tool(
 
             // If it's text, we can just return it in content to save attachment overhead
             if (mimeType == "text/plain") {
-                val text = file.readText(Charsets.UTF_8).take(100_000)
+                // Read only the first MAX_TEXT_CHARS rather than the whole file.
+                val text = file.bufferedReader(Charsets.UTF_8).use { reader ->
+                    val buf = CharArray(MAX_TEXT_CHARS)
+                    var n = 0
+                    while (n < buf.size) {
+                        val read = reader.read(buf, n, buf.size - n)
+                        if (read < 0) break
+                        n += read
+                    }
+                    String(buf, 0, n)
+                }
                 return@execute ToolResult(true, "File contents of $filePath:\n$text")
             }
-            
-            val base64 = Base64.getEncoder().encodeToString(bytes)
+
+            val size = file.length()
+            if (size > MAX_ATTACHED_FILE_BYTES) {
+                return@execute ToolResult(
+                    false,
+                    "File is too large to attach: ${file.name} is ${size / (1024 * 1024)} MB, the limit is ${MAX_ATTACHED_FILE_BYTES / (1024 * 1024)} MB.",
+                )
+            }
+
+            val base64 = Base64.getEncoder().encodeToString(file.readBytes())
             val attachment = Attachment(
                 mimeType = mimeType,
                 dataBase64 = base64,

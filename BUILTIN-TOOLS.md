@@ -96,12 +96,13 @@ module (in `AgentModule.provideToolRegistry`, e.g. `defaultTools() + gmailTool(.
 - **Risk:** LOW.
 - **Behavior:** Branches on extension:
   - **PDF** — rendered page-by-page via Android `PdfRenderer` into JPEG images (2×
-    resolution, quality 90, max 10 pages to bound payload size) and returned as
-    `ToolResult.attachments` for the vision model.
-  - **Text** (`txt`/`md`/`csv`/`json`) — contents returned inline in `content`
-    (truncated at 100,000 chars), skipping attachment overhead.
+    resolution capped at 1600 px on the longest side, quality 90, max 10 pages to bound
+    payload size) and returned as `ToolResult.attachments` for the vision model.
+  - **Text** (`txt`/`md`/`csv`/`json`) — only the first 100,000 chars are read and
+    returned inline in `content`, skipping attachment overhead.
   - **Images / other** — whole file base64-encoded as a single attachment
     (`png`/`jpg`/`jpeg`/`webp` get proper MIME types; unknown → `application/octet-stream`).
+    Files over 10 MB (`MAX_ATTACHED_FILE_BYTES`) are refused with `ok=false`.
 - **Note:** Pairs with `gmail_search`, which downloads email attachments to local paths
   this tool can then read. Uses Android graphics APIs — `core-agent` is now an Android
   library module, no longer pure JVM.

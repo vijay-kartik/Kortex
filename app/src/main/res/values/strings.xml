@@ -5,4 +5,10 @@
     <string name="shortcut_save_link_long">Save to links</string>
     <string name="shortcut_ask_agent_short">Ask agent</string>
     <string name="shortcut_ask_agent_long">Ask agent</string>
+
+    <!-- Notification posted when a file shared into Kortex has been processed. -->
+    <string name="share_results_channel_name">Agent results</string>
+    <string name="share_results_channel_description">Posted when a shared file has been processed.</string>
+    <string name="share_results_title">Agent processing complete</string>
+    <string name="share_results_tap_to_view">Tap to view</string>
 </resources>

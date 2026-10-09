@@ -44,9 +44,7 @@ dependencies {
     implementation(project(":design"))
     implementation(project(":mvi"))
 
-    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
-    implementation(libs.material)
 
     // Compose
     implementation(platform(libs.compose.bom))

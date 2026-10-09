@@ -10,7 +10,7 @@ import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.data.local.AppDatabase
 import dev.kortex.app.data.local.RoomChatSessionRepository
 import dev.kortex.app.domain.chat.ChatSessionRepository
-import dev.kortex.app.data.auth.GmailAuthManager
+import dev.kortex.app.domain.gmail.GmailAccess
 import dev.kortex.app.data.ai.AiGatewayClient
 import dev.kortex.app.data.finance.JevFinanceDecider
 import dev.kortex.app.data.finance.LlmFinanceReader
@@ -77,8 +77,7 @@ object DataModule {
     /** Topics read the mailbox connected in Settings, with the same read-only token the agent uses. */
     @Provides
     @Singleton
-    fun provideEmailDirectory(@ApplicationContext context: Context, settings: SettingsStore): EmailDirectory =
-        GmailEmailDirectory(settings, GmailAuthManager(context))
+    fun provideEmailDirectory(gmail: GmailAccess): EmailDirectory = GmailEmailDirectory(gmail)
 
     /** Topic summaries come from the model the user picked in Settings. */
     @Provides

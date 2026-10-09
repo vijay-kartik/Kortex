@@ -21,11 +21,14 @@ import java.io.File
  * @param context         Android context for file I/O (cache dir).
  * @param tokenProvider   returns a valid OAuth2 access token, or null if the
  *                        user has not connected their Google account yet.
+ * @param invalidateToken drops a token Gmail answered 401 to; the search then runs
+ *                        once more with a fresh one from [tokenProvider].
  * @param gmailApi        the [GmailApi] HTTP client instance.
  */
 fun gmailTool(
     context: Context,
     tokenProvider: suspend () -> String?,
+    invalidateToken: (String) -> Unit = {},
     gmailApi: GmailApi = GmailApi(),
 ): Tool = tool(
     name = "gmail_search",
@@ -68,7 +71,7 @@ fun gmailTool(
     )
 
     execute { args ->
-        val token = tokenProvider()
+        var token = tokenProvider()
             ?: return@execute ToolResult(
                 false,
                 "Gmail is not connected. Ask the user to connect their Google account " +
@@ -81,14 +84,19 @@ fun gmailTool(
         val downloadAttachments = args.stringOrNull("download_attachments")?.lowercase() != "no"
 
         runCatching {
-            // 1. List matching message IDs.
-            val messageIds = gmailApi.listMessages(token, query, maxResults)
-            if (messageIds.isEmpty()) {
+            // 1–2. List matching messages and fetch their full content. A 401 means the
+            // token has expired: drop it and try once more with a fresh one.
+            val messages = try {
+                fetchMessages(gmailApi, token, query, maxResults)
+            } catch (e: GmailApiException) {
+                if (e.statusCode != 401) throw e
+                invalidateToken(token)
+                token = tokenProvider() ?: throw e
+                fetchMessages(gmailApi, token, query, maxResults)
+            }
+            if (messages.isEmpty()) {
                 return@execute ToolResult(true, "No emails found matching: \"$query\"")
             }
-
-            // 2. Fetch full content for each message.
-            val messages = messageIds.map { gmailApi.getMessage(token, it) }
 
             // 3. Format the response, downloading attachments as needed.
             val attachmentDir = File(context.cacheDir, "gmail_attachments").apply { mkdirs() }
@@ -164,6 +172,9 @@ fun gmailTool(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────────
+
+private suspend fun fetchMessages(api: GmailApi, token: String, query: String, maxResults: Int): List<GmailMessage> =
+    api.listMessages(token, query, maxResults).map { api.getMessage(token, it) }
 
 private suspend fun downloadAttachment(
     api: GmailApi,

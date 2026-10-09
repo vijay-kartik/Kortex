@@ -72,6 +72,11 @@ android {
             isMinifyEnabled = false
         }
     }
+
+    // Lets JVM tests hand a plain `Intent()` through, as the Gmail consent flow does.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -128,4 +133,5 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.json)
+    testImplementation(libs.coroutines.test)
 }

@@ -8,10 +8,12 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.app.BuildConfig
+import dev.kortex.app.data.auth.AccountManagerGmailAccess
 import dev.kortex.app.data.auth.GmailAuthManager
 import dev.kortex.app.data.auth.McpOAuthManager
 import dev.kortex.app.data.security.AppLockStore
 import dev.kortex.app.data.settings.SettingsStore
+import dev.kortex.app.domain.gmail.GmailAccess
 import dev.kortex.app.domain.security.AppLock
 import dev.kortex.finance.data.local.FinanceSyncDao
 import dev.kortex.finance.domain.port.FinanceKeySource
@@ -76,6 +78,12 @@ object AppModule {
     @Provides
     @Singleton
     fun provideGmailAuthManager(@ApplicationContext context: Context): GmailAuthManager = GmailAuthManager(context)
+
+    /** The one owner of the connected Gmail account and its token, for `gmail_search`, Topics and Settings. */
+    @Provides
+    @Singleton
+    fun provideGmailAccess(auth: GmailAuthManager, settingsStore: SettingsStore): GmailAccess =
+        AccountManagerGmailAccess(auth, settingsStore)
 
     @Provides
     @Singleton

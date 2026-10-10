@@ -57,6 +57,7 @@ import dev.kortex.finance.domain.usecase.SuggestMerchant
 import dev.kortex.finance.domain.read.FinanceDecider
 import dev.kortex.finance.domain.read.FinanceReader
 import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
 
 /** Finance storage and use cases. Domain and data classes carry no DI annotations; they are built here. */
 @Module
@@ -97,10 +98,11 @@ object FinanceModule {
 
     @Provides
     @Singleton
-    fun provideRepository(dao: FinanceDao, clock: Clock): FinanceRepository = RoomFinanceRepository(dao, clock)
+    fun provideRepository(dao: FinanceDao, clock: Clock): FinanceRepository = RoomFinanceRepository(dao, clock, Dispatchers.Default)
 
+    /** Off Main: the snapshot, and the screens' calculators over it, grow with the whole ledger. */
     @Provides
-    fun provideObserveFinance(repository: FinanceRepository) = ObserveFinance(repository)
+    fun provideObserveFinance(repository: FinanceRepository) = ObserveFinance(repository, Dispatchers.Default)
 
     /** FinanceKeySource (the `financeKey` function) is bound by the app, from `:sync`. */
     @Provides

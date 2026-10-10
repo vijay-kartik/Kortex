@@ -39,6 +39,7 @@ import dev.kortex.mvi.ObserveEffects
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 
 @HiltViewModel
 class RecurringListViewModel @Inject constructor(
@@ -49,7 +50,9 @@ class RecurringListViewModel @Inject constructor(
     private val filter = MutableStateFlow(RecurringFilter.ALL)
 
     init {
-        combine(observeFinance(), filter) { snapshot, filter -> RecurringListUi.build(snapshot, clock.today(), filter) }.reduceInto { it }
+        combine(observeFinance(), filter) { snapshot, filter -> RecurringListUi.build(snapshot, clock.today(), filter) }
+            .flowOn(observeFinance.dispatcher)
+            .reduceInto { it }
     }
 
     override fun handleIntent(intent: RecurringListIntent) {

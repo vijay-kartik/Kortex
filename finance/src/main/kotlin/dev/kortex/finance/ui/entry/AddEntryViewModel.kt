@@ -21,6 +21,8 @@ import dev.kortex.mvi.MviViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -42,14 +44,17 @@ class AddEntryViewModel @Inject constructor(
         setState { copy(income = income, date = clock.today()) }
         // Follows the data, so an account or category added from here shows up when it closes.
         viewModelScope.launch {
-            observeFinance().collect { snapshot ->
+            observeFinance().map { snapshot ->
                 val (accounts, categories) = AddEntryState.options(snapshot, income)
+                // Looks through every entry, so it is worked out off Main with the snapshot.
+                Triple(accounts, categories, AddEntryState.defaultAccount(snapshot, income, accounts))
+            }.flowOn(observeFinance.dispatcher).collect { (accounts, categories, defaultAccount) ->
                 setState {
                     copy(
                         loading = false,
                         accounts = accounts,
                         categories = categories,
-                        accountUid = accountUid?.takeIf { uid -> accounts.any { it.uid == uid } } ?: AddEntryState.defaultAccount(snapshot, income, accounts),
+                        accountUid = accountUid?.takeIf { uid -> accounts.any { it.uid == uid } } ?: defaultAccount,
                         categoryUid = categoryUid?.takeIf { uid -> categories.any { it.uid == uid } },
                     )
                 }

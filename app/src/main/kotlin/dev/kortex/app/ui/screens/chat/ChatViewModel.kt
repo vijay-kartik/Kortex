@@ -1,12 +1,6 @@
 package dev.kortex.app.ui.screens.chat
 
-import android.app.Application
-import android.content.Intent
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.core.log.AndroidLogger
@@ -32,12 +26,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import dev.kortex.core.observability.AgentRunStore
-import dev.kortex.app.data.settings.SettingsStore
+import dev.kortex.app.domain.agent.ActiveModels
+import dev.kortex.app.domain.agent.ModelSelection
 import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.domain.chat.ChatSessionSummary
 import dev.kortex.app.domain.chat.ChatTurn
 import dev.kortex.app.domain.chat.ReasoningLine
 import dev.kortex.app.domain.chat.ReasoningStats
+import dev.kortex.app.domain.voice.VoiceDictation
+import dev.kortex.app.domain.voice.VoiceEvent
+import dev.kortex.app.domain.voice.VoiceFailure
 import kotlinx.coroutines.flow.stateIn
 import java.util.UUID
 import javax.inject.Inject
@@ -73,19 +71,19 @@ sealed interface VoiceState {
  */
 @HiltViewModel
 class ChatViewModel @Inject constructor(
-    application: Application,
     private val provider: LlmProvider,
     private val tools: ToolRegistry,
-    private val settingsStore: SettingsStore,
+    private val modelSelection: ModelSelection,
     private val sessionRepository: ChatSessionRepository,
     private val runTraceStore: AgentRunStore,
-) : AndroidViewModel(application) {
+    private val voiceDictation: VoiceDictation,
+) : ViewModel() {
 
     private val _ui = MutableStateFlow(ChatUi())
     val ui: StateFlow<ChatUi> = kotlinx.coroutines.flow.combine(
-        _ui, settingsStore.activeProvider, settingsStore.activeModel
+        _ui, modelSelection.activeProvider, modelSelection.activeModel
     ) { state, provider, model ->
-        state.copy(activeProvider = provider, activeModel = if (provider == "ollama" || provider == "ollama-cloud") model else "gpt-4o")
+        state.copy(activeProvider = provider, activeModel = ActiveModels.of(provider, model).reasoning)
     }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), ChatUi())
 
     private val _stagedAttachments = MutableStateFlow<List<dev.kortex.core.state.Attachment>>(emptyList())
@@ -102,7 +100,6 @@ class ChatViewModel @Inject constructor(
     private val _draft = MutableStateFlow<String?>(null)
     val draft: StateFlow<String?> = _draft.asStateFlow()
 
-    private var recognizer: SpeechRecognizer? = null
     private var voiceTicker: Job? = null
     private var voiceStartMs = 0L
 
@@ -136,26 +133,16 @@ class ChatViewModel @Inject constructor(
         _stagedAttachments.update { it.filterIndexed { i, _ -> i != index } }
     }
 
-    // ── voice input (on-device dictation via SpeechRecognizer) ──────────
+    // ── voice input (dictation via VoiceDictation) ──────────
+
+    init {
+        viewModelScope.launch { voiceDictation.events.collect(::onVoiceEvent) }
+    }
 
     /** Opens the mic and streams live partial transcripts into [voice]. Caller must hold
      *  RECORD_AUDIO. The final transcript is staged as a voice-note attachment. */
     fun startVoiceInput() {
         if (_voice.value !is VoiceState.Idle) return
-        val app = getApplication<Application>()
-        if (!SpeechRecognizer.isRecognitionAvailable(app)) {
-            _voiceError.value = "Speech recognition isn't available on this device."
-            return
-        }
-        val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(app).also { recognizer = it }
-        rec.setRecognitionListener(voiceListener)
-
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-        }
         voiceStartMs = System.currentTimeMillis()
         _voice.value = VoiceState.Listening()
         voiceTicker = viewModelScope.launch {
@@ -166,92 +153,71 @@ class ChatViewModel @Inject constructor(
                 }
             }
         }
-        rec.startListening(intent)
+        voiceDictation.start()
     }
 
-    /** Closes the mic; the recognizer finishes transcribing what was said. */
+    /** Closes the mic; the engine finishes transcribing what was said. */
     fun stopVoiceInput() {
         if (_voice.value !is VoiceState.Listening) return
         _voice.value = VoiceState.Transcribing
-        recognizer?.stopListening()
+        voiceDictation.stop()
     }
 
     /** Abandons the dictation entirely — nothing is staged. */
     fun cancelVoiceInput() {
         voiceTicker?.cancel()
-        recognizer?.cancel()
+        voiceDictation.cancel()
         _voice.value = VoiceState.Idle
     }
 
     fun consumeVoiceError() { _voiceError.value = null }
 
-    private val voiceListener = object : RecognitionListener {
-        override fun onRmsChanged(rmsdB: Float) {
-            _voice.update { cur -> if (cur is VoiceState.Listening) cur.copy(rms = rmsdB) else cur }
-        }
-
-        override fun onPartialResults(partialResults: Bundle?) {
-            val text = partialResults
-                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull()
-                .orEmpty()
-            if (text.isNotBlank()) {
-                _voice.update { cur -> if (cur is VoiceState.Listening) cur.copy(partial = text) else cur }
-            }
-        }
-
-        override fun onEndOfSpeech() {
-            // The recognizer auto-stops on silence; results arrive in onResults.
-            _voice.update { cur -> if (cur is VoiceState.Listening) VoiceState.Transcribing else cur }
-        }
-
-        override fun onResults(results: Bundle?) {
-            voiceTicker?.cancel()
-            val transcript = results
-                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull()
-                ?.trim()
-                .orEmpty()
-            if (transcript.isBlank()) {
-                _voiceError.value = "Didn't catch that — try again."
-            } else {
-                stageAttachment(
-                    dev.kortex.core.state.Attachment(
-                        mimeType = "audio/x-voice",
-                        dataBase64 = "",
-                        filename = "Voice message",
-                        transcript = transcript,
-                        durationMs = System.currentTimeMillis() - voiceStartMs,
+    private fun onVoiceEvent(event: VoiceEvent) {
+        // Idle means no dictation is running (or it was cancelled): drop any late events.
+        if (_voice.value is VoiceState.Idle) return
+        when (event) {
+            is VoiceEvent.Level ->
+                _voice.update { cur -> if (cur is VoiceState.Listening) cur.copy(rms = event.rmsDb) else cur }
+            is VoiceEvent.Partial ->
+                _voice.update { cur -> if (cur is VoiceState.Listening) cur.copy(partial = event.text) else cur }
+            VoiceEvent.Transcribing ->
+                _voice.update { cur -> if (cur is VoiceState.Listening) VoiceState.Transcribing else cur }
+            is VoiceEvent.Final -> {
+                voiceTicker?.cancel()
+                if (event.transcript.isBlank()) {
+                    _voiceError.value = "Didn't catch that — try again."
+                } else {
+                    stageAttachment(
+                        dev.kortex.core.state.Attachment(
+                            mimeType = "audio/x-voice",
+                            dataBase64 = "",
+                            filename = "Voice message",
+                            transcript = event.transcript,
+                            durationMs = System.currentTimeMillis() - voiceStartMs,
+                        )
                     )
-                )
+                }
+                _voice.value = VoiceState.Idle
             }
-            _voice.value = VoiceState.Idle
-        }
-
-        override fun onError(error: Int) {
-            voiceTicker?.cancel()
-            _voice.value = VoiceState.Idle
-            _voiceError.value = when (error) {
-                SpeechRecognizer.ERROR_NO_MATCH,
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Didn't catch that — try again."
-                SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE,
-                SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED ->
-                    "Offline English isn't installed. Add it under system Settings > Voice input."
-                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is required."
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "The recognizer is busy — try again in a moment."
-                else -> "Voice input failed (error $error) — try again."
+            is VoiceEvent.Failed -> {
+                voiceTicker?.cancel()
+                _voice.value = VoiceState.Idle
+                _voiceError.value = when (event.reason) {
+                    VoiceFailure.UNAVAILABLE -> "Speech recognition isn't available on this device."
+                    VoiceFailure.NO_MATCH -> "Didn't catch that — try again."
+                    VoiceFailure.LANGUAGE_UNAVAILABLE ->
+                        "Offline English isn't installed. Add it under system Settings > Voice input."
+                    VoiceFailure.NO_PERMISSION -> "Microphone permission is required."
+                    VoiceFailure.BUSY -> "The recognizer is busy — try again in a moment."
+                    VoiceFailure.OTHER ->
+                        "Voice input failed${event.code?.let { " (error $it)" }.orEmpty()} — try again."
+                }
             }
         }
-
-        override fun onReadyForSpeech(params: Bundle?) {}
-        override fun onBeginningOfSpeech() {}
-        override fun onBufferReceived(buffer: ByteArray?) {}
-        override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 
     override fun onCleared() {
-        recognizer?.destroy()
-        recognizer = null
+        voiceDictation.release()
         super.onCleared()
     }
 
@@ -301,11 +267,8 @@ class ChatViewModel @Inject constructor(
 
         if (agentQuery.isBlank() && attachmentsToSend.isEmpty()) return
         viewModelScope.launch {
-            val activeProviderName = settingsStore.activeProvider.first()
-            val model = when (activeProviderName) {
-                "ollama", "ollama-cloud" -> settingsStore.activeModel.first()
-                else -> "gpt-4o"
-            }
+            val activeProviderName = modelSelection.activeProvider.first()
+            val model = ActiveModels.of(activeProviderName, modelSelection.activeModel.first()).reasoning
             // Snapshot history before appending this turn — Agent.ask() adds the query as a
             // fresh USER message itself, so including the just-added turn would send it twice.
             val historyMessages = _ui.value.turns.map { it.message }
@@ -316,7 +279,7 @@ class ChatViewModel @Inject constructor(
                     status = "thinking…",
                     liveReasoning = emptyList(),
                     activeProvider = activeProviderName,
-                    activeModel = model ?: "unknown model",
+                    activeModel = model,
                 )
             }
             // Scoped to this turn: the logger mirrors every line to Logcat (via AndroidLogger)

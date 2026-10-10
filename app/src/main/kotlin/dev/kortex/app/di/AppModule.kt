@@ -13,8 +13,11 @@ import dev.kortex.app.data.auth.GmailAuthManager
 import dev.kortex.app.data.auth.McpOAuthManager
 import dev.kortex.app.data.security.AppLockStore
 import dev.kortex.app.data.settings.SettingsStore
+import dev.kortex.app.data.voice.AndroidVoiceDictation
+import dev.kortex.app.domain.agent.ModelSelection
 import dev.kortex.app.domain.gmail.GmailAccess
 import dev.kortex.app.domain.security.AppLock
+import dev.kortex.app.domain.voice.VoiceDictation
 import dev.kortex.finance.data.local.FinanceSyncDao
 import dev.kortex.finance.domain.port.FinanceKeySource
 import dev.kortex.links.data.LinkSyncDao
@@ -43,6 +46,13 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSettingsStore(@ApplicationContext context: Context): SettingsStore = SettingsStore(context)
+
+    @Provides
+    fun provideModelSelection(settingsStore: SettingsStore): ModelSelection = settingsStore
+
+    /** Unscoped: each chat screen owns its recognizer and releases it when cleared. */
+    @Provides
+    fun provideVoiceDictation(@ApplicationContext context: Context): VoiceDictation = AndroidVoiceDictation(context)
 
     /** The signed-in Google account; Kortex can't be used without one. */
     @Provides

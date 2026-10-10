@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import dev.kortex.app.domain.agent.ModelSelection
 import dev.kortex.core.llm.LlmProviderSettings
 import dev.kortex.core.mcp.PendingAuthorization
 
@@ -40,7 +41,7 @@ data class McpOAuthState(
  *  - custom (user-added) MCP servers
  *  - set of disabled tool names (applies to builtins + all MCP tools alike)
  */
-class SettingsStore(private val context: Context) {
+class SettingsStore(private val context: Context) : ModelSelection {
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -70,7 +71,7 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    val activeModel: Flow<String> = context.mcpDataStore.data.map { prefs ->
+    override val activeModel: Flow<String> = context.mcpDataStore.data.map { prefs ->
         prefs[KEY_ACTIVE_MODEL] ?: "gemma4:31b"
     }
 
@@ -80,7 +81,7 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    val activeProvider: Flow<String> = context.mcpDataStore.data.map { prefs ->
+    override val activeProvider: Flow<String> = context.mcpDataStore.data.map { prefs ->
         prefs[KEY_ACTIVE_PROVIDER] ?: "ollama-cloud"
     }
 

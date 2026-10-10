@@ -14,26 +14,31 @@ import dev.kortex.finance.domain.model.Transaction
 import dev.kortex.finance.domain.port.Clock
 import dev.kortex.finance.domain.port.SealedSecret
 import dev.kortex.finance.domain.repository.FinanceRepository
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
+/** Room runs the queries on its own executor; rows are mapped to the domain on [dispatcher]. */
 class RoomFinanceRepository(
     private val dao: FinanceDao,
     private val clock: Clock,
+    private val dispatcher: CoroutineContext = EmptyCoroutineContext,
 ) : FinanceRepository {
 
-    override fun observeAccounts(): Flow<List<Account>> = dao.observeAccounts().map { rows -> rows.map { it.toDomain() } }
+    override fun observeAccounts(): Flow<List<Account>> = dao.observeAccounts().map { rows -> rows.map { it.toDomain() } }.flowOn(dispatcher)
 
     override fun observeTransactions(): Flow<List<Transaction>> =
-        dao.observeTransactions().map { rows -> rows.map { it.toDomain() } }
+        dao.observeTransactions().map { rows -> rows.map { it.toDomain() } }.flowOn(dispatcher)
 
-    override fun observeCategories(): Flow<List<Category>> = dao.observeCategories().map { rows -> rows.map { it.toDomain() } }
+    override fun observeCategories(): Flow<List<Category>> = dao.observeCategories().map { rows -> rows.map { it.toDomain() } }.flowOn(dispatcher)
 
-    override fun observeRecurring(): Flow<List<Recurring>> = dao.observeRecurring().map { rows -> rows.map { it.toDomain() } }
+    override fun observeRecurring(): Flow<List<Recurring>> = dao.observeRecurring().map { rows -> rows.map { it.toDomain() } }.flowOn(dispatcher)
 
-    override fun observeStatements(): Flow<List<CardStatement>> = dao.observeStatements().map { rows -> rows.map { it.toDomain() } }
+    override fun observeStatements(): Flow<List<CardStatement>> = dao.observeStatements().map { rows -> rows.map { it.toDomain() } }.flowOn(dispatcher)
 
-    override fun observeBudgets(): Flow<List<Budget>> = dao.observeBudgets().map { rows -> rows.map { it.toDomain() } }
+    override fun observeBudgets(): Flow<List<Budget>> = dao.observeBudgets().map { rows -> rows.map { it.toDomain() } }.flowOn(dispatcher)
 
     override suspend fun getAccount(uid: String): Account? = dao.getAccount(uid)?.toDomain()
 

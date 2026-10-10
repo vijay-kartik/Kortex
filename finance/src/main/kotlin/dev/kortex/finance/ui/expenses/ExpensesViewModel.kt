@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -29,7 +31,7 @@ class ExpensesViewModel @Inject constructor(
     init {
         combine(observeFinance(), period) { snapshot: FinanceSnapshot, period: ExpensesPeriod ->
             ExpensesUi.build(snapshot, clock.today(), period, clock.zone())
-        }.reduceInto { it }
+        }.flowOn(observeFinance.dispatcher).reduceInto { it }
     }
 
     override fun handleIntent(intent: ExpensesIntent) {
@@ -57,7 +59,10 @@ class MonthlyReportViewModel @Inject constructor(
     fun show(month: YearMonth) {
         if (job != null) return
         job = viewModelScope.launch {
-            observeFinance().collect { snapshot -> _state.value = MonthlyReportUi.build(snapshot, month, clock.today()) }
+            observeFinance()
+                .map { snapshot -> MonthlyReportUi.build(snapshot, month, clock.today()) }
+                .flowOn(observeFinance.dispatcher)
+                .collect { _state.value = it }
         }
     }
 }

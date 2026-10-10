@@ -21,6 +21,7 @@ import dev.kortex.mvi.MviViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -32,6 +33,7 @@ class CategoriesViewModel @Inject constructor(
 
     init {
         combine(observeFinance(), observeBudgets()) { snapshot, budgets -> CategoriesUi.build(snapshot, budgets, clock.today()) }
+            .flowOn(observeFinance.dispatcher)
             .reduceInto { it }
     }
 
@@ -72,7 +74,11 @@ class CategoryFormViewModel @Inject constructor(
         started = true
         setState { copy(loading = true, kind = kind) }
         viewModelScope.launch {
-            combine(observeFinance(), observeBudgets(), ::Pair).collect { (snapshot, budgets) ->
+            combine(observeFinance(), observeBudgets()) { snapshot, budgets ->
+                // This month's spending scans every entry, so it is worked out off Main with the snapshot.
+                val thisMonth = editUid?.let { snapshot.categoriesByUid[it] }?.let { CategoryFormState.thisMonth(snapshot, it, clock.today()) }
+                Triple(snapshot, budgets, thisMonth)
+            }.flowOn(observeFinance.dispatcher).collect { (snapshot, budgets, thisMonth) ->
                 if (editUid == null) {
                     setState { copy(loading = false, siblings = snapshot.categories.filter { it.kind == this.kind }) }
                     return@collect
@@ -84,7 +90,7 @@ class CategoryFormViewModel @Inject constructor(
                     return@collect
                 }
                 val saved = budgets[editUid]
-                val (spent, projected) = CategoryFormState.thisMonth(snapshot, category, clock.today())
+                val (spent, projected) = thisMonth ?: return@collect
                 setState {
                     if (loading) {
                         copy(

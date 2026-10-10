@@ -10,6 +10,7 @@ import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.mvi.MviViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
@@ -22,7 +23,7 @@ class DashboardViewModel @Inject constructor(
     init {
         combine(observeFinance(), observeBudgets(), inbox.observeToReview()) { snapshot, budgets, toReview ->
             DashboardUi.build(snapshot, clock.today(), budgets).copy(smsToReview = toReview.size)
-        }.reduceInto { it }
+        }.flowOn(observeFinance.dispatcher).reduceInto { it }
     }
 
     override fun handleIntent(intent: DashboardIntent) {

@@ -15,6 +15,7 @@ import dev.kortex.finance.ui.common.ScreenLock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -26,7 +27,7 @@ class AccountsViewModel @Inject constructor(
 ) : MviViewModel<AccountsState, AccountsIntent, AccountsEffect>(AccountsState()) {
 
     init {
-        observeFinance().map { AccountsUi.build(it, clock.today()) }.reduceInto { it }
+        observeFinance().map { AccountsUi.build(it, clock.today()) }.flowOn(observeFinance.dispatcher).reduceInto { it }
     }
 
     override fun handleIntent(intent: AccountsIntent) {
@@ -54,7 +55,7 @@ class CardsViewModel @Inject constructor(
             val state = CardsUi.build(snapshot, clock.today())
             // A deleted or archived front card falls back to the first one.
             state.copy(revealed = shown, frontUid = frontUid?.takeIf { uid -> state.cards.any { it.uid == uid } } ?: state.cards.firstOrNull()?.uid)
-        }.reduceInto { it }
+        }.flowOn(observeFinance.dispatcher).reduceInto { it }
     }
 
     override fun handleIntent(intent: CardsIntent) {

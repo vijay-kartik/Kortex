@@ -16,6 +16,7 @@ import dev.kortex.mvi.MviViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -29,7 +30,9 @@ class PendingViewModel @Inject constructor(
     private val filter = MutableStateFlow(PendingFilter.ALL)
 
     init {
-        combine(observeFinance(), filter) { snapshot, filter -> PendingUi.build(snapshot, clock.today(), filter) }.reduceInto { it }
+        combine(observeFinance(), filter) { snapshot, filter -> PendingUi.build(snapshot, clock.today(), filter) }
+            .flowOn(observeFinance.dispatcher)
+            .reduceInto { it }
     }
 
     override fun handleIntent(intent: PendingIntent) {

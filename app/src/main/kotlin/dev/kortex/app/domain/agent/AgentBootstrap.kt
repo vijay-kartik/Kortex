@@ -39,14 +39,12 @@ class AgentBootstrap(
         scope.launch(Dispatchers.Main.immediate) {
             mcpConnections.reconnectOnSignIn()
         }
-        // Update the active reasoning/routing models globally whenever they change. Ollama
-        // hosts (local or cloud) don't serve OpenAI's mini model, so the router and other
-        // FAST-tier nodes must run on the same user-selected model there.
+        // Update the active reasoning/routing models globally whenever they change.
         scope.launch(Dispatchers.Main.immediate) {
-            combine(settingsStore.activeProvider, settingsStore.activeModel) { provider, model -> provider to model }
-                .collect { (provider, model) ->
-                    Models.REASONING = model
-                    Models.FAST = if (provider == "ollama" || provider == "ollama-cloud") model else "gpt-4o-mini"
+            combine(settingsStore.activeProvider, settingsStore.activeModel, ActiveModels::of)
+                .collect { models ->
+                    Models.REASONING = models.reasoning
+                    Models.FAST = models.fast
                 }
         }
     }

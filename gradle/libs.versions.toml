@@ -22,7 +22,6 @@ junit-version = "4.13.2"
 androidx-junit = "1.1.5"
 espresso-core = "3.5.1"
 litert = "1.4.2"
-litertgpu = "1.4.2"
 mediapipe = "1.0.0"
 jsoup = "1.23.2"
 biometric = "1.1.0"
@@ -95,7 +94,6 @@ junit = { group = "junit", name = "junit", version.ref = "junit-version" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidx-junit" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso-core" }
 litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert"}
-litert-gpu = { group = "com.google.ai.edge.litert", name = "litert-gpu", version.ref = "litert"}
 mediapipe-tasks-text = { module = "com.google.mediapipe:tasks-text", version.ref = "mediapipe" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 # YouTube's official IFrame player in a WebView (docs/TOPIC_VIDEOS_PLAN.md). 13.x sends the embed

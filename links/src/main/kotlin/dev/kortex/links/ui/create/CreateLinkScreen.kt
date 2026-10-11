@@ -37,6 +37,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -57,6 +58,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -74,6 +76,7 @@ import dev.kortex.design.KortexTheme
 import dev.kortex.design.Mono
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
+import dev.kortex.design.R
 import dev.kortex.design.Synapse
 import dev.kortex.design.Void
 import dev.kortex.links.domain.model.AlreadySavedLink
@@ -181,7 +184,7 @@ internal fun CreateLinkForm(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Text("←", fontSize = 24.sp, color = Muted)
+                        Icon(painterResource(R.drawable.ic_back), contentDescription = "Back", tint = Muted)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

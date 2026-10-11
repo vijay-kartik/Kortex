@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -22,14 +23,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.kortex.app.ui.screens.chat.VoiceState
 import dev.kortex.design.Edge
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
+import dev.kortex.design.R
 import dev.kortex.design.Synapse
 import dev.kortex.design.Void
 import dev.kortex.app.ui.util.formatVoiceDuration
@@ -85,7 +86,12 @@ internal fun ListeningBar(
                         modifier = Modifier.weight(1f),
                     )
                     IconButton(onClick = onCancel, modifier = Modifier.size(44.dp)) {
-                        Text("✕", fontSize = 18.sp, color = Muted)
+                        Icon(
+                            painterResource(R.drawable.ic_close),
+                            contentDescription = "Cancel voice input",
+                            tint = Muted,
+                            modifier = Modifier.size(18.dp),
+                        )
                     }
                     FilledIconButton(
                         onClick = onDone,
@@ -96,7 +102,11 @@ internal fun ListeningBar(
                         ),
                         modifier = Modifier.size(44.dp),
                     ) {
-                        Text("✓", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Icon(
+                            painterResource(R.drawable.ic_check_small),
+                            contentDescription = "Done",
+                            modifier = Modifier.size(20.dp),
+                        )
                     }
                 }
                 VoiceState.Transcribing -> {
@@ -108,7 +118,12 @@ internal fun ListeningBar(
                         modifier = Modifier.weight(1f),
                     )
                     IconButton(onClick = onCancel, modifier = Modifier.size(44.dp)) {
-                        Text("✕", fontSize = 18.sp, color = Muted)
+                        Icon(
+                            painterResource(R.drawable.ic_close),
+                            contentDescription = "Cancel transcription",
+                            tint = Muted,
+                            modifier = Modifier.size(18.dp),
+                        )
                     }
                 }
                 VoiceState.Idle -> {}

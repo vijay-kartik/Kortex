@@ -1,0 +1,10 @@
+<!-- Play triangle for audio playback. Filled; tint via Icon(tint = …). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8,5.14v13.72c0,0.79 0.87,1.27 1.54,0.84l10.29,-6.86c0.59,-0.39 0.59,-1.26 0,-1.66L9.54,4.3C8.87,3.87 8,4.35 8,5.14z"/>
+</vector>

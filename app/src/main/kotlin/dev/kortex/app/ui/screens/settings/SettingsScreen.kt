@@ -118,7 +118,7 @@ fun SettingsScreen(
                 title = { Text("Tools & Settings") },
                 navigationIcon = {
                     IconButton(onClick = onDismiss) {
-                        Text("←", fontSize = 24.sp, color = Muted)
+                        Icon(painterResource(R.drawable.ic_back), contentDescription = "Back", tint = Muted)
                     }
                 },
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(

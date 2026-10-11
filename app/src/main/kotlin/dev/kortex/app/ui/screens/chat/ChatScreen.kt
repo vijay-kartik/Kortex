@@ -47,7 +47,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -330,7 +329,11 @@ fun ChatScreen(
                         ),
                         modifier = Modifier.size(52.dp),
                     ) {
-                        Text("↑", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Icon(
+                            painterResource(R.drawable.ic_send),
+                            contentDescription = "Send",
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
                 } else {
                     FilledIconButton(

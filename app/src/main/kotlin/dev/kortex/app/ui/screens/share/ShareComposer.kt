@@ -41,9 +41,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.kortex.design.Edge
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
@@ -110,14 +109,15 @@ internal fun ShareComposer(
                     )
                     Text("SHARE → KORTEX", style = MaterialTheme.typography.labelSmall, color = Synapse)
                     Spacer(Modifier.weight(1f))
-                    Text(
-                        "✕",
-                        fontSize = 14.sp,
-                        color = Muted,
+                    Icon(
+                        painterResource(R.drawable.ic_close),
+                        contentDescription = "Close",
+                        tint = Muted,
                         modifier = Modifier
                             .clip(CircleShape)
-                            .clickable(onClick = onDismiss)
-                            .padding(6.dp),
+                            .clickable(role = Role.Button, onClick = onDismiss)
+                            .padding(6.dp)
+                            .size(14.dp),
                     )
                 }
 
@@ -176,7 +176,11 @@ internal fun ShareComposer(
                         ),
                         modifier = Modifier.size(52.dp),
                     ) {
-                        Text("↑", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Icon(
+                            painterResource(R.drawable.ic_send),
+                            contentDescription = "Send",
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
                 }
             }

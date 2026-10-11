@@ -1,0 +1,14 @@
+<!-- Back chevron (Kortex Figma, Button/Back); same path as finance's ic_fin_back. Stroke-drawn;
+     tint via Icon(tint = …). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M14.5,5.5L8,12l6.5,6.5"/>
+</vector>

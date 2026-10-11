@@ -3,20 +3,20 @@ package dev.kortex.app.ui.components
 import android.media.MediaPlayer
 import android.util.Base64
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -25,10 +25,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.kortex.design.R
 import dev.kortex.design.Void
 import dev.kortex.app.ui.util.formatVoiceDuration
@@ -86,12 +87,15 @@ private fun AudioPlayButton(att: Attachment) {
     DisposableEffect(Unit) {
         onDispose { player.release() }
     }
-    Surface(
-        color = Void.copy(alpha = 0.2f),
-        shape = CircleShape,
+    // 26dp visual circle inside a 48dp touch target, read by its icon's description.
+    Box(
+        contentAlignment = Alignment.Center,
         modifier = Modifier
+            .minimumInteractiveComponentSize()
             .size(26.dp)
-            .clickable {
+            .clip(CircleShape)
+            .background(Void.copy(alpha = 0.2f))
+            .clickable(role = Role.Button) {
                 if (playing) {
                     player.stop()
                     player.reset()
@@ -114,8 +118,11 @@ private fun AudioPlayButton(att: Attachment) {
                 }
             },
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(if (playing) "■" else "▶", fontSize = 11.sp, color = Void)
-        }
+        Icon(
+            painterResource(if (playing) R.drawable.ic_stop else R.drawable.ic_play),
+            contentDescription = if (playing) "Stop voice note" else "Play voice note",
+            tint = Void,
+            modifier = Modifier.size(12.dp),
+        )
     }
 }

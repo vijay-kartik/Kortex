@@ -28,8 +28,13 @@
         </intent>
     </queries>
 
+    <!-- No Auto Backup: bank SMS, the finance ledger, chat history and plaintext API keys / OAuth
+         tokens stay on this phone. allowBackup covers API 26–30 (and adb backup);
+         dataExtractionRules also blocks device-to-device transfer on Android 12+. -->
     <application
         android:name=".KortexApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="Kortex"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"

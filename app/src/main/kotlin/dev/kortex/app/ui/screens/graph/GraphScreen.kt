@@ -1,7 +1,6 @@
 package dev.kortex.app.ui.screens.graph
 
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModel
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,25 +52,11 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
-import io.objectbox.BoxStore
-import javax.inject.Inject
 import dev.kortex.graph_core.EdgeType
 import dev.kortex.graph_core.NodeCategory
 import dev.kortex.graph_core.NodeType
-import dev.kortex.graph_storage.EdgeEntity
-import dev.kortex.graph_storage.EmbeddingEntity
-import dev.kortex.graph_storage.GraphRegistryEntity
-import dev.kortex.graph_storage.business.AssertionEntity
-import dev.kortex.graph_storage.business.PersonEntity
-import dev.kortex.graph_storage.business.TopicEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -97,131 +82,6 @@ data class NodeDetails(
     val connectedEdges: List<GraphUiEdge>,
     val details: Map<String, String>
 )
-
-@HiltViewModel
-class GraphViewModel @Inject constructor(
-    private val boxStore: BoxStore,
-) : ViewModel() {
-    
-    private val _nodes = MutableStateFlow<List<GraphUiNode>>(emptyList())
-    val nodes: StateFlow<List<GraphUiNode>> = _nodes.asStateFlow()
-
-    private val _edges = MutableStateFlow<List<GraphUiEdge>>(emptyList())
-    val edges: StateFlow<List<GraphUiEdge>> = _edges.asStateFlow()
-
-    /** False until the first [loadGraph] finishes, so the screen can tell "still loading" from "empty graph". */
-    private val _loaded = MutableStateFlow(false)
-    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
-
-    private val _selectedNodeDetails = MutableStateFlow<NodeDetails?>(null)
-    val selectedNodeDetails: StateFlow<NodeDetails?> = _selectedNodeDetails.asStateFlow()
-
-    fun selectNode(nodeId: Long?) {
-        if (nodeId == null) {
-            _selectedNodeDetails.value = null
-            return
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            val node = _nodes.value.find { it.id == nodeId } ?: return@launch
-            val connectedEdges = _edges.value.filter { it.sourceId == nodeId || it.targetId == nodeId }
-            
-            // graphKey is the registry's @Id, so this is a direct lookup.
-            val reg = boxStore.boxFor(GraphRegistryEntity::class.java).get(nodeId)
-            
-            val detailsMap = mutableMapOf<String, String>()
-            if (reg != null) {
-                when (node.type) {
-                    NodeType.PERSON -> {
-                        val p = boxStore.boxFor(PersonEntity::class.java).get(reg.businessEntityId)
-                        if (p != null) {
-                            detailsMap["Name"] = p.name
-                            if (p.notes.isNotBlank()) detailsMap["Notes"] = p.notes
-                        }
-                    }
-                    NodeType.TOPIC -> {
-                        val t = boxStore.boxFor(TopicEntity::class.java).get(reg.businessEntityId)
-                        if (t != null) {
-                            detailsMap["Label"] = t.label
-                            if (t.description.isNotBlank()) detailsMap["Description"] = t.description
-                        }
-                    }
-                    NodeType.ASSERTION -> {
-                        val a = boxStore.boxFor(AssertionEntity::class.java).get(reg.businessEntityId)
-                        if (a != null) {
-                            detailsMap["Predicate"] = a.displayPredicate
-                            detailsMap["Confidence"] = "%.2f".format(a.confidence)
-                        }
-                    }
-                    else -> {}
-                }
-            }
-            
-            _selectedNodeDetails.value = NodeDetails(node, connectedEdges, detailsMap)
-        }
-    }
-
-    fun loadGraph() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val registryBox = boxStore.boxFor(GraphRegistryEntity::class.java)
-            val edgeBox = boxStore.boxFor(EdgeEntity::class.java)
-            val personBox = boxStore.boxFor(PersonEntity::class.java)
-            val topicBox = boxStore.boxFor(TopicEntity::class.java)
-            val assertionBox = boxStore.boxFor(AssertionEntity::class.java)
-
-            val registryNodes = registryBox.all
-            val rawEdges = edgeBox.all
-
-            val uiNodes = registryNodes.mapNotNull { reg ->
-                val type = NodeType.fromId(reg.nodeTypeId) ?: return@mapNotNull null
-                val label = when (type) {
-                    NodeType.PERSON -> personBox.get(reg.businessEntityId)?.name ?: "Person"
-                    NodeType.TOPIC -> topicBox.get(reg.businessEntityId)?.label ?: "Topic"
-                    NodeType.ASSERTION -> {
-                        val ast = assertionBox.get(reg.businessEntityId)
-                        // Prefer the extractor's own phrase for long-tail relations:
-                        // the predicate enum reports every one of them as OTHER, which
-                        // renders a graph full of identical unreadable nodes.
-                        ast?.rawPredicate?.takeIf { it.isNotBlank() }
-                            ?: ast?.predicate?.name
-                            ?: "Assertion"
-                    }
-                    else -> type.name
-                }
-                
-                GraphUiNode(
-                    id = reg.graphKey,
-                    label = label,
-                    type = type,
-                    x = Random.nextFloat() * 1000f,
-                    y = Random.nextFloat() * 1000f
-                )
-            }
-
-            val uiEdges = rawEdges.mapNotNull { e ->
-                val type = EdgeType.fromId(e.relationshipId.toInt()) ?: return@mapNotNull null
-                GraphUiEdge(sourceId = e.sourceKey, targetId = e.targetKey, type = type)
-            }
-
-            _nodes.value = uiNodes
-            _edges.value = uiEdges
-            _loaded.value = true
-        }
-    }
-
-    fun resetGraph() {
-        viewModelScope.launch(Dispatchers.IO) {
-            boxStore.runInTx {
-                boxStore.boxFor(GraphRegistryEntity::class.java).removeAll()
-                boxStore.boxFor(EdgeEntity::class.java).removeAll()
-                boxStore.boxFor(EmbeddingEntity::class.java).removeAll()
-                boxStore.boxFor(PersonEntity::class.java).removeAll()
-                boxStore.boxFor(TopicEntity::class.java).removeAll()
-                boxStore.boxFor(AssertionEntity::class.java).removeAll()
-            }
-            loadGraph()
-        }
-    }
-}
 
 @Composable
 fun GraphScreen(vm: GraphViewModel = hiltViewModel()) {

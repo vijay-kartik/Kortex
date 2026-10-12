@@ -58,6 +58,15 @@ class GraphRepository(private val boxStore: BoxStore) {
         return GraphReference(GraphId(entity.graphId), nodeType)
     }
 
+    /** Every node in the registry; rows whose node type this build doesn't know are skipped. */
+    fun getAllNodes(): List<NodeHandle> =
+        registryBox.all.mapNotNull { reg ->
+            NodeType.fromId(reg.nodeTypeId)?.let { NodeHandle(reg.graphKey, it) }
+        }
+
+    /** Every edge in the graph. */
+    fun getAllEdges(): List<EdgeEntity> = edgeBox.all
+
     /**
      * Connects two nodes with a directed edge.
      * Prevents duplicate edges of the same type between the same nodes.
@@ -220,6 +229,18 @@ class GraphRepository(private val boxStore: BoxStore) {
 
             // Delete from registry
             registryBox.remove(graphKey)
+        }
+    }
+
+    /**
+     * Atomically empties the registry, edges and embeddings.
+     * Note: The caller (GraphBuilder) must also empty the business tables.
+     */
+    fun clear() {
+        boxStore.runInTx {
+            embeddingBox.removeAll()
+            edgeBox.removeAll()
+            registryBox.removeAll()
         }
     }
 }

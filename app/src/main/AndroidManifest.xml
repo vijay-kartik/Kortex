@@ -115,5 +115,35 @@
                 <action android:name="dev.kortex.finance.action.UNDO_SMS_ENTRY" />
             </intent-filter>
         </receiver>
+
+        <!-- Assistant role (README › Assistant role): makes Kortex selectable under Settings ›
+             Default apps › Digital assistant app. Not functional yet: a session closes at once.
+             BIND_VOICE_INTERACTION: only the system can bind them. -->
+        <service
+            android:name=".AssistantService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/assistant_config" />
+        </service>
+
+        <service
+            android:name=".AssistantSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
+        <!-- The voice-interaction config must name a recognition service; this one returns nothing. -->
+        <service
+            android:name=".AssistantRecognitionService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

@@ -19,6 +19,13 @@ The graph runs end-to-end through the **OpenAI** provider (Ktor + Chat Completio
 
 Ollama (local) and Ollama Cloud can be picked in Settings; they reuse `OpenAiProvider` behind the `LlmProvider` interface. With no OpenAI key configured the app falls back to a stub.
 
+## Assistant role
+Kortex declares a voice-interaction service so it can hold Android's assistant role
+(`android.app.role.ASSISTANT`), which App Functions on Android 16 require. The app never asks
+for the role: pick Kortex under Settings › Default apps › Digital assistant app if you want it.
+No assistant features are built yet, so invoking the assistant (e.g. long-pressing home) does
+nothing.
+
 ## Building
 1. Add your API key to `local.properties` (gitignored):
    ```properties

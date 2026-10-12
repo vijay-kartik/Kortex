@@ -6,11 +6,12 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.kortex.app.data.graph.StorageGraphSnapshotSource
+import dev.kortex.app.domain.graph.GraphSnapshotSource
 import dev.kortex.graph_storage.GraphBuilder
 import dev.kortex.graph_storage.GraphManager
 import dev.kortex.graph_storage.GraphRepository
 import dev.kortex.graph_storage.PredicateVocabulary
-import io.objectbox.BoxStore
 import javax.inject.Singleton
 
 /**
@@ -26,14 +27,16 @@ object GraphModule {
     fun provideGraphManager(@ApplicationContext context: Context): GraphManager = GraphManager(context)
 
     @Provides
-    fun provideBoxStore(graphManager: GraphManager): BoxStore = graphManager.defaultEnvironment.boxStore
-
-    @Provides
     fun provideGraphRepository(graphManager: GraphManager): GraphRepository =
         graphManager.defaultEnvironment.graphRepository
 
     @Provides
     fun provideGraphBuilder(graphManager: GraphManager): GraphBuilder = graphManager.defaultEnvironment.graphBuilder
+
+    /** What the Graph tab draws and resets. */
+    @Provides
+    fun provideGraphSnapshotSource(repository: GraphRepository, builder: GraphBuilder): GraphSnapshotSource =
+        StorageGraphSnapshotSource(repository, builder)
 
     // Learned predicate vocabulary: counts the relation phrases the fixed enum
     // doesn't cover, and applies any promotions recorded against them.

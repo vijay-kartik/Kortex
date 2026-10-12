@@ -92,11 +92,38 @@ class GraphBuilder(
             .format(INSTANT_FORMAT)
 
     /**
-     * Short human label for a node — just its name/title — for embedding inside
-     * another node's summary (e.g. an ASSERTION rendering its endpoints). Does
-     * not recurse into further assertions.
+     * The fields of a node's business row, keyed by a display name ("Name",
+     * "Predicate", ...), for showing one node on its own. Empty when the node or
+     * its row is gone, or its type has no business table.
      */
-    private fun nodeLabel(graphKey: Long): String? {
+    fun getNodeDetails(graphKey: Long): Map<String, String> {
+        val reg = repository.getRegistryEntity(graphKey) ?: return emptyMap()
+        val type = dev.kortex.graph_core.NodeType.fromId(reg.nodeTypeId) ?: return emptyMap()
+        val details = linkedMapOf<String, String>()
+        when (type) {
+            dev.kortex.graph_core.NodeType.PERSON -> personBox.get(reg.businessEntityId)?.let { p ->
+                details["Name"] = p.name
+                if (p.notes.isNotBlank()) details["Notes"] = p.notes
+            }
+            dev.kortex.graph_core.NodeType.TOPIC -> topicBox.get(reg.businessEntityId)?.let { t ->
+                details["Label"] = t.label
+                if (t.description.isNotBlank()) details["Description"] = t.description
+            }
+            dev.kortex.graph_core.NodeType.ASSERTION -> assertionBox.get(reg.businessEntityId)?.let { a ->
+                details["Predicate"] = a.displayPredicate
+                details["Confidence"] = "%.2f".format(a.confidence)
+            }
+            else -> {}
+        }
+        return details
+    }
+
+    /**
+     * Short human label for a node — just its name/title — for embedding inside
+     * another node's summary (e.g. an ASSERTION rendering its endpoints) or
+     * drawing it on the graph view. Does not recurse into further assertions.
+     */
+    fun nodeLabel(graphKey: Long): String? {
         val reg = repository.getRegistryEntity(graphKey) ?: return null
         val type = dev.kortex.graph_core.NodeType.fromId(reg.nodeTypeId) ?: return null
         return when (type) {
@@ -402,6 +429,20 @@ class GraphBuilder(
             if (matchesObject) return candidate.graphKey
         }
         return null
+    }
+
+    /**
+     * Deletes the whole graph — every node, edge, embedding and business row — in
+     * one transaction. The learned predicate vocabulary is kept: it records how the
+     * extractor phrases relations, not facts about the user.
+     */
+    fun clear() {
+        boxStore.runInTx {
+            repository.clear()
+            personBox.removeAll()
+            topicBox.removeAll()
+            assertionBox.removeAll()
+        }
     }
 
     private companion object {

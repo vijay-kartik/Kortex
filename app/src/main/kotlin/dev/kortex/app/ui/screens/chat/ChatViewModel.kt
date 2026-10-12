@@ -36,6 +36,7 @@ import dev.kortex.app.domain.chat.ReasoningStats
 import dev.kortex.app.domain.voice.VoiceDictation
 import dev.kortex.app.domain.voice.VoiceEvent
 import dev.kortex.app.domain.voice.VoiceFailure
+import dev.kortex.app.domain.chat.sessionTitle
 import kotlinx.coroutines.flow.stateIn
 import java.util.UUID
 import javax.inject.Inject
@@ -240,6 +241,10 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun renameSession(sessionId: String, title: String) {
+        viewModelScope.launch { sessionRepository.rename(sessionId, title) }
+    }
+
     /** Opens a fresh conversation; a [draft] is placed in the composer for the user to send. */
     fun startNewSession(draft: String? = null) {
         currentSessionId = UUID.randomUUID().toString()
@@ -344,7 +349,8 @@ class ChatViewModel @Inject constructor(
             }.turns
             // Saved outside the update: its lambda can rerun on contention, the save must not.
             val sessionId = currentSessionId
-            viewModelScope.launch { sessionRepository.save(sessionId, newTurns, fallbackTitle = agentQuery) }
+            val title = sessionTitle(agentQuery, agentAttachments)
+            viewModelScope.launch { sessionRepository.save(sessionId, newTurns, fallbackTitle = title) }
         }
     }
 }

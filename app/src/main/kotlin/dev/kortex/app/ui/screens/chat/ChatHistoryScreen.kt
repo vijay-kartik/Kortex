@@ -14,11 +14,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -54,6 +56,7 @@ fun HistoryScreen(
     // Null while the first read is in flight: render nothing rather than the empty state.
     val sessions by vm.sessions.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<ChatSessionSummary?>(null) }
+    var pendingRename by remember { mutableStateOf<ChatSessionSummary?>(null) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -101,6 +104,14 @@ fun HistoryScreen(
                                 modifier = Modifier.padding(top = 4.dp)
                             )
                         }
+                        IconButton(onClick = { pendingRename = session }) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Rename conversation",
+                                tint = Muted,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                         IconButton(onClick = { pendingDelete = session }) {
                             Icon(
                                 painterResource(R.drawable.ic_delete),
@@ -113,6 +124,40 @@ fun HistoryScreen(
                 }
             }
         }
+    }
+
+    // ── Rename ──────────────────────────────────────────────────────────
+    pendingRename?.let { session ->
+        var title by remember(session.id) { mutableStateOf(session.title) }
+        AlertDialog(
+            onDismissRequest = { pendingRename = null },
+            containerColor = Panel,
+            title = { Text("Rename conversation") },
+            text = {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    singleLine = true,
+                    placeholder = { Text("New Conversation") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = title.isNotBlank(),
+                    onClick = {
+                        vm.renameSession(session.id, title)
+                        pendingRename = null
+                    },
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRename = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 
     // ── Delete confirmation ─────────────────────────────────────────────

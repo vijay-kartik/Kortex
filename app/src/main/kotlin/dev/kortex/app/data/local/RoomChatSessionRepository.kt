@@ -29,6 +29,11 @@ class RoomChatSessionRepository(
         dao.upsert(ChatSessionEntity(id = id, title = title, turnsJson = json.encodeToString(turns), updatedAtMillis = now()))
     }
 
+    override suspend fun rename(id: String, title: String) {
+        val trimmed = title.trim().take(TITLE_LENGTH).trimEnd()
+        if (trimmed.isNotEmpty()) dao.updateTitle(id, trimmed)
+    }
+
     override suspend fun delete(id: String) = dao.deleteById(id)
 
     companion object {

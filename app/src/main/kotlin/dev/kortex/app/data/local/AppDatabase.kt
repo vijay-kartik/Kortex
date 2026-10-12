@@ -28,6 +28,9 @@ interface ChatSessionDao {
     @Upsert
     suspend fun upsert(session: ChatSessionEntity)
 
+    @Query("UPDATE chat_sessions SET title = :title WHERE id = :id")
+    suspend fun updateTitle(id: String, title: String)
+
     @Query("DELETE FROM chat_sessions WHERE id = :id")
     suspend fun deleteById(id: String)
 }

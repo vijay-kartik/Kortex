@@ -64,6 +64,48 @@ class RoomChatSessionRepositoryTest {
     }
 
     @Test
+    fun `renaming changes the title without moving the session`() = runBlocking {
+        repository.save("old", turns, fallbackTitle = "Older chat")
+        clock = 2_000L
+        repository.save("s1", turns, fallbackTitle = "First question")
+        clock = 3_000L
+        repository.rename("old", "Groceries")
+
+        assertEquals(
+            listOf(ChatSessionSummary("s1", "First question", 2_000L), ChatSessionSummary("old", "Groceries", 1_000L)),
+            repository.observeSummaries().first(),
+        )
+    }
+
+    @Test
+    fun `a later save keeps the renamed title`() = runBlocking {
+        repository.save("s1", turns, fallbackTitle = "First question")
+        repository.rename("s1", "Food spending")
+        repository.save("s1", turns + turns, fallbackTitle = "A follow-up")
+
+        assertEquals("Food spending", repository.get("s1")!!.title)
+    }
+
+    @Test
+    fun `a new title is trimmed and cut to 40 characters`() = runBlocking {
+        repository.save("s1", turns, fallbackTitle = "q")
+
+        repository.rename("s1", "  Trip plans  ")
+        assertEquals("Trip plans", repository.get("s1")!!.title)
+
+        repository.rename("s1", "  " + "y".repeat(60))
+        assertEquals("y".repeat(40), repository.get("s1")!!.title)
+    }
+
+    @Test
+    fun `a blank title is ignored`() = runBlocking {
+        repository.save("s1", turns, fallbackTitle = "First question")
+        repository.rename("s1", "   ")
+
+        assertEquals("First question", repository.get("s1")!!.title)
+    }
+
+    @Test
     fun `a deleted session is gone`() = runBlocking {
         repository.save("s1", turns, fallbackTitle = "q")
         repository.delete("s1")
@@ -82,6 +124,11 @@ class RoomChatSessionRepositoryTest {
 
         override suspend fun upsert(session: ChatSessionEntity) {
             rows.value = rows.value + (session.id to session)
+        }
+
+        override suspend fun updateTitle(id: String, title: String) {
+            val row = rows.value[id] ?: return
+            rows.value = rows.value + (id to row.copy(title = title))
         }
 
         override suspend fun deleteById(id: String) {

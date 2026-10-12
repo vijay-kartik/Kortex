@@ -73,7 +73,7 @@ class ShareAgentRunner(
         val recorder = AgentRunRecorder(
             query = query,
             sessionId = sessionId,
-            delegate = Logger { level, tag, message, error ->
+            delegate = { level, tag, message, error ->
                 logger.log(level, tag, message, error)
                 reasoning += ReasoningLine(level, tag, message)
             },

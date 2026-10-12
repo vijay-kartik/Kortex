@@ -61,11 +61,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.kortex.design.EmptyState
 import dev.kortex.design.KortexTheme
 import dev.kortex.design.MetaLine
 import dev.kortex.design.Muted
@@ -176,11 +176,10 @@ fun LinksListScreen(
 
 @Composable
 private fun EmptyLinks() {
-    Column(
-        modifier = Modifier
-            .padding(horizontal = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    EmptyState(
+        title = "No links yet",
+        body = "Tap + to save your first link.",
+        modifier = Modifier.padding(horizontal = 14.dp),
     ) {
         Box(
             Modifier
@@ -195,13 +194,6 @@ private fun EmptyLinks() {
                 modifier = Modifier.size(28.dp)
             )
         }
-        Text("No links yet", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "Tap + to create your first link.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Muted,
-            textAlign = TextAlign.Center,
-        )
     }
 }
 

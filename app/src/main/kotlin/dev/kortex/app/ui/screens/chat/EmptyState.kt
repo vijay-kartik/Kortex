@@ -1,33 +1,20 @@
 package dev.kortex.app.ui.screens.chat
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import dev.kortex.design.Muted
+import dev.kortex.design.EmptyState as KortexEmptyState
 import dev.kortex.app.ui.components.PulsingDot
 
 @Composable
 fun EmptyState(modifier: Modifier = Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            PulsingDot(10.dp)
-            Text("Kortex is listening", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "It can search the web, open pages,\ndo math, and check the time.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Muted,
-                textAlign = TextAlign.Center,
-            )
-        }
+        KortexEmptyState(
+            title = "Kortex is listening",
+            body = "It can search the web, open pages,\ndo math, and check the time.",
+            glyph = { PulsingDot(10.dp) },
+        )
     }
 }

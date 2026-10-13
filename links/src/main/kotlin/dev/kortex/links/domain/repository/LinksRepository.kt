@@ -16,6 +16,8 @@ interface LinksRepository {
     /** No-op when the name exists, ignoring case. */
     suspend fun createTag(name: String)
     suspend fun setLinkTags(linkId: Long, tagNames: List<String>)
+    /** Trimmed; blank is stored as "", which shows as the link's domain. */
+    suspend fun setLinkTitle(linkId: Long, title: String)
     suspend fun deleteLink(id: Long)
     suspend fun saveLink(draft: LinkDraft, nowMillis: Long): SaveLinkResult
 }

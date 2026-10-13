@@ -27,6 +27,7 @@ import dev.kortex.links.domain.usecase.ObserveDuplicate
 import dev.kortex.links.domain.usecase.ObserveLinks
 import dev.kortex.links.domain.usecase.ObserveTagCounts
 import dev.kortex.links.domain.usecase.ObserveTagNames
+import dev.kortex.links.domain.usecase.RenameLink
 import dev.kortex.links.domain.usecase.RetryLinkImage
 import dev.kortex.links.domain.usecase.SaveLink
 import dev.kortex.links.domain.usecase.SetLinkTags
@@ -93,6 +94,9 @@ abstract class LinksModule {
 
         @Provides
         fun provideSetLinkTags(repository: LinksRepository) = SetLinkTags(repository)
+
+        @Provides
+        fun provideRenameLink(repository: LinksRepository) = RenameLink(repository)
 
         @Provides
         fun provideCreateTag(repository: LinksRepository) = CreateTag(repository)

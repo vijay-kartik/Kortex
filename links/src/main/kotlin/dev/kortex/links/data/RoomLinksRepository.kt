@@ -52,6 +52,11 @@ class RoomLinksRepository(
         linkDao.replaceTags(linkId, tagNames.map { it.trim() }.filter { it.isNotEmpty() })
     }
 
+    /** Trimmed; a blank title is stored as "", so the card shows the link's domain. Tags, date and thumbnail stay. */
+    override suspend fun setLinkTitle(linkId: Long, title: String) {
+        linkDao.updateTitle(linkId, title.trim())
+    }
+
     /** The saved link that [url] is an address of (see [linkUrlKey]), or null; follows saves as they happen. */
     override fun observeSavedLink(url: String): Flow<Link?> = linkDao.observeWithTagsByUrlKey(linkUrlKey(url)).map { it?.toDomain() }
 

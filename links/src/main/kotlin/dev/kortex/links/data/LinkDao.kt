@@ -25,6 +25,10 @@ abstract class LinkDao {
     @Query("UPDATE links SET imageUrl = :imageUrl, imagePath = :imagePath WHERE id = :id")
     abstract suspend fun updateImage(id: Long, imageUrl: String?, imagePath: String?): Int
 
+    /** The sync trigger marks the row dirty when the title really changes. No-op if the link is gone. */
+    @Query("UPDATE links SET title = :title WHERE id = :id")
+    abstract suspend fun updateTitle(id: Long, title: String)
+
     /**
      * Removes the link; its tag assignments go with it (foreign-key cascade), its tags and image files
      * don't. Prefer [deleteWithOrphanedTags].

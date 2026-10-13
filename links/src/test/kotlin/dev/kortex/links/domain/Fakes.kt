@@ -33,6 +33,8 @@ class FakeLinksRepository : LinksRepository {
     val deleted = mutableListOf<Long>()
     /** Every [setLinkTags] call, in order. */
     val tagWrites = mutableListOf<Pair<Long, List<String>>>()
+    /** Every [setLinkTitle] call, in order. */
+    val titleWrites = mutableListOf<Pair<Long, String>>()
     private var nextId = 1L
 
     override fun observeLinks(): Flow<List<Link>> = links
@@ -54,6 +56,11 @@ class FakeLinksRepository : LinksRepository {
         tagWrites += linkId to tagNames
         tagNames.forEach { createTag(it) }
         links.update { saved -> saved.map { if (it.id == linkId) it.copy(tags = tagNames) else it } }
+    }
+
+    override suspend fun setLinkTitle(linkId: Long, title: String) {
+        titleWrites += linkId to title
+        links.update { saved -> saved.map { if (it.id == linkId) it.copy(title = title.trim()) else it } }
     }
 
     override suspend fun deleteLink(id: Long) {

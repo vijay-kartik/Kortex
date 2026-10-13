@@ -273,7 +273,9 @@ class ChatViewModel @Inject constructor(
         if (agentQuery.isBlank() && attachmentsToSend.isEmpty()) return
         viewModelScope.launch {
             val activeProviderName = modelSelection.activeProvider.first()
-            val model = ActiveModels.of(activeProviderName, modelSelection.activeModel.first()).reasoning
+            // The same pair is shown in the header and passed to the run, so they can't disagree.
+            val activeModels = ActiveModels.of(activeProviderName, modelSelection.activeModel.first())
+            val model = activeModels.reasoning
             // Snapshot history before appending this turn — Agent.ask() adds the query as a
             // fresh USER message itself, so including the just-added turn would send it twice.
             val historyMessages = _ui.value.turns.map { it.message }
@@ -311,6 +313,7 @@ class ChatViewModel @Inject constructor(
             val turnCtx = AgentContext(
                 llm = provider,
                 tools = tools,
+                models = activeModels.toAgentModels(),
                 governor = ToolGovernor(onAudit = { entry ->
                     toolCalls++
                     _ui.update { it.copy(liveStats = statsNow()) }

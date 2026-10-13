@@ -4,7 +4,6 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
 import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
-import dev.kortex.core.llm.Models
 import dev.kortex.core.log.d
 import dev.kortex.core.log.i
 import dev.kortex.core.prompt.RouterPrompt
@@ -25,9 +24,10 @@ import dev.kortex.core.state.Message
  */
 class RouterNode(
     private val routes: List<String> = listOf("tool_task", "plan"),
-    private val model: String = Models.FAST,
+    private val model: String? = null,
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
+        val model = model ?: ctx.models.fast
         ctx.onProgress.report("Analyzing your request…")
         val query = state.messages.lastOrNull { it.role == Message.Role.USER }?.content.orEmpty()
         ctx.logger.d(TAG, "classifying request: \"$query\"")

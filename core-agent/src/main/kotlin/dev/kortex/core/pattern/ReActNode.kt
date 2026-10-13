@@ -4,7 +4,6 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
 import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
-import dev.kortex.core.llm.Models
 import dev.kortex.core.log.d
 import dev.kortex.core.log.w
 import dev.kortex.core.state.AgentState
@@ -18,10 +17,11 @@ import kotlinx.serialization.json.JsonObject
  * feed observations back, until the model answers with no tool calls (or budget runs out).
  */
 class ReActNode(
-    private val model: String = Models.REASONING,
+    private val model: String? = null,
     private val maxIterations: Int = 8,
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
+        val model = model ?: ctx.models.reasoning
         var s = state
         repeat(maxIterations) { iteration ->
             ctx.onProgress.report("Thinking…")

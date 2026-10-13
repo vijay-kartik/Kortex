@@ -4,7 +4,6 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
 import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
-import dev.kortex.core.llm.Models
 import dev.kortex.core.log.d
 import dev.kortex.core.prompt.SynthesizePrompt
 import dev.kortex.core.state.AgentState
@@ -25,9 +24,10 @@ import dev.kortex.core.state.PlanStep
  * reviewer / telemetry (grounding the plan-path reviewer in it is a noted follow-up).
  */
 class SynthesizeNode(
-    private val model: String = Models.REASONING,
+    private val model: String? = null,
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
+        val model = model ?: ctx.models.reasoning
         val plan = state.plan ?: return state
         ctx.onProgress.report("Composing answer…")
         val goal = state.goal?.description

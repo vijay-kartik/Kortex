@@ -1,5 +1,7 @@
 package dev.kortex.app.domain.share
 
+import dev.kortex.app.domain.agent.ActiveModels
+import dev.kortex.app.domain.agent.ModelSelection
 import dev.kortex.app.domain.chat.ChatSession
 import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.domain.chat.ChatSessionSummary
@@ -21,6 +23,7 @@ import dev.kortex.core.tool.ToolRegistry
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -68,6 +71,11 @@ class ShareAgentRunnerTest {
         override suspend fun clear() = runs.clear()
     }
 
+    private class FakeModelSelection(provider: String, model: String) : ModelSelection {
+        override val activeProvider: Flow<String> = flowOf(provider)
+        override val activeModel: Flow<String> = flowOf(model)
+    }
+
     private data class Notification(val sessionId: String, val title: String, val answer: String)
 
     private val sessions = FakeSessions()
@@ -79,12 +87,14 @@ class ShareAgentRunnerTest {
         query: String,
         attachment: Attachment,
         llm: LlmProvider = FakeLlm("Total due: 42 EUR"),
+        selection: ModelSelection = FakeModelSelection("openai", "gpt-4o"),
         ask: suspend (AgentContext, String, Attachment) -> AgentState =
             { ctx, q, att -> Agent(ctx).ask(q, listOf(att)) },
     ): String = runBlocking {
         ShareAgentRunner(
             scope = this,
             llm = llm,
+            modelSelection = selection,
             tools = ToolRegistry(),
             sessions = sessions,
             runStore = runStore,
@@ -115,6 +125,15 @@ class ShareAgentRunnerTest {
 
         assertEquals(listOf(Notification(id, "How much do I owe?", "Total due: 42 EUR")), notifications)
         assertEquals(AgentRun.Status.COMPLETED, runStore.runs.single().status)
+    }
+
+    @Test
+    fun `an Ollama selection sends only the selected model on every call`() {
+        val llm = FakeLlm("Total due: 42 EUR")
+        share("How much do I owe?", pdf, llm, selection = FakeModelSelection(ActiveModels.OLLAMA, "llama3.2"))
+
+        assertTrue(llm.requests.isNotEmpty())
+        assertEquals(setOf("llama3.2"), llm.requests.map { it.model }.toSet())
     }
 
     @Test

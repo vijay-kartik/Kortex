@@ -1,6 +1,7 @@
 package dev.kortex.core
 
 import dev.kortex.core.graph.AgentContext
+import dev.kortex.core.llm.AgentModels
 import dev.kortex.core.llm.LlmChunk
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.LlmRequest
@@ -109,6 +110,32 @@ class AgentTest {
         result.messages.last().content shouldContain "Done"
         result.trace.any { it.kind == "route" } shouldBe true
         result.trace.any { it.kind == "tool" } shouldBe true
+    }
+
+    @Test
+    fun `every call uses the models passed in the context`() = runTest {
+        val requests = mutableListOf<LlmRequest>()
+        val provider = object : LlmProvider {
+            private val scripted = ScriptedProvider()
+            override suspend fun complete(req: LlmRequest, logger: dev.kortex.core.log.Logger?): LlmResponse {
+                requests += req
+                return scripted.complete(req, logger)
+            }
+            override fun stream(req: LlmRequest): Flow<LlmChunk> = flowOf(LlmChunk.Done)
+        }
+        val ctx = AgentContext(
+            llm = provider,
+            tools = ToolRegistry(listOf(echoTool())),
+            governor = ToolGovernor(),
+            models = AgentModels(reasoning = "big-model", fast = "small-model"),
+        )
+
+        Agent(ctx).ask("please echo hi")
+
+        // Router (no tools) runs on fast; the ReAct calls (with tools) run on reasoning.
+        requests.first().model shouldBe "small-model"
+        requests.filter { it.tools.isNotEmpty() }.map { it.model }.toSet() shouldBe setOf("big-model")
+        requests.map { it.model }.toSet() shouldBe setOf("small-model", "big-model")
     }
 
     // T4.2 (pattern 6): plan route end-to-end — plan → execute (self-loop, one step per

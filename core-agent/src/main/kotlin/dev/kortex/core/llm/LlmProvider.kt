@@ -43,11 +43,23 @@ sealed interface LlmChunk {
     data object Done : LlmChunk
 }
 
+/**
+ * The models one agent run uses: [reasoning] for answers and tool work, [fast] for routing
+ * and other cheap calls (pattern 16). Passed in through [dev.kortex.core.graph.AgentContext]
+ * so every run says which models it uses.
+ */
+data class AgentModels(val reasoning: String, val fast: String) {
+    companion object {
+        /** OpenAI's pair, for callers that don't pick models (tests, evals). */
+        val DEFAULT = AgentModels(reasoning = Models.REASONING, fast = Models.FAST)
+    }
+}
+
 /** Catalog of model ids we route between. */
 object Models {
-    var REASONING = "gpt-4o"
-    var FAST = "gpt-4o-mini"
-    
+    const val REASONING = "gpt-4o"
+    const val FAST = "gpt-4o-mini"
+
     val supportedOpenAi = listOf(
         "gpt-4o",
         "gpt-4o-mini",

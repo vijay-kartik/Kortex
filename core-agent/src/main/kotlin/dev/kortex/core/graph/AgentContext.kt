@@ -1,5 +1,6 @@
 package dev.kortex.core.graph
 
+import dev.kortex.core.llm.AgentModels
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.llm.LlmRequest
 import dev.kortex.core.llm.LlmResponse
@@ -18,6 +19,8 @@ class AgentContext(
     val llm: LlmProvider,
     val tools: ToolRegistry,
     val governor: ToolGovernor,
+    /** The reasoning and fast models every node of this run calls (pattern 16). */
+    val models: AgentModels = AgentModels.DEFAULT,
     /** Hook for Human-in-the-Loop (pattern 13): suspends until the UI approves/denies. */
     val approver: Approver = Approver { _, _ -> true },
     /** Live progress hook so the UI can show what the agent is doing right now. */

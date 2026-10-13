@@ -4,7 +4,6 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
 import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
-import dev.kortex.core.llm.Models
 import dev.kortex.core.log.d
 import dev.kortex.core.state.AgentState
 
@@ -14,8 +13,9 @@ import dev.kortex.core.state.AgentState
  * budget (pattern 16: Resource-Aware Optimization) — no point spinning up the ReAct
  * tool loop for "what's the capital of France?".
  */
-class DirectAnswerNode(private val model: String = Models.FAST) : Node {
+class DirectAnswerNode(private val model: String? = null) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
+        val model = model ?: ctx.models.fast
         ctx.onProgress.report("Answering…")
         ctx.logger.d(TAG, "answering directly with $model (${state.messages.size} messages)")
         val resp = ctx.complete(LlmRequest(model = model, messages = state.messages))

@@ -4,7 +4,6 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
 import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
-import dev.kortex.core.llm.Models
 import dev.kortex.core.log.d
 import dev.kortex.core.log.i
 import dev.kortex.core.log.w
@@ -25,11 +24,12 @@ import kotlinx.serialization.json.Json
  * clamped rather than rejected.
  */
 class PlanNode(
-    private val model: String = Models.REASONING,
+    private val model: String? = null,
     private val minSteps: Int = 2,
     private val maxSteps: Int = 5,
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
+        val model = model ?: ctx.models.reasoning
         ctx.onProgress.report("Planning…")
         val goal = state.goal?.description
             ?: state.messages.lastOrNull { it.role == Message.Role.USER }?.content.orEmpty()

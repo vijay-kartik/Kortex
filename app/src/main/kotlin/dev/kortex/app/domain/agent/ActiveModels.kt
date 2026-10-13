@@ -1,6 +1,8 @@
 package dev.kortex.app.domain.agent
 
+import dev.kortex.core.llm.AgentModels
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 /** The user's chosen LLM provider id and model, as set in Settings. */
 interface ModelSelection {
@@ -8,11 +10,18 @@ interface ModelSelection {
     val activeModel: Flow<String>
 }
 
+/** The models the user has selected right now; read once at the start of each agent run. */
+suspend fun ModelSelection.currentModels(): ActiveModels =
+    ActiveModels.of(activeProvider.first(), activeModel.first())
+
 /**
  * The models an agent run uses: [reasoning] for answers, [fast] for routing and other cheap
  * FAST-tier calls. [of] is the one place that decides them from the user's selection.
  */
 data class ActiveModels(val reasoning: String, val fast: String) {
+    /** The same pair as the agent's per-run input, for [dev.kortex.core.graph.AgentContext.models]. */
+    fun toAgentModels(): AgentModels = AgentModels(reasoning = reasoning, fast = fast)
+
     companion object {
         const val OLLAMA = "ollama"
         const val OLLAMA_CLOUD = "ollama-cloud"

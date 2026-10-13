@@ -15,6 +15,7 @@ import dev.kortex.app.domain.agent.financeTools
 import dev.kortex.app.domain.agent.linksTools
 import dev.kortex.app.domain.agent.AgentBootstrap
 import dev.kortex.app.domain.agent.McpConnections
+import dev.kortex.app.domain.agent.ModelSelection
 import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.domain.gmail.GmailAccess
 import dev.kortex.app.domain.gmail.GmailToken
@@ -115,7 +116,7 @@ object AgentModule {
         )
     }
 
-    /** App-wide tool/MCP/model setup; started from KortexApp so it doesn't depend on any screen. */
+    /** App-wide tool/MCP setup; started from KortexApp so it doesn't depend on any screen. */
     @Provides
     @Singleton
     fun provideAgentBootstrap(
@@ -126,7 +127,7 @@ object AgentModule {
     ): AgentBootstrap = AgentBootstrap(
         scope = scope,
         tools = tools,
-        settingsStore = settingsStore,
+        disabledTools = settingsStore.disabledTools,
         mcpConnections = mcpConnections,
     )
 
@@ -137,12 +138,14 @@ object AgentModule {
         @ApplicationContext context: Context,
         @ApplicationScope scope: CoroutineScope,
         llm: LlmProvider,
+        modelSelection: ModelSelection,
         tools: ToolRegistry,
         sessions: ChatSessionRepository,
         runStore: AgentRunStore,
     ): ShareAgentRunner = ShareAgentRunner(
         scope = scope,
         llm = llm,
+        modelSelection = modelSelection,
         tools = tools,
         sessions = sessions,
         runStore = runStore,

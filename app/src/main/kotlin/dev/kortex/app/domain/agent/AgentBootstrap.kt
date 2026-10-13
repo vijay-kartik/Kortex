@@ -1,18 +1,16 @@
 package dev.kortex.app.domain.agent
 
-import dev.kortex.app.data.settings.SettingsStore
-import dev.kortex.core.llm.Models
 import dev.kortex.core.tool.ToolRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 /**
  * App-wide agent setup that every agent run depends on, whichever screen (or none) is open:
- * applies the user's disabled tools, connects MCP servers into the shared [ToolRegistry] through
- * [McpConnections], and keeps the global [Models] in line with the selected provider. Started
- * once from KortexApp.
+ * applies the user's [disabledTools] and connects MCP servers into the shared [ToolRegistry]
+ * through [McpConnections]. Started once from KortexApp. Models aren't set here: each run
+ * reads them from [ModelSelection] and passes them in its AgentContext.
  *
  * Runs on the main thread: [ToolRegistry] isn't thread-safe, and [McpConnections] mutates it
  * from the main thread too.
@@ -20,7 +18,7 @@ import kotlinx.coroutines.launch
 class AgentBootstrap(
     private val scope: CoroutineScope,
     private val tools: ToolRegistry,
-    private val settingsStore: SettingsStore,
+    private val disabledTools: Flow<Set<String>>,
     private val mcpConnections: McpConnections,
 ) {
     private var started = false
@@ -31,21 +29,13 @@ class AgentBootstrap(
 
         // Keep the registry in sync with the disabled-tool set, including toggles from settings.
         scope.launch(Dispatchers.Main.immediate) {
-            settingsStore.disabledTools.collect { disabled -> tools.setDisabled(disabled) }
+            disabledTools.collect { disabled -> tools.setDisabled(disabled) }
         }
         scope.launch(Dispatchers.Main.immediate) {
             mcpConnections.connectAll()
         }
         scope.launch(Dispatchers.Main.immediate) {
             mcpConnections.reconnectOnSignIn()
-        }
-        // Update the active reasoning/routing models globally whenever they change.
-        scope.launch(Dispatchers.Main.immediate) {
-            combine(settingsStore.activeProvider, settingsStore.activeModel, ActiveModels::of)
-                .collect { models ->
-                    Models.REASONING = models.reasoning
-                    Models.FAST = models.fast
-                }
         }
     }
 }

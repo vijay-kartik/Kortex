@@ -4,6 +4,7 @@ import dev.kortex.core.Agent
 import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Approver
 import dev.kortex.core.graph.LlmUsageListener
+import dev.kortex.core.llm.AgentModels
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.log.Logger
 import dev.kortex.core.observability.AgentRun
@@ -14,6 +15,8 @@ import dev.kortex.core.state.Attachment
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
+import dev.kortex.app.domain.agent.ModelSelection
+import dev.kortex.app.domain.agent.currentModels
 import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.domain.chat.ChatTurn
 import dev.kortex.app.domain.chat.ReasoningLine
@@ -34,6 +37,7 @@ import java.util.UUID
 class ShareAgentRunner(
     private val scope: CoroutineScope,
     private val llm: LlmProvider,
+    private val modelSelection: ModelSelection,
     private val tools: ToolRegistry,
     private val sessions: ChatSessionRepository,
     private val runStore: AgentRunStore,
@@ -50,7 +54,11 @@ class ShareAgentRunner(
 
         scope.launch {
             val run = Run(query, sessionId)
-            val outcome = runCatching { ask(run.context(), query, attachment) }
+            val outcome = runCatching {
+                // Read here, not from a global: a cold-started share run must use the selected provider's models.
+                val models = modelSelection.currentModels().toAgentModels()
+                ask(run.context(models), query, attachment)
+            }
             val record = outcome.fold(
                 onSuccess = { run.recorder.finish(it, AgentRun.Status.COMPLETED) },
                 onFailure = { run.recorder.finish(AgentState(), AgentRun.Status.FAILED) },
@@ -80,9 +88,10 @@ class ShareAgentRunner(
             now = now,
         )
 
-        fun context() = AgentContext(
+        fun context(models: AgentModels) = AgentContext(
             llm = llm,
             tools = tools,
+            models = models,
             governor = ToolGovernor(onAudit = { entry -> toolCalls++; recorder.audit(entry) }),
             // Headless: no one is there to approve, so risky tools are declined.
             approver = Approver { _, _ -> false },

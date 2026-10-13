@@ -4,7 +4,7 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
 import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
-import dev.kortex.core.llm.Models
+import dev.kortex.core.llm.AgentModels
 import dev.kortex.core.log.d
 import dev.kortex.core.log.i
 import dev.kortex.core.prompt.ReflectPrompt
@@ -19,15 +19,15 @@ import dev.kortex.core.state.Message
  *
  * [maxReflections] caps the loop so we can't revise forever (also guarded by the budget).
  *
- * [model] selects the reviewer model. T4.4 (docs/PROMPT_IMPROVEMENT_PLAN.md) evaluated
- * right-sizing this to [Models.FAST]; the default stays [Models.REASONING] until a LIVE
+ * [model] overrides the reviewer model. T4.4 (docs/PROMPT_IMPROVEMENT_PLAN.md) evaluated
+ * right-sizing this to [AgentModels.fast]; the default stays [AgentModels.reasoning] until a LIVE
  * run of the reflect eval suite (PromptEvalTest's FAST-vs-REASONING comparison, see
  * docs/eval-baselines.md §T4.4) shows FAST matching REASONING on missed-REVISE (the
  * dangerous failure — a wrong answer reaching the user) and staying within one case on
  * overall accuracy. Decide with that data, not intuition.
  */
 class ReflectNode(
-    private val model: String = Models.REASONING,
+    private val model: String? = null,
     private val maxReflections: Int = 2,
 ) : Node {
     companion object {
@@ -42,6 +42,7 @@ class ReflectNode(
     }
 
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
+        val model = model ?: ctx.models.reasoning
         ctx.onProgress.report("Reviewing answer…")
 
         val answer = state.messages

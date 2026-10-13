@@ -4,7 +4,6 @@ import dev.kortex.core.graph.AgentContext
 import dev.kortex.core.graph.Node
 import dev.kortex.core.graph.complete
 import dev.kortex.core.llm.LlmRequest
-import dev.kortex.core.llm.Models
 import dev.kortex.core.log.d
 import dev.kortex.core.log.w
 import dev.kortex.core.state.AgentState
@@ -31,10 +30,11 @@ import kotlinx.serialization.json.JsonObject
  * the synthesizer see the failure and work around it.
  */
 class ExecuteStepNode(
-    private val model: String = Models.REASONING,
+    private val model: String? = null,
     private val maxIterationsPerStep: Int = 4,
 ) : Node {
     override suspend fun run(ctx: AgentContext, state: AgentState): AgentState {
+        val model = model ?: ctx.models.reasoning
         val plan = state.plan ?: return state
         val index = plan.nextPending ?: return state
         val step = plan.steps[index]

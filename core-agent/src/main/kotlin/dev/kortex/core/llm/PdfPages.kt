@@ -13,6 +13,15 @@ import java.util.Base64
 private const val MAX_PAGE_SIDE_PX = 1600
 
 /**
+ * Bitmap size (width to height) for rendering a PDF page of [pageWidth]×[pageHeight] points: 2x
+ * for readability, capped so a large-format page's longest side stays within [MAX_PAGE_SIDE_PX].
+ */
+fun pdfPageBitmapSize(pageWidth: Int, pageHeight: Int): Pair<Int, Int> {
+    val scale = minOf(2f, MAX_PAGE_SIDE_PX.toFloat() / maxOf(pageWidth, pageHeight, 1))
+    return (pageWidth * scale).toInt().coerceAtLeast(1) to (pageHeight * scale).toInt().coerceAtLeast(1)
+}
+
+/**
  * Renders a PDF's pages to JPEG image attachments — used both by [dev.kortex.core.tool.builtin.readFileTool]
  * and by providers whose API has no PDF content type (e.g. Ollama's OpenAI-compat endpoint only
  * understands "text" and "image_url" parts, not OpenAI's "file" extension).
@@ -26,13 +35,8 @@ fun renderPdfPagesAsImages(pdfFile: File, filenameBase: String, maxPages: Int = 
             List(renderer.pageCount.coerceAtMost(maxPages)) { i ->
                 val stream = ByteArrayOutputStream()
                 renderer.openPage(i).use { page ->
-                    // Render at 2x for readability, capped so large-format pages stay bounded.
-                    val scale = minOf(2f, MAX_PAGE_SIDE_PX.toFloat() / maxOf(page.width, page.height))
-                    val bmp = Bitmap.createBitmap(
-                        (page.width * scale).toInt().coerceAtLeast(1),
-                        (page.height * scale).toInt().coerceAtLeast(1),
-                        Bitmap.Config.ARGB_8888,
-                    )
+                    val (w, h) = pdfPageBitmapSize(page.width, page.height)
+                    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                     try {
                         bmp.eraseColor(Color.WHITE)
                         page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)

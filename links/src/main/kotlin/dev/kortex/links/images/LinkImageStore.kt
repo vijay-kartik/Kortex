@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -50,9 +49,14 @@ class LinkImageStore @Inject constructor(
 ) : ImageDownloads {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val downloads = ConcurrentHashMap<String, MutableStateFlow<LinkImageState>>()
+    private val slots = DownloadSlots(MAX_PARALLEL_DOWNLOADS, FETCH_TIMEOUT_MS.toLong())
+
+    /** Links with an [attachWhenReady] running, which [attachMissing] leaves to it. */
+    private val attaching = ConcurrentHashMap.newKeySet<Long>()
 
     init {
-        scope.launch { deleteOrphanedImages() }
+        scope.launch { logFailure("Deleting orphaned images") { deleteOrphanedImages() } }
+        attachMissing()
     }
 
     /** Starts downloading [imageUrl] unless it already is (or has). */
@@ -71,30 +75,68 @@ class LinkImageStore @Inject constructor(
             return
         }
         val current = state.value
-        if (current is LinkImageState.Loading) return
-        if (current is LinkImageState.Ready && File(current.path).exists()) return
-        state.value = LinkImageState.Loading(null)
+        if (!needsRestart(current) { File(it).exists() }) return
+        // Of several callers retrying at once, only one starts the download.
+        if (!state.compareAndSet(current, LinkImageState.Loading(null))) return
         start(imageUrl, state)
     }
 
-    /** Gives a just-saved link its thumbnail once one is available; a failure leaves the link icon. */
+    /**
+     * Gives a just-saved link its thumbnail once one is available. A download that failed earlier is
+     * tried again; a failure now leaves the link icon until [attachMissing] next runs.
+     */
     fun attachWhenReady(linkId: Long, pageUrl: String, source: LinkImageSource) {
+        attaching += linkId
         scope.launch {
-            val imageUrl = when (source) {
-                is LinkImageSource.Known -> source.imageUrl
-                LinkImageSource.None -> return@launch
-                LinkImageSource.Unknown -> {
-                    val found = metadataFetcher.read(pageUrl).imageUrl ?: return@launch
-                    // Deleted while the page was being read: nothing to attach to.
-                    if (linkDao.updateImage(linkId, found, imagePath = null) == 0) return@launch
-                    found
-                }
+            try {
+                logFailure("Attaching the image of link $linkId") { attach(linkId, pageUrl, source) }
+            } finally {
+                attaching -= linkId
             }
-            val ready = image(imageUrl).first { it !is LinkImageState.Loading } as? LinkImageState.Ready ?: return@launch
-            val saved = File(imagesDir(), "${imageFilePrefix(linkId)}${sha1(imageUrl).take(12)}.jpg")
-            File(ready.path).copyTo(saved, overwrite = true)
-            // The link may have been deleted while its image downloaded; don't keep a copy nobody owns.
-            if (linkDao.updateImage(linkId, imageUrl, saved.path) == 0) saved.delete()
+        }
+    }
+
+    /**
+     * Attaches a thumbnail to every link that should show one but has none stored, e.g. because its
+     * download failed while offline. Runs when the store is created; call it again after a sync pull.
+     */
+    fun attachMissing() {
+        scope.launch {
+            logFailure("Attaching missing images") {
+                linkDao.linksMissingImage()
+                    .filter { it.id !in attaching }
+                    .forEach { attachWhenReady(it.id, it.url, LinkImageSource.Known(it.imageUrl)) }
+            }
+        }
+    }
+
+    private suspend fun attach(linkId: Long, pageUrl: String, source: LinkImageSource) {
+        val imageUrl = when (source) {
+            is LinkImageSource.Known -> source.imageUrl
+            LinkImageSource.None -> return
+            LinkImageSource.Unknown -> {
+                val found = metadataFetcher.read(pageUrl).imageUrl ?: return
+                // Deleted while the page was being read: nothing to attach to.
+                if (linkDao.updateImage(linkId, found, imagePath = null) == 0) return
+                found
+            }
+        }
+        retry(imageUrl)
+        val ready = image(imageUrl).first { it !is LinkImageState.Loading } as? LinkImageState.Ready ?: return
+        val saved = File(imagesDir(), "${imageFilePrefix(linkId)}${sha1(imageUrl).take(12)}.jpg")
+        File(ready.path).copyTo(saved, overwrite = true)
+        // The link may have been deleted while its image downloaded; don't keep a copy nobody owns.
+        if (linkDao.updateImage(linkId, imageUrl, saved.path) == 0) saved.delete()
+    }
+
+    /** [scope] has no exception handler, so an I/O or Room error escaping it would crash the app. */
+    private suspend fun logFailure(action: String, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "$action failed", e)
         }
     }
 
@@ -127,7 +169,7 @@ class LinkImageStore @Inject constructor(
     private fun start(imageUrl: String, state: MutableStateFlow<LinkImageState>) {
         scope.launch {
             state.value = try {
-                withTimeout(FETCH_TIMEOUT_MS.toLong()) { download(imageUrl) { state.value = LinkImageState.Loading(it) } }
+                slots.run { download(imageUrl) { state.value = LinkImageState.Loading(it) } }
             } catch (e: TimeoutCancellationException) {
                 LinkImageState.Failed
             } catch (e: CancellationException) {
@@ -230,6 +272,7 @@ class LinkImageStore @Inject constructor(
         const val JPEG_QUALITY = 85
         const val MAX_BYTES = 10L * 1024 * 1024
         const val ORPHAN_MIN_AGE_MS = 60_000L
+        const val MAX_PARALLEL_DOWNLOADS = 4
     }
 }
 

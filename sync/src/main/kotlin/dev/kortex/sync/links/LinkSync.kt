@@ -22,12 +22,16 @@ internal class LinkSync(
     /** Link documents written since the last pull. */
     suspend fun countChanged(userUid: String): Int = remote.countChanged(userUid, SyncCollection.Links)
 
-    /** Applies every link document written since the last pull; [onPage] gets each page's size. */
+    /**
+     * Applies every link document written since the last pull; [onPage] gets each page's size.
+     * Then gives every link still missing its thumbnail, from this pull or an earlier one, another go.
+     */
     suspend fun pull(userUid: String, onPage: (Int) -> Unit) {
         remote.pullChanged(userUid, SyncCollection.Links) { docs ->
             apply(docs)
             onPage(docs.size)
         }
+        images.attachMissing()
     }
 
     /** Link documents as other clients write them, for live sync. */

@@ -128,7 +128,6 @@ dependencies {
     implementation(libs.androidx.fragment.ktx)
 
     implementation(libs.datastore.preferences)
-    implementation(libs.security.crypto)
 
     // Background push of local changes when the app isn't on screen (docs/SMS_AUTO_PLAN.md, phase 7).
     implementation(libs.work.runtime.ktx)

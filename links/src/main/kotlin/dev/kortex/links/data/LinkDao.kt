@@ -25,6 +25,10 @@ abstract class LinkDao {
     @Query("UPDATE links SET imageUrl = :imageUrl, imagePath = :imagePath WHERE id = :id")
     abstract suspend fun updateImage(id: Long, imageUrl: String?, imagePath: String?): Int
 
+    /** Links that should show a thumbnail but have none stored, e.g. because its download failed. */
+    @Query("SELECT id, url, imageUrl FROM links WHERE imageUrl IS NOT NULL AND imagePath IS NULL AND imageHidden = 0")
+    abstract suspend fun linksMissingImage(): List<LinkImageNeeded>
+
     /** The sync trigger marks the row dirty when the title really changes. No-op if the link is gone. */
     @Query("UPDATE links SET title = :title WHERE id = :id")
     abstract suspend fun updateTitle(id: Long, title: String)

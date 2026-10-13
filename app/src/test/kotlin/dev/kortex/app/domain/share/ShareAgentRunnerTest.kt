@@ -55,6 +55,7 @@ class ShareAgentRunnerTest {
         override suspend fun save(id: String, turns: List<ChatTurn>, fallbackTitle: String) {
             saved[id] = turns to fallbackTitle
         }
+        override suspend fun rename(id: String, title: String) {}
         override suspend fun delete(id: String) {}
     }
 

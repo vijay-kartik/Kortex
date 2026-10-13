@@ -175,6 +175,7 @@ class ChatViewModelTest {
         override suspend fun save(id: String, turns: List<ChatTurn>, fallbackTitle: String) {
             saved.update { it + Save(id, turns, fallbackTitle) }
         }
+        override suspend fun rename(id: String, title: String) {}
         override suspend fun delete(id: String) {}
     }
 

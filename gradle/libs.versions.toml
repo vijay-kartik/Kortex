@@ -12,7 +12,6 @@ lifecycle = "2.8.7"
 hilt = "2.53"
 room = "2.6.1"
 datastore = "1.1.1"
-security-crypto = "1.1.0-alpha06"
 work = "2.10.0"
 junit = "5.11.3"
 kotest = "5.9.1"
@@ -77,7 +76,6 @@ room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
-security-crypto = { module = "androidx.security:security-crypto", version.ref = "security-crypto" }
 work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }

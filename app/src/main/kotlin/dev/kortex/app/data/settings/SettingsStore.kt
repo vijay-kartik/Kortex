@@ -213,8 +213,8 @@ class SettingsStore(private val context: Context) : ModelSelection {
     // ── OAuth states ────────────────────────────────────────────────────
 
     // Plain DataStore now (consistent with existing key storage — Composio/OpenAI keys are
-    // already plain); note that `security-crypto` is already a declared dependency if
-    // hardening is wanted later.
+    // already plain). If hardening is wanted later, reuse the Tink + Android Keystore approach
+    // in `:finance` (`KeystoreSecretBox`).
 
     val oauthStates: Flow<Map<String, McpOAuthState>> = context.mcpDataStore.data.map { prefs ->
         prefs[KEY_OAUTH_STATES]

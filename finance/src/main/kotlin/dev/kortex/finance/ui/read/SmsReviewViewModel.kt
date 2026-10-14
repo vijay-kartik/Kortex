@@ -3,6 +3,7 @@ package dev.kortex.finance.ui.read
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.finance.domain.port.Clock
+import dev.kortex.finance.domain.port.ReviewNotices
 import dev.kortex.finance.domain.repository.SmsInboxRepository
 import dev.kortex.finance.domain.usecase.ResolveInboxSms
 import dev.kortex.finance.ui.FinanceRoute
@@ -20,9 +21,12 @@ class SmsReviewViewModel @Inject constructor(
     private val resolve: ResolveInboxSms,
     private val notices: FinanceNotices,
     clock: Clock,
+    reviewNotices: ReviewNotices,
 ) : MviViewModel<SmsReviewState, SmsReviewIntent, SmsReviewEffect>(SmsReviewState()) {
 
     init {
+        // Seen: the "N bank SMS to review" notification has done its job.
+        reviewNotices.cancelReview()
         inbox.observeToReview().map { SmsReviewUi.build(it, clock.today(), clock.zone()) }.reduceInto { it }
     }
 

@@ -62,11 +62,8 @@ import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
 import dev.kortex.design.Void
 import dev.kortex.finance.R as FinanceR
-import dev.kortex.finance.sms.BankSms
-import dev.kortex.finance.sms.BankSmsNotifications
 import dev.kortex.finance.ui.common.FinanceDatePicker
 import java.time.LocalDate
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -81,8 +78,8 @@ internal fun BankSmsSection(vm: BankSmsViewModel = hiltViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val toReview by vm.toReview.collectAsStateWithLifecycle()
     val kept by vm.kept.collectAsStateWithLifecycle()
+    val importing by vm.importing.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val importing by remember(context) { BankSms.observeImporting(context) }.collectAsStateWithLifecycle(false)
     var confirmClear by remember { mutableStateOf(false) }
     // Turning on: where to start reading (new SMS only, or earlier ones too).
     var choosingStart by remember { mutableStateOf(false) }
@@ -104,7 +101,7 @@ internal fun BankSmsSection(vm: BankSmsViewModel = hiltViewModel()) {
 
     fun startImport(from: LocalDate) {
         readDeclined = false
-        BankSms.importSince(context, from.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli())
+        vm.startImport(from)
     }
 
     // Notifications ride along: saved entries and SMS to review are told through them. Turning
@@ -303,7 +300,6 @@ internal fun BankSmsSection(vm: BankSmsViewModel = hiltViewModel()) {
             onClear = {
                 confirmClear = false
                 vm.clearInbox()
-                BankSmsNotifications.cancelReview(context)
             },
         )
     }

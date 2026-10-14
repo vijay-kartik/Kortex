@@ -17,11 +17,9 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
@@ -36,7 +34,6 @@ import dev.kortex.design.Ink
 import dev.kortex.design.InkSoft
 import dev.kortex.design.Muted
 import dev.kortex.design.Panel
-import dev.kortex.finance.sms.BankSmsNotifications
 import dev.kortex.finance.ui.FinanceRoute
 import dev.kortex.finance.ui.common.FinanceNoticeHost
 import dev.kortex.finance.ui.common.FinancePushedScreen
@@ -48,9 +45,6 @@ import dev.kortex.mvi.ObserveEffects
 @Composable
 fun SmsReviewRoute(onNavigate: (FinanceRoute) -> Unit, onBack: () -> Unit, viewModel: SmsReviewViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    // Seen: the "N bank SMS to review" notification has done its job.
-    LaunchedEffect(Unit) { BankSmsNotifications.cancelReview(context) }
     ObserveEffects(viewModel.effects) { effect ->
         when (effect) {
             is SmsReviewEffect.Navigate -> onNavigate(effect.route)

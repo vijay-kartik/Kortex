@@ -9,12 +9,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
-import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
-import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import dagger.hilt.EntryPoint
@@ -23,19 +18,17 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.finance.R
 import dev.kortex.finance.domain.port.BackgroundSync
+import dev.kortex.finance.domain.port.PhoneSmsSource
 import dev.kortex.finance.domain.repository.SmsInboxRepository
 import dev.kortex.finance.domain.usecase.ImportSms
 import dev.kortex.finance.domain.usecase.ProcessSmsInbox
 import dev.kortex.finance.domain.usecase.ReceiveSms
 import dev.kortex.finance.domain.usecase.ResolveInboxSms
-import dev.kortex.finance.domain.usecase.StoredSms
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -45,8 +38,6 @@ import kotlinx.coroutines.launch
  */
 object BankSms {
     private const val TAG = "BankSms"
-    private const val WORK_NAME = "bank-sms"
-    private const val IMPORT_WORK_NAME = "bank-sms-import"
     internal const val WORK_CHANNEL_ID = "bank-sms-work"
 
     /** Outlives the receiver; [receive]'s caller keeps the process up with `goAsync` until [onDone]. */
@@ -66,7 +57,7 @@ object BankSms {
             try {
                 var queued = false
                 messages.forEach { (sender, body) -> if (deps.receiveSms()(sender, body, receivedAt)) queued = true }
-                if (queued) enqueue(context)
+                if (queued) deps.smsImports().processInbox()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -101,26 +92,6 @@ object BankSms {
     }
 
     /**
-     * Settings › Add earlier SMS: reads the SMS already on the phone since [fromMillis] and adds
-     * them as live ones are, then says once what came of it. Needs `READ_SMS`. A new import
-     * replaces one still going; what that one had kept is read by this one too.
-     */
-    fun importSince(context: Context, fromMillis: Long) =
-        enqueueImport(context, workDataOf(BankSmsImportWorker.KEY_FROM to fromMillis), ExistingWorkPolicy.REPLACE)
-
-    /** An import is reading or waiting to: Settings says so. */
-    fun observeImporting(context: Context): Flow<Boolean> =
-        WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(IMPORT_WORK_NAME).map { infos -> infos.any { !it.state.isFinished } }
-
-    /** The import's next run, with what the runs so far did. */
-    internal fun continueImport(context: Context, progress: Data) = enqueueImport(context, progress, ExistingWorkPolicy.APPEND_OR_REPLACE)
-
-    private fun enqueueImport(context: Context, input: Data, policy: ExistingWorkPolicy) {
-        val request = OneTimeWorkRequestBuilder<BankSmsImportWorker>().setInputData(input).build()
-        WorkManager.getInstance(context).enqueueUniqueWork(IMPORT_WORK_NAME, policy, request)
-    }
-
-    /**
      * Reads anything a stopped job left waiting, live or imported; the app calls it on start. Does
      * nothing while off. An import still queued or running is left alone: the process also starts
      * to run its next chunk, and a second run appended to it would count the rest twice over.
@@ -128,44 +99,10 @@ object BankSms {
     fun catchUp(context: Context) {
         val deps = entryPoint(context)
         if (!deps.bankSmsStore().settings.value.enabled) return
-        enqueue(context)
+        deps.smsImports().processInbox()
         scope.launch {
-            if (deps.smsInbox().pending(imported = true, limit = 1).isNotEmpty()) {
-                enqueueImport(context, Data.EMPTY, ExistingWorkPolicy.KEEP)
-            }
+            if (deps.smsInbox().pending(imported = true, limit = 1).isNotEmpty()) deps.smsImports().resumeImport()
         }
-    }
-
-    /** The phone's received SMS since [fromMillis], oldest first. Needs `READ_SMS`. */
-    internal fun storedSince(context: Context, fromMillis: Long): List<StoredSms> {
-        val columns = arrayOf(Telephony.TextBasedSmsColumns.ADDRESS, Telephony.TextBasedSmsColumns.BODY, Telephony.TextBasedSmsColumns.DATE)
-        val cursor = context.contentResolver.query(
-            Telephony.Sms.Inbox.CONTENT_URI,
-            columns,
-            "${Telephony.TextBasedSmsColumns.DATE} >= ?",
-            arrayOf(fromMillis.toString()),
-            "${Telephony.TextBasedSmsColumns.DATE} ASC",
-        ) ?: return emptyList()
-        return cursor.use {
-            buildList {
-                while (it.moveToNext()) {
-                    val sender = it.getString(0) ?: continue
-                    val body = it.getString(1) ?: continue
-                    add(StoredSms(sender, body, it.getLong(2)))
-                }
-            }
-        }
-    }
-
-    /**
-     * Runs [BankSmsWorker] now. A run already going finishes first and this one follows it, so an
-     * SMS stored after that run listed the inbox is still read.
-     */
-    private fun enqueue(context: Context) {
-        val request = OneTimeWorkRequestBuilder<BankSmsWorker>()
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            .build()
-        WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     /** (sender, body) per SMS. A long SMS arrives in parts, in order; one sender's parts are one message. */
@@ -234,8 +171,8 @@ class BankSmsImportWorker(context: Context, params: WorkerParameters) : Coroutin
         val from = inputData.getLong(KEY_FROM, -1)
         return try {
             if (from >= 0) {
-                val kept = deps.importSms()(BankSms.storedSince(applicationContext, from))
-                BankSms.continueImport(applicationContext, workDataOf(KEY_TOTAL to kept))
+                val kept = deps.importSms()(deps.phoneSms().storedSince(from))
+                deps.smsImports().continueImport(workDataOf(KEY_TOTAL to kept))
                 return Result.success()
             }
             val run = deps.processSmsInbox()(deps.bankSmsStore().settings.value.autoSave, imported = true, limit = CHUNK)
@@ -245,8 +182,7 @@ class BankSmsImportWorker(context: Context, params: WorkerParameters) : Coroutin
             val toReview = inputData.getInt(KEY_REVIEW, 0) + run.toReview
             if (run.more) {
                 BankSmsNotifications.postImportProgress(applicationContext, read, maxOf(total, read))
-                BankSms.continueImport(
-                    applicationContext,
+                deps.smsImports().continueImport(
                     workDataOf(KEY_TOTAL to total, KEY_READ to read, KEY_SAVED to saved, KEY_REVIEW to toReview),
                 )
             } else {
@@ -290,4 +226,6 @@ interface BankSmsEntryPoint {
     fun smsInbox(): SmsInboxRepository
     fun backgroundSync(): BackgroundSync
     fun importSms(): ImportSms
+    fun smsImports(): WorkManagerSmsImportScheduler
+    fun phoneSms(): PhoneSmsSource
 }

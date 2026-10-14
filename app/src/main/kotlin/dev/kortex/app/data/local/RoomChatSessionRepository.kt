@@ -18,14 +18,14 @@ class RoomChatSessionRepository(
     private val json = Json { ignoreUnknownKeys = true }
 
     override fun observeSummaries(): Flow<List<ChatSessionSummary>> =
-        dao.getAll().map { rows -> rows.map { ChatSessionSummary(it.id, it.title, it.updatedAtMillis) } }
+        dao.observeHeaders().map { rows -> rows.map { ChatSessionSummary(it.id, it.title, it.updatedAtMillis) } }
 
     override suspend fun get(id: String): ChatSession? = dao.getById(id)?.let {
         ChatSession(it.id, it.title, json.decodeFromString<List<ChatTurn>>(it.turnsJson), it.updatedAtMillis)
     }
 
     override suspend fun save(id: String, turns: List<ChatTurn>, fallbackTitle: String) {
-        val title = dao.getById(id)?.title ?: fallbackTitle.take(TITLE_LENGTH)
+        val title = dao.getTitle(id) ?:fallbackTitle.take(TITLE_LENGTH)
         dao.upsert(ChatSessionEntity(id = id, title = title, turnsJson = json.encodeToString(turns), updatedAtMillis = now()))
     }
 

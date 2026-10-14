@@ -87,6 +87,17 @@ class RoomChatSessionRepositoryTest {
     }
 
     @Test
+    fun `listing and saving sessions never read their turns`() = runBlocking {
+        repository.save("s1", turns, fallbackTitle = "First question")
+        repository.rename("s1", "Food spending")
+        clock = 2_000L
+        repository.save("s1", turns + turns, fallbackTitle = "A follow-up")
+
+        assertEquals(listOf(ChatSessionSummary("s1", "Food spending", 2_000L)), repository.observeSummaries().first())
+        assertEquals(0, dao.fullRowReads)
+    }
+
+    @Test
     fun `a new title is trimmed and cut to 40 characters`() = runBlocking {
         repository.save("s1", turns, fallbackTitle = "q")
 
@@ -117,10 +128,20 @@ class RoomChatSessionRepositoryTest {
     private class FakeChatSessionDao : ChatSessionDao {
         private val rows = MutableStateFlow<Map<String, ChatSessionEntity>>(emptyMap())
 
-        override fun getAll(): Flow<List<ChatSessionEntity>> =
-            rows.map { it.values.sortedByDescending(ChatSessionEntity::updatedAtMillis) }
+        /** Counts reads of whole rows, `turnsJson` included; only [RoomChatSessionRepository.get] should make them. */
+        var fullRowReads = 0
 
-        override suspend fun getById(id: String): ChatSessionEntity? = rows.value[id]
+        override fun observeHeaders(): Flow<List<ChatSessionHeader>> = rows.map { all ->
+            all.values.sortedByDescending(ChatSessionEntity::updatedAtMillis)
+                .map { ChatSessionHeader(it.id, it.title, it.updatedAtMillis) }
+        }
+
+        override suspend fun getById(id: String): ChatSessionEntity? {
+            fullRowReads++
+            return rows.value[id]
+        }
+
+        override suspend fun getTitle(id: String): String? = rows.value[id]?.title
 
         override suspend fun upsert(session: ChatSessionEntity) {
             rows.value = rows.value + (session.id to session)

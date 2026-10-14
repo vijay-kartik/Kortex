@@ -17,13 +17,19 @@ data class ChatSessionEntity(
     val updatedAtMillis: Long,
 )
 
+/** A session row without `turnsJson`, which holds every attachment's bytes and can be megabytes long. */
+data class ChatSessionHeader(val id: String, val title: String, val updatedAtMillis: Long)
+
 @Dao
 interface ChatSessionDao {
-    @Query("SELECT * FROM chat_sessions ORDER BY updatedAtMillis DESC")
-    fun getAll(): Flow<List<ChatSessionEntity>>
+    @Query("SELECT id, title, updatedAtMillis FROM chat_sessions ORDER BY updatedAtMillis DESC")
+    fun observeHeaders(): Flow<List<ChatSessionHeader>>
 
     @Query("SELECT * FROM chat_sessions WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): ChatSessionEntity?
+
+    @Query("SELECT title FROM chat_sessions WHERE id = :id LIMIT 1")
+    suspend fun getTitle(id: String): String?
 
     @Upsert
     suspend fun upsert(session: ChatSessionEntity)

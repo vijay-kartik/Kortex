@@ -1,0 +1,20 @@
+<!-- Outlined pencil glyph (Figma icon/pencil) for the link options tray's Rename. 20dp grid,
+     1.5 stroke, like icon/open and icon/share. Stroke-drawn; tint via Icon(tint = …). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M14.167,2.5C14.627,2.04 15.373,2.04 15.833,2.5L17.5,4.167C17.96,4.627 17.96,5.373 17.5,5.833L6.667,16.667L2.5,17.5L3.333,13.333L14.167,2.5Z"/>
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M12.5,4.167L15.833,7.5"/>
+</vector>

@@ -77,27 +77,7 @@ internal fun LinkTagEditor(
                 .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    buildAnnotatedString {
-                        append("TAGS")
-                        if (edited) withStyle(SpanStyle(color = Synapse)) { append(" · EDITED") }
-                    },
-                    style = TagsLabelStyle,
-                    color = Muted,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    "DONE",
-                    style = LinkMetaStyle,
-                    color = Synapse,
-                    modifier = Modifier
-                        .clip(DoneShape)
-                        .border(1.dp, Synapse, DoneShape)
-                        .clickable(onClickLabel = "Save tags", role = Role.Button, onClick = onDone)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                )
-            }
+            EditorHeader(label = "TAGS", edited = edited, doneLabel = "Save tags", onDone = onDone)
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -117,6 +97,32 @@ internal fun LinkTagEditor(
                 }
             }
         }
+    }
+}
+
+/** The tray editors' top row: [label], " · EDITED" once there is something to save, and Done. */
+@Composable
+internal fun EditorHeader(label: String, edited: Boolean, doneLabel: String, onDone: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            buildAnnotatedString {
+                append(label)
+                if (edited) withStyle(SpanStyle(color = Synapse)) { append(" · EDITED") }
+            },
+            style = EditorLabelStyle,
+            color = Muted,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            "DONE",
+            style = LinkMetaStyle,
+            color = Synapse,
+            modifier = Modifier
+                .clip(DoneShape)
+                .border(1.dp, Synapse, DoneShape)
+                .clickable(onClickLabel = doneLabel, role = Role.Button, onClick = onDone)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        )
     }
 }
 
@@ -166,5 +172,5 @@ private fun NewTagNameField(value: String, onValueChange: (String) -> Unit, onAd
 }
 
 private val DoneShape = RoundedCornerShape(12.dp)
-private val TagFieldShape = RoundedCornerShape(8.dp)
-private val TagsLabelStyle = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 1.5.sp)
+private val TagFieldShape =RoundedCornerShape(8.dp)
+private val EditorLabelStyle =TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 1.5.sp)

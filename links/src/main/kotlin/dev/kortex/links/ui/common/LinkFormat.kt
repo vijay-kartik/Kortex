@@ -4,7 +4,10 @@ import dev.kortex.links.domain.model.Link
 import dev.kortex.links.domain.model.linkDomain
 
 /** The title, or the address's host when the page gave none. */
-internal fun Link.displayTitle(): String = title.ifBlank { linkDomain(url) ?: url }
+internal fun Link.displayTitle(): String = title.ifBlank { domainTitle() }
+
+/** What a link without a title shows instead: the address's host, or the address if it has none. */
+internal fun Link.domainTitle(): String = linkDomain(url) ?: url
 
 /** Compact, uppercase age: NOW, 5M AGO, 3H AGO, 3D AGO, 2W AGO, 4MO AGO, 1Y AGO. */
 internal fun relativeAge(createdAtMillis: Long, nowMillis: Long): String {

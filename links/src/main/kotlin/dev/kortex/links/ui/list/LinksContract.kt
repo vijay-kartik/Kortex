@@ -23,6 +23,8 @@ data class LinksState(
     val optionsLinkId: Long? = null,
     /** Non-null while the open card edits its tags. */
     val tagDraft: TagDraft? = null,
+    /** The title field's text, non-null while the open card is being renamed. */
+    val titleDraft: String? = null,
 ) {
     /** Only with no links at all: deleting the only link shows its undo row, not the empty state. */
     val empty: Boolean = !loading && links.isEmpty()
@@ -70,6 +72,12 @@ data class LinksState(
         return if (name in draft) draft else draft + name
     }
 
+    /** The title differs from the link's, ignoring outer spaces; Done then reads as a save. */
+    val titleEdited: Boolean = titleDraft != null && openLink != null && titleDraft.trim() != openLink.title.trim()
+
+    /** What closing the tray should save as the open link's title; null when nothing changed. Blank clears it. */
+    val titleToSave: String? = titleDraft?.takeIf { titleEdited }
+
     /** What closing the tray should save as the open link's tags, [typedName] included; null when nothing changed. */
     fun tagsToSave(typedName: String): List<String>? {
         val link = openLink ?: return null
@@ -82,7 +90,7 @@ data class LinksState(
      * pop back open with them. The ViewModel applies this after every change.
      */
     fun normalized(): LinksState =
-        if (optionsLinkId != null && openOptionsLinkId == null) copy(optionsLinkId = null, tagDraft = null) else this
+        if (optionsLinkId != null && openOptionsLinkId == null) copy(optionsLinkId = null, tagDraft = null, titleDraft = null) else this
 }
 
 /** A deleted link that stays restorable until [deadlineMillis] (wall clock). */
@@ -113,7 +121,10 @@ sealed interface LinksIntent {
     data class Copy(val linkId: Long) : LinksIntent
     /** Long-press. Does nothing on the card already open, so its draft survives. */
     data class ShowOptions(val linkId: Long) : LinksIntent
-    /** Tap outside, back or Done. Saves the draft if it changed, including a name still in the new-tag field. */
+    /**
+     * Tap outside, back or Done. Saves the tag or title draft if it changed, including a name still
+     * in the new-tag field.
+     */
     data class CloseOptions(val typedTagName: String = "") : LinksIntent
     data class Open(val linkId: Long) : LinksIntent
     data class Share(val linkId: Long) : LinksIntent
@@ -121,6 +132,9 @@ sealed interface LinksIntent {
     data class Delete(val linkId: Long) : LinksIntent
     data object UndoDelete : LinksIntent
     data object EditTags : LinksIntent
+    /** Swaps the tray for the title field, filled with the current title. */
+    data object EditTitle : LinksIntent
+    data class TitleChanged(val title: String) : LinksIntent
     data class ToggleDraftTag(val tag: String) : LinksIntent
     data object StartNewTag : LinksIntent
     data class AddDraftTag(val name: String) : LinksIntent

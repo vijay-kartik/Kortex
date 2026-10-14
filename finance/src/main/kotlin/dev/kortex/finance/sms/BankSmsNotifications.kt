@@ -8,6 +8,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import dev.kortex.finance.R
+import dev.kortex.finance.domain.port.ReviewNotices
 import dev.kortex.finance.domain.usecase.AutoSaved
 import dev.kortex.finance.domain.usecase.SmsEntryType
 import dev.kortex.finance.reminders.FinanceReminders
@@ -119,8 +120,8 @@ object BankSmsNotifications {
         runCatching { channel(context).notify(IMPORT_ID, notification) }
     }
 
-    /** To review was opened: the review notification has done its job. */
-    fun cancelReview(context: Context) = NotificationManagerCompat.from(context).cancel(REVIEW_ID)
+    /** To review was opened, or the inbox cleared: the review notification has done its job. */
+    internal fun cancelReview(context: Context) = NotificationManagerCompat.from(context).cancel(REVIEW_ID)
 
     internal fun cancelSaved(context: Context, smsId: String) = NotificationManagerCompat.from(context).cancel(notificationId(smsId))
 
@@ -144,4 +145,9 @@ object BankSmsNotifications {
         } ?: return null
         return PendingIntent.getActivity(context, requestCode, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
+}
+
+/** [ReviewNotices] on [BankSmsNotifications]. */
+class AndroidReviewNotices(private val context: Context) : ReviewNotices {
+    override fun cancelReview() = BankSmsNotifications.cancelReview(context)
 }

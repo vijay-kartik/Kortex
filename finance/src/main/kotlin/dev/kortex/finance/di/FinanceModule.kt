@@ -43,7 +43,13 @@ import dev.kortex.finance.domain.usecase.SaveRecurring
 import dev.kortex.finance.domain.usecase.SetBudget
 import dev.kortex.finance.domain.usecase.SkipOccurrence
 import dev.kortex.finance.domain.usecase.UndoOccurrence
+import dev.kortex.finance.domain.port.PhoneSmsSource
+import dev.kortex.finance.domain.port.ReviewNotices
+import dev.kortex.finance.domain.port.SmsImportScheduler
+import dev.kortex.finance.sms.AndroidReviewNotices
 import dev.kortex.finance.sms.BankSmsStore
+import dev.kortex.finance.sms.TelephonySmsSource
+import dev.kortex.finance.sms.WorkManagerSmsImportScheduler
 import dev.kortex.finance.domain.usecase.AttachReceipt
 import dev.kortex.finance.domain.usecase.ReadReceipt
 import dev.kortex.finance.domain.usecase.ImportSms
@@ -91,6 +97,20 @@ object FinanceModule {
     @Provides
     @Singleton
     fun provideBankSmsStore(@ApplicationContext context: Context): BankSmsStore = BankSmsStore(context)
+
+    @Provides
+    @Singleton
+    fun provideWorkManagerSmsImportScheduler(@ApplicationContext context: Context) = WorkManagerSmsImportScheduler(context)
+
+    /** What Settings starts and watches; the SMS receiver and workers use the WorkManager class itself. */
+    @Provides
+    fun provideSmsImportScheduler(scheduler: WorkManagerSmsImportScheduler): SmsImportScheduler = scheduler
+
+    @Provides
+    fun providePhoneSmsSource(@ApplicationContext context: Context): PhoneSmsSource = TelephonySmsSource(context)
+
+    @Provides
+    fun provideReviewNotices(@ApplicationContext context: Context): ReviewNotices = AndroidReviewNotices(context)
 
     @Provides
     @Singleton

@@ -55,8 +55,18 @@ object Statements {
     /** [day] of [month], or the month's last day when it's shorter. */
     fun dayIn(month: YearMonth, day: Int): LocalDate = month.atDay(day.coerceIn(1, month.lengthOfMonth()))
 
-    /** The bill from a statement on [statementOn] is due on [dueDay] of the next month. */
-    fun dueOnFor(statementOn: LocalDate, dueDay: Int): LocalDate = dayIn(YearMonth.from(statementOn).plusMonths(1), dueDay)
+    /** The fewest days a bill gets between its statement and its due date. */
+    const val MIN_GRACE_DAYS = 14L
+
+    /**
+     * The bill from a statement on [statementOn] is due on [dueDay] of the same month when that's at
+     * least [MIN_GRACE_DAYS] later (statement on the 3rd, due on the 21st), else of the next month.
+     */
+    fun dueOnFor(statementOn: LocalDate, dueDay: Int): LocalDate {
+        val month = YearMonth.from(statementOn)
+        val sameMonth = dayIn(month, dueDay)
+        return if (sameMonth.isBefore(statementOn.plusDays(MIN_GRACE_DAYS))) dayIn(month.plusMonths(1), dueDay) else sameMonth
+    }
 
     /**
      * Statement days of [card] after [lastStatementOn] (or, for a card with none yet, in the last

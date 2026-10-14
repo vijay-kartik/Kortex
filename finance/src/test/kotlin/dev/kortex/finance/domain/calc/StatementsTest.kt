@@ -51,6 +51,27 @@ class StatementsTest {
         assertEquals(LocalDate.of(2027, 2, 28), Statements.dayIn(YearMonth.of(2027, 2), 31))
         assertEquals(LocalDate.of(2026, 10, 15), Statements.dueOnFor(LocalDate.of(2026, 9, 25), 15))
         assertEquals(LocalDate.of(2027, 2, 28), Statements.dueOnFor(LocalDate.of(2027, 1, 25), 31))
+        assertEquals(LocalDate.of(2027, 2, 28), Statements.dueOnFor(LocalDate.of(2027, 2, 1), 31))
+    }
+
+    @Test
+    fun `a due day well after the statement day is due the same month`() {
+        assertEquals(LocalDate.of(2026, 10, 21), Statements.dueOnFor(LocalDate.of(2026, 10, 3), 21))
+        assertEquals(LocalDate.of(2026, 10, 17), Statements.dueOnFor(LocalDate.of(2026, 10, 3), 17))
+    }
+
+    @Test
+    fun `a due day too soon after the statement moves to the next month`() {
+        assertEquals(LocalDate.of(2026, 11, 16), Statements.dueOnFor(LocalDate.of(2026, 10, 3), 16))
+        assertEquals(LocalDate.of(2026, 11, 3), Statements.dueOnFor(LocalDate.of(2026, 10, 3), 3))
+    }
+
+    @Test
+    fun `the engine bills a same-month due day`() {
+        val card = kortex.copy(statementDay = 3, dueDay = 21)
+        val txs = listOf(tx(OPENING, 1_400_00, LocalDate.of(2026, 9, 1), "kortex"))
+        val statement = Statements.autoStatement(card, LocalDate.of(2026, 10, 3), null, txs, accounts, 0)!!
+        assertEquals(LocalDate.of(2026, 10, 21), statement.dueOn)
     }
 
     @Test

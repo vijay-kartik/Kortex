@@ -81,14 +81,17 @@ import dev.kortex.design.countLabel
 import dev.kortex.design.resultsLabel
 import dev.kortex.links.domain.model.Link
 import dev.kortex.links.domain.model.TagCount
+import dev.kortex.links.ui.common.domainTitle
 import dev.kortex.links.ui.list.components.DIMMED_ALPHA
 import dev.kortex.links.ui.list.components.DeletedLinkRow
 import dev.kortex.links.ui.list.components.LinkCard
 import dev.kortex.links.ui.list.components.LinkTagEditor
+import dev.kortex.links.ui.list.components.LinkTitleEditor
 import dev.kortex.links.ui.list.components.PRESS_MS
 import dev.kortex.links.ui.list.components.SWAP_MS
 import dev.kortex.links.ui.list.components.TRAY_MS
 import dev.kortex.links.ui.list.components.TagFilters
+import dev.kortex.links.ui.list.components.TrayPanel
 import dev.kortex.mvi.ObserveEffects
 
 /**
@@ -202,8 +205,9 @@ private fun EmptyLinks() {
  * Synapse border, everything else dims, and the tray expands under it. Any tap outside the card,
  * or back, closes it. Delete swaps the card for an undo row until the undo window runs out.
  *
- * Tags swaps the tray for the tag editor (Figma: Links / Edit tags). Edits stay in the ViewModel's
- * draft until the editor closes, by Done, back or a tap outside, and are saved then.
+ * Tags swaps the tray for the tag editor (Figma: Links / Edit tags), Rename for the title field
+ * (Figma: Links / Rename). Edits stay in the ViewModel's draft until the editor closes, by Done,
+ * back or a tap outside, and are saved then.
  */
 @Composable
 private fun LinksList(
@@ -224,14 +228,16 @@ private fun LinksList(
     val focusManager = LocalFocusManager.current
 
     // While the tray collapses, the editor keeps showing the draft it closed with.
-    val editor = remember { mutableStateOf(state) }.apply { if (state.tagDraft != null) value = state }.value
+    val editor = remember { mutableStateOf(state) }.apply {
+        if (state.tagDraft != null || state.titleDraft != null) value = state
+    }.value
     // The new-tag field's text. Opening the editor, adding a tag or closing the field starts it empty.
     var newTagName by rememberSaveable(editor.openOptionsLinkId, editor.tagDraft?.adding) { mutableStateOf("") }
 
-    /** Closes the tray or the tag editor; the ViewModel saves the editor's changes, a name still in the field included. */
+    /** Closes the tray or an editor; the ViewModel saves the editor's changes, a name still in the field included. */
     fun closeCard() {
         // Drops the keyboard with the tray instead of after the field leaves.
-        if (state.tagDraft != null) focusManager.clearFocus()
+        if (state.tagDraft != null || state.titleDraft != null) focusManager.clearFocus()
         onIntent(LinksIntent.CloseOptions(newTagName))
     }
     val currentCloseCard by rememberUpdatedState(::closeCard)
@@ -318,7 +324,12 @@ private fun LinksList(
                                 nowMillis = nowMillis,
                                 copyTick = copyTick,
                                 optionsOpen = isOpen,
-                                editingTags = isOpen && state.tagDraft != null,
+                                trayPanel = when {
+                                    !isOpen -> TrayPanel.Actions
+                                    state.tagDraft != null -> TrayPanel.Tags
+                                    state.titleDraft != null -> TrayPanel.Title
+                                    else -> TrayPanel.Actions
+                                },
                                 onCopy = {
                                     copyTap = CopyTap(linkId, tick = (copyTap?.tick ?: 0) + 1)
                                     onIntent(LinksIntent.Copy(linkId))
@@ -328,6 +339,7 @@ private fun LinksList(
                                 onLongPress = { onIntent(LinksIntent.ShowOptions(linkId)) },
                                 onOpen = { onIntent(LinksIntent.Open(linkId)) },
                                 onShare = { onIntent(LinksIntent.Share(linkId)) },
+                                onRename = { onIntent(LinksIntent.EditTitle) },
                                 onDelete = { onIntent(LinksIntent.Delete(linkId)) },
                                 onEditTags = { onIntent(LinksIntent.EditTags) },
                                 tagEditor = {
@@ -342,6 +354,17 @@ private fun LinksList(
                                             onStartNewTag = { onIntent(LinksIntent.StartNewTag) },
                                             onNewTagNameChange = { newTagName = it },
                                             onAddTag = { onIntent(LinksIntent.AddDraftTag(newTagName)) },
+                                            onDone = ::closeCard,
+                                        )
+                                    }
+                                },
+                                titleEditor = {
+                                    editor.titleDraft?.let { draft ->
+                                        LinkTitleEditor(
+                                            title = draft,
+                                            domain = link.domainTitle(),
+                                            edited = editor.titleEdited,
+                                            onTitleChange = { onIntent(LinksIntent.TitleChanged(it)) },
                                             onDone = ::closeCard,
                                         )
                                     }

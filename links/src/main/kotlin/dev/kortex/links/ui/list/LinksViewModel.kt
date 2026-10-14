@@ -7,6 +7,7 @@ import dev.kortex.links.domain.port.Clock
 import dev.kortex.links.domain.usecase.DeleteLink
 import dev.kortex.links.domain.usecase.ObserveLinks
 import dev.kortex.links.domain.usecase.ObserveTagCounts
+import dev.kortex.links.domain.usecase.RenameLink
 import dev.kortex.links.domain.usecase.SetLinkTags
 import dev.kortex.mvi.MviViewModel
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -21,6 +22,7 @@ class LinksViewModel @Inject constructor(
     observeLinks: ObserveLinks,
     observeTagCounts: ObserveTagCounts,
     private val setLinkTags: SetLinkTags,
+    private val renameLink: RenameLink,
     private val deleteLink: DeleteLink,
     private val clock: Clock,
 ) : MviViewModel<LinksState, LinksIntent, LinksEffect>(LinksState()) {
@@ -46,7 +48,7 @@ class LinksViewModel @Inject constructor(
             is LinksIntent.Copy -> link(intent.linkId)?.let { sendEffect(LinksEffect.CopyUrl(it.url)) }
             is LinksIntent.ShowOptions ->
                 // Long-pressing the open card again mustn't drop its draft.
-                if (intent.linkId != currentState.openOptionsLinkId) update { copy(optionsLinkId = intent.linkId, tagDraft = null) }
+                if (intent.linkId != currentState.openOptionsLinkId) update { copy(optionsLinkId = intent.linkId, tagDraft = null, titleDraft = null) }
             is LinksIntent.CloseOptions -> closeOptions(intent.typedTagName)
             is LinksIntent.Open -> link(intent.linkId)?.let {
                 closeTray()
@@ -62,6 +64,8 @@ class LinksViewModel @Inject constructor(
                 update { copy(pendingDeletion = null) }
             }
             LinksIntent.EditTags -> currentState.openLink?.let { link -> update { copy(tagDraft = TagDraft(link.tags)) } }
+            LinksIntent.EditTitle -> currentState.openLink?.let { link -> update { copy(titleDraft = link.title) } }
+            is LinksIntent.TitleChanged -> update { copy(titleDraft = titleDraft?.let { intent.title }) }
             is LinksIntent.ToggleDraftTag -> update { copy(tagDraft = tagDraft?.toggled(intent.tag)) }
             LinksIntent.StartNewTag -> update { copy(tagDraft = tagDraft?.copy(adding = true)) }
             is LinksIntent.AddDraftTag -> update { copy(tagDraft = draftTagsWith(intent.name)?.let { TagDraft(it) }) }
@@ -73,11 +77,13 @@ class LinksViewModel @Inject constructor(
     private fun closeOptions(typedTagName: String) {
         val linkId = currentState.openOptionsLinkId
         val tags = currentState.tagsToSave(typedTagName)
+        val title = currentState.titleToSave
         if (linkId != null && tags != null) viewModelScope.launch { setLinkTags(linkId, tags) }
+        if (linkId != null && title != null) viewModelScope.launch { renameLink(linkId, title) }
         closeTray()
     }
 
-    private fun closeTray() = update { copy(optionsLinkId = null, tagDraft = null) }
+    private fun closeTray() = update { copy(optionsLinkId = null, tagDraft = null, titleDraft = null) }
 
     /**
      * Hides the link behind an undo row and deletes it once [UNDO_WINDOW_MS] passes. Only one link
@@ -87,7 +93,7 @@ class LinksViewModel @Inject constructor(
         commitPendingDeletion()
         val now = clock.nowMillis()
         update {
-            copy(optionsLinkId = null, tagDraft = null, pendingDeletion = PendingLinkDeletion(linkId, startedAtMillis = now, deadlineMillis = now + UNDO_WINDOW_MS))
+            copy(optionsLinkId = null, tagDraft = null, titleDraft = null, pendingDeletion = PendingLinkDeletion(linkId, startedAtMillis = now, deadlineMillis = now + UNDO_WINDOW_MS))
         }
         deletionJob = viewModelScope.launch {
             delay(UNDO_WINDOW_MS)

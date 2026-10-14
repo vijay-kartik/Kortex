@@ -7,6 +7,7 @@ import dev.kortex.links.domain.port.Clock
 import dev.kortex.links.domain.usecase.DeleteLink
 import dev.kortex.links.domain.usecase.ObserveLinks
 import dev.kortex.links.domain.usecase.ObserveTagCounts
+import dev.kortex.links.domain.usecase.RenameLink
 import dev.kortex.links.domain.usecase.SetLinkTags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -220,7 +221,7 @@ class LinksViewModelTest {
     }
 
     @Test
-    fun `a card whose link vanishes, e.g. by sync, closes its tray`() = runTest(dispatcher) {
+    fun `a card whose link vanishes, say by sync, closes its tray`() = runTest(dispatcher) {
         val viewModel = loadedViewModel()
         viewModel.onIntent(LinksIntent.ShowOptions(grinder.id))
 
@@ -230,6 +231,82 @@ class LinksViewModelTest {
         runCurrent()
 
         assertNull(viewModel.state.value.openOptionsLinkId)
+    }
+
+    // ── Renaming ──────────────────────────────────────────────────
+
+    @Test
+    fun `renaming starts from the current title and writes nothing if it stays the same`() = runTest(dispatcher) {
+        val viewModel = loadedViewModel()
+        viewModel.onIntent(LinksIntent.ShowOptions(grinder.id))
+        viewModel.onIntent(LinksIntent.EditTitle)
+        assertEquals(grinder.title, viewModel.state.value.titleDraft)
+
+        viewModel.onIntent(LinksIntent.TitleChanged(" Pepper grinder "))
+        assertFalse("outer spaces aren't an edit", viewModel.state.value.titleEdited)
+        viewModel.onIntent(LinksIntent.CloseOptions())
+        runCurrent()
+
+        assertTrue(repository.titleWrites.isEmpty())
+        assertNull(viewModel.state.value.titleDraft)
+        assertNull(viewModel.state.value.openOptionsLinkId)
+    }
+
+    @Test
+    fun `closing saves a changed title, trimmed, and leaves the tags alone`() = runTest(dispatcher) {
+        val viewModel = loadedViewModel()
+        viewModel.onIntent(LinksIntent.ShowOptions(grinder.id))
+        viewModel.onIntent(LinksIntent.EditTitle)
+
+        viewModel.onIntent(LinksIntent.TitleChanged("Auto pepper grinder "))
+        assertTrue(viewModel.state.value.titleEdited)
+        viewModel.onIntent(LinksIntent.CloseOptions())
+        runCurrent()
+
+        assertEquals(listOf(grinder.id to "Auto pepper grinder"), repository.titleWrites)
+        assertTrue(repository.tagWrites.isEmpty())
+        assertEquals(grinder.tags, viewModel.state.value.links.first { it.id == grinder.id }.tags)
+    }
+
+    @Test
+    fun `a blank title is saved as empty, so the card shows the domain`() = runTest(dispatcher) {
+        val viewModel = loadedViewModel()
+        viewModel.onIntent(LinksIntent.ShowOptions(grinder.id))
+        viewModel.onIntent(LinksIntent.EditTitle)
+
+        viewModel.onIntent(LinksIntent.TitleChanged("  "))
+        viewModel.onIntent(LinksIntent.CloseOptions())
+        runCurrent()
+
+        assertEquals(listOf(grinder.id to ""), repository.titleWrites)
+        assertEquals("", viewModel.state.value.links.first { it.id == grinder.id }.title)
+    }
+
+    @Test
+    fun `typing without the title field open does nothing`() = runTest(dispatcher) {
+        val viewModel = loadedViewModel()
+        viewModel.onIntent(LinksIntent.ShowOptions(grinder.id))
+
+        viewModel.onIntent(LinksIntent.TitleChanged("Stray"))
+        viewModel.onIntent(LinksIntent.CloseOptions())
+        runCurrent()
+
+        assertNull(viewModel.state.value.titleDraft)
+        assertTrue(repository.titleWrites.isEmpty())
+    }
+
+    @Test
+    fun `long-pressing another card drops the title draft unsaved`() = runTest(dispatcher) {
+        val viewModel = loadedViewModel()
+        viewModel.onIntent(LinksIntent.ShowOptions(grinder.id))
+        viewModel.onIntent(LinksIntent.EditTitle)
+        viewModel.onIntent(LinksIntent.TitleChanged("Grinder"))
+
+        viewModel.onIntent(LinksIntent.ShowOptions(llama.id))
+        runCurrent()
+
+        assertNull(viewModel.state.value.titleDraft)
+        assertTrue(repository.titleWrites.isEmpty())
     }
 
     @Test
@@ -261,6 +338,7 @@ class LinksViewModelTest {
             observeLinks = ObserveLinks(repository),
             observeTagCounts = ObserveTagCounts(repository),
             setLinkTags = SetLinkTags(repository),
+            renameLink = RenameLink(repository),
             deleteLink = DeleteLink(repository),
             clock = clock,
         )

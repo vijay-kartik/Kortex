@@ -92,7 +92,7 @@ import kotlinx.coroutines.delay
 
 /**
  * A saved link. Tap copies it, long-press opens its options tray under it (Figma: Links /
- * Options); the tray swaps for [tagEditor] while [editingTags].
+ * Options); the tray swaps for [tagEditor] or [titleEditor] as [trayPanel] says.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -101,16 +101,18 @@ internal fun LinkCard(
     nowMillis: Long,
     copyTick: Int?,
     optionsOpen: Boolean,
-    /** Shows [tagEditor] in place of the options tray. */
-    editingTags: Boolean,
+    /** What the open tray shows: its actions, [tagEditor] or [titleEditor]. */
+    trayPanel: TrayPanel,
     onCopy: () -> Unit,
     onCopyFinished: () -> Unit,
     onLongPress: () -> Unit,
     onOpen: () -> Unit,
     onShare: () -> Unit,
+    onRename: () -> Unit,
     onDelete: () -> Unit,
     onEditTags: () -> Unit,
     tagEditor: @Composable () -> Unit,
+    titleEditor: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val copyAnimation = rememberLinkCopyAnimation(copyTick, onCopyFinished)
@@ -118,11 +120,11 @@ internal fun LinkCard(
     val currentOnCopy by rememberUpdatedState(onCopy)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
     // While the tray collapses, it keeps showing whichever panel was open.
-    val trayShowsEditor = remember { mutableStateOf(editingTags) }.apply { if (optionsOpen) value = editingTags }.value
+    val shownPanel = remember { mutableStateOf(trayPanel) }.apply { if (optionsOpen) value = trayPanel }.value
 
     // Taps outside close the tray without scrolling, so make sure all of it is on screen.
     val bringIntoView = remember { BringIntoViewRequester() }
-    LaunchedEffect(optionsOpen, editingTags) {
+    LaunchedEffect(optionsOpen, trayPanel) {
         if (optionsOpen) {
             delay((PRESS_MS + TRAY_MS).toLong())
             bringIntoView.bringIntoView()
@@ -226,25 +228,35 @@ internal fun LinkCard(
             exit = shrinkVertically(tween(CLOSE_MS, easing = StandardEasing)) + fadeOut(tween(CLOSE_MS)),
         ) {
             AnimatedContent(
-                targetState = trayShowsEditor,
+                targetState = shownPanel,
                 transitionSpec = {
                     fadeIn(tween(TRAY_MS, delayMillis = SWAP_MS / 2)) togetherWith fadeOut(tween(SWAP_MS / 2)) using
                         SizeTransform { _, _ -> tween(TRAY_MS, easing = EmphasizedDecelerate) }
                 },
                 label = "tray panel",
-            ) { showsEditor ->
-                if (showsEditor) {
-                    tagEditor()
-                } else {
-                    LinkOptionsTray(onOpen = onOpen, onShare = onShare, onEditTags = onEditTags, onDelete = onDelete)
+            ) { panel ->
+                when (panel) {
+                    TrayPanel.Actions -> LinkOptionsTray(
+                        onOpen = onOpen,
+                        onShare = onShare,
+                        onRename = onRename,
+                        onEditTags = onEditTags,
+                        onDelete = onDelete,
+                    )
+                    TrayPanel.Tags -> tagEditor()
+                    TrayPanel.Title -> titleEditor()
                 }
             }
         }
     }
 }
 
+/** What an open card's tray shows. */
+internal enum class TrayPanel { Actions, Tags, Title }
+
+/** Rename sits by Tags, so the two edits are side by side and Delete stays last. */
 @Composable
-private fun LinkOptionsTray(onOpen: () -> Unit, onShare: () -> Unit, onEditTags: () -> Unit, onDelete: () -> Unit) {
+private fun LinkOptionsTray(onOpen: () -> Unit, onShare: () -> Unit, onRename: () -> Unit, onEditTags: () -> Unit, onDelete: () -> Unit) {
     Column {
         HorizontalDivider(thickness = 1.dp, color = Edge)
         Row(
@@ -255,6 +267,8 @@ private fun LinkOptionsTray(onOpen: () -> Unit, onShare: () -> Unit, onEditTags:
             TrayAction(R.drawable.ic_open, "Open", iconTint = Synapse, labelColor = Ink, onClick = onOpen)
             VerticalDivider(thickness = 1.dp, color = Edge)
             TrayAction(R.drawable.ic_share_nodes, "Share", iconTint = Synapse, labelColor = Ink, onClick = onShare)
+            VerticalDivider(thickness = 1.dp, color = Edge)
+            TrayAction(R.drawable.ic_pencil, "Rename", iconTint = Synapse, labelColor = Ink, onClick = onRename)
             VerticalDivider(thickness = 1.dp, color = Edge)
             TrayAction(R.drawable.ic_tag, "Tags", iconTint = Synapse, labelColor = Ink, onClick = onEditTags)
             VerticalDivider(thickness = 1.dp, color = Edge)

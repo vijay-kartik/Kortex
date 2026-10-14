@@ -65,6 +65,9 @@ val BottomBarClearance: Dp = 140.dp
 
 private val CardShape = RoundedCornerShape(16.dp)
 
+/** Action buttons sit a touch tighter than the cards around them (Figma: every Finances Button node). */
+private val ButtonShape = RoundedCornerShape(14.dp)
+
 /** A raised Panel card with an Edge hairline, the building block of every Finance screen. */
 @Composable
 fun FinanceCard(
@@ -99,12 +102,12 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, color: Color = Mut
 fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, color: Color = Synapse) {
     Text(
         label,
-        style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
+        style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
         color = if (enabled) Void else Muted,
         textAlign = TextAlign.Center,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(ButtonShape)
             .background(if (enabled) color else Sunken)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(vertical = 14.dp),
@@ -116,14 +119,13 @@ fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modif
 fun SecondaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Text(
         label,
-        style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
+        style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
         color = Ink,
         textAlign = TextAlign.Center,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Well)
-            .border(1.dp, EdgeStrong, RoundedCornerShape(16.dp))
+            .clip(ButtonShape)
+            .border(1.dp, EdgeStrong, ButtonShape)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(vertical = 14.dp),
     )

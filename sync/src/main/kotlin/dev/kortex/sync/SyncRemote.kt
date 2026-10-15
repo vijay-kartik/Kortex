@@ -27,10 +27,12 @@ internal const val SERVER_UPDATED_AT = "serverUpdatedAt"
  * What a listener heard: documents other clients (or this one, confirmed) wrote. [fromServer] is
  * false for an answer from Firestore's memory cache, which mustn't move the watermark.
  */
-internal class RemoteChanges(val docs: List<DocumentSnapshot>, val fromServer: Boolean) {
+internal class RemoteChanges(
+    val docs: List<DocumentSnapshot>,
+    val fromServer: Boolean,
     /** Server time of the newest document here, for the watermark. */
-    val newestMillis: Long? get() = docs.mapNotNull { it.getTimestamp(SERVER_UPDATED_AT)?.toDate()?.time }.maxOrNull()
-}
+    val newestMillis: Long? = docs.mapNotNull { it.getTimestamp(SERVER_UPDATED_AT)?.toDate()?.time }.maxOrNull(),
+)
 
 /** A document write that, once committed, marks its local row in sync. */
 internal class PendingWrite(

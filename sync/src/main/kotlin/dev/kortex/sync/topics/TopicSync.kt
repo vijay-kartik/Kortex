@@ -7,9 +7,11 @@ import dev.kortex.links.data.LinkSyncDao
 import dev.kortex.myinfo.topics.data.local.SyncTombstoneEntity
 import dev.kortex.myinfo.topics.data.local.TopicSyncDao
 import dev.kortex.myinfo.topics.domain.port.FileVault
+import dev.kortex.sync.LiveListener
 import dev.kortex.sync.PendingWrite
-import dev.kortex.sync.RemoteChanges
 import dev.kortex.sync.SyncCollection
+import dev.kortex.sync.SyncPart
+import dev.kortex.sync.SyncPartId
 import dev.kortex.sync.SyncRemote
 import dev.kortex.sync.SyncStore
 import kotlinx.coroutines.flow.Flow
@@ -25,17 +27,19 @@ internal class TopicSync(
     private val dao: TopicSyncDao,
     private val linkDao: LinkSyncDao,
     private val files: FileVault,
-) {
+) : SyncPart {
+
+    override val id = SyncPartId.Topics
 
     /** Topic and item documents written since the last pull. */
-    suspend fun countChanged(userUid: String): Int =
+    override suspend fun countChanged(userUid: String): Int =
         remote.countChanged(userUid, SyncCollection.Topics) + remote.countChanged(userUid, SyncCollection.TopicItems)
 
     /**
      * Applies every topic document, then every item document, written since the last pull; [onPage]
      * gets each page's size. Pull links first: items resolve their link uids against links.db.
      */
-    suspend fun pull(userUid: String, onPage: (Int) -> Unit) {
+    override suspend fun pull(userUid: String, onPage: (Int) -> Unit) {
         remote.pullChanged(userUid, SyncCollection.Topics) { docs ->
             applyTopics(docs)
             onPage(docs.size)
@@ -55,11 +59,16 @@ internal class TopicSync(
         store.setHeldItems(userUid, held)
     }
 
-    /** Topic documents as other clients write them, for live sync. */
-    fun topicChanges(userUid: String): Flow<RemoteChanges> = remote.changes(userUid, SyncCollection.Topics)
-
-    /** Item documents as other clients write them, for live sync. */
-    fun itemChanges(userUid: String): Flow<RemoteChanges> = remote.changes(userUid, SyncCollection.TopicItems)
+    /** Topic documents, then item documents, as other clients write them. */
+    override fun listeners(userUid: String): List<LiveListener> = listOf(
+        LiveListener(SyncCollection.Topics, remote.changes(userUid, SyncCollection.Topics)) { changes ->
+            applyTopics(changes.docs)
+            retryHeldItems(userUid)
+        },
+        LiveListener(SyncCollection.TopicItems, remote.changes(userUid, SyncCollection.TopicItems)) { changes ->
+            applyHeardItems(userUid, changes.docs)
+        },
+    )
 
     /** Applies pulled or heard topic documents, summaries included, and deletes the files deleted topics held. */
     suspend fun applyTopics(docs: List<DocumentSnapshot>) {
@@ -104,7 +113,7 @@ internal class TopicSync(
      * cloud before it is. A row is marked in sync only once its batch has committed, and only if it
      * hasn't changed again meanwhile.
      */
-    suspend fun push(userUid: String) {
+    override suspend fun push(userUid: String) {
         val topics = remote.collection(userUid, SyncCollection.Topics)
         val items = remote.collection(userUid, SyncCollection.TopicItems)
         val now = FieldValue.serverTimestamp()
@@ -136,6 +145,19 @@ internal class TopicSync(
             }
         }
         remote.write(deletes + topicWrites + itemWrites)
+    }
+
+    override fun observeUnpushedCount(): Flow<Int> = dao.observeUnpushedCount()
+
+    override suspend fun unpushedCount(): Int = dao.unpushedCount()
+
+    override suspend fun recordCount(): Int = dao.topicCount()
+
+    override suspend fun adoptForNewAccount() = dao.adoptForNewAccount()
+
+    /** Item files go with their items. */
+    override suspend fun discardAll() {
+        files.delete(dao.discardAll())
     }
 
     private companion object {

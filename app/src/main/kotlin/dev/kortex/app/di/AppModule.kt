@@ -26,6 +26,7 @@ import dev.kortex.myinfo.topics.data.local.TopicSyncDao
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.sync.CloudAccount
 import dev.kortex.sync.CloudSync
+import dev.kortex.sync.SyncModule
 import dev.kortex.sync.finance.FinanceKeyClient
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -71,7 +72,7 @@ object AppModule {
         topicSyncDao: TopicSyncDao,
         topicFiles: FileVault,
         financeSyncDao: FinanceSyncDao,
-    ): CloudSync = CloudSync(context, account, linkSyncDao, linkImages, topicSyncDao, topicFiles, financeSyncDao)
+    ): CloudSync = SyncModule.cloudSync(context, account, linkSyncDao, linkImages, topicSyncDao, topicFiles, financeSyncDao)
 
     /** The data key for encrypted full card and account numbers, from the `financeKey` function. */
     @Provides

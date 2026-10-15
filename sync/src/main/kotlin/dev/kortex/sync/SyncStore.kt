@@ -1,6 +1,8 @@
 package dev.kortex.sync
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -31,9 +33,9 @@ internal enum class SyncCollection(val path: String) {
  * Sync bookkeeping, kept per account: signing into another account starts from a full pull
  * rather than from where the last one stopped.
  */
-internal class SyncStore(context: Context) {
+internal class SyncStore(private val store: DataStore<Preferences>) {
 
-    private val store = context.applicationContext.cloudSyncStore
+    constructor(context: Context) : this(context.applicationContext.cloudSyncStore)
 
     /** Server millis of the newest document pulled from [collection]; 0 before the first pull. */
     suspend fun pulledAt(uid: String, collection: SyncCollection): Long =

@@ -8,6 +8,8 @@ import com.google.firebase.appcheck.FirebaseAppCheck
 import dagger.hilt.android.HiltAndroidApp
 import dev.kortex.app.domain.agent.AgentBootstrap
 import dev.kortex.app.domain.security.AppLock
+import dev.kortex.core.log.AndroidLogger
+import dev.kortex.core.log.Logger
 import dev.kortex.finance.reminders.FinanceReminders
 import dev.kortex.finance.sms.BankSms
 import javax.inject.Inject
@@ -20,6 +22,9 @@ class KortexApp : Application() {
     @Inject lateinit var appLock: AppLock
 
     override fun onCreate() {
+        // Before Hilt builds anything that logs: agent DEBUG/INFO lines carry user data, so only
+        // debug builds send them to Logcat.
+        if (BuildConfig.DEBUG) AndroidLogger.minLevel = Logger.Level.DEBUG
         super.onCreate()
         // Before anything calls a function: `financeKey` refuses calls App Check can't vouch for.
         FirebaseAppCheck.getInstance().installAppCheckProviderFactory(appCheckProviderFactory())

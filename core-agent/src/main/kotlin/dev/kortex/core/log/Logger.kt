@@ -23,6 +23,15 @@ fun interface Logger {
     }
 }
 
+/**
+ * Forwards only lines at or above [minLevel], read on every call so the host can set it after
+ * wiring. [AndroidLogger] uses this to keep DEBUG/INFO lines, which carry user queries, tool
+ * payloads and LLM replies, out of Logcat in release builds.
+ */
+fun Logger.atLeast(minLevel: () -> Logger.Level): Logger = Logger { level, tag, message, error ->
+    if (level >= minLevel()) log(level, tag, message, error)
+}
+
 fun Logger.d(tag: String, message: String) = log(Logger.Level.DEBUG, tag, message, null)
 fun Logger.i(tag: String, message: String) = log(Logger.Level.INFO, tag, message, null)
 fun Logger.w(tag: String, message: String, error: Throwable? = null) = log(Logger.Level.WARN, tag, message, error)

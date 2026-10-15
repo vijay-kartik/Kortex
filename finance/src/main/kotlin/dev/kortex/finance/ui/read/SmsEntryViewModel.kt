@@ -2,25 +2,23 @@ package dev.kortex.finance.ui.read
 
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.kortex.finance.domain.FinanceIds
-import dev.kortex.finance.domain.calc.Statements
 import dev.kortex.finance.domain.model.AccountKind
 import dev.kortex.finance.domain.model.CategoryKind
-import dev.kortex.finance.domain.model.TransactionSource
 import dev.kortex.finance.domain.port.Clock
 import dev.kortex.finance.domain.read.EntryMatching
 import dev.kortex.finance.domain.read.Instrument
 import dev.kortex.finance.domain.read.ParsedSms
-import dev.kortex.finance.domain.usecase.AddTransaction
 import dev.kortex.finance.domain.usecase.FinanceSnapshot
 import dev.kortex.finance.domain.usecase.ObserveFinance
 import dev.kortex.finance.domain.usecase.PrepareSmsEntry
 import dev.kortex.finance.domain.usecase.ReadSms
 import dev.kortex.finance.domain.usecase.ResolveInboxSms
+import dev.kortex.finance.domain.usecase.SaveSmsEntry
+import dev.kortex.finance.domain.usecase.SmsEntryEdits
 import dev.kortex.finance.domain.usecase.SmsEntryPlan
 import dev.kortex.finance.domain.usecase.SmsEntryType
 import dev.kortex.finance.domain.usecase.SmsResult
-import dev.kortex.finance.domain.usecase.TransactionDraft
+import dev.kortex.finance.domain.usecase.SmsSaveResult
 import dev.kortex.finance.domain.usecase.TransactionSaveResult
 import dev.kortex.finance.ui.AccountPrefill
 import dev.kortex.finance.ui.FinanceRoute
@@ -45,7 +43,7 @@ class SmsEntryViewModel @Inject constructor(
     private val observeFinance: ObserveFinance,
     private val readSms: ReadSms,
     private val prepareSmsEntry: PrepareSmsEntry,
-    private val addTransaction: AddTransaction,
+    private val saveSmsEntry: SaveSmsEntry,
     private val resolveInboxSms: ResolveInboxSms,
     private val notices: FinanceNotices,
     private val clock: Clock,
@@ -56,6 +54,9 @@ class SmsEntryViewModel @Inject constructor(
 
     /** The received SMS this review came from (To review); saving it marks that SMS done. */
     private var inboxId: String? = null
+
+    /** The SMS on review, as read; saving it keeps the SMS's id. */
+    private var plan: SmsEntryPlan? = null
 
     /**
      * [shared] is the text shared from Messages or opened from To review; without it the route
@@ -113,6 +114,7 @@ class SmsEntryViewModel @Inject constructor(
 
     private fun review(plan: SmsEntryPlan, snapshot: FinanceSnapshot) {
         val sms = plan.sms
+        this.plan = plan
         setState {
             copy(
                 stage = SmsStage.Review,
@@ -121,7 +123,7 @@ class SmsEntryViewModel @Inject constructor(
                 header = header(sms, plan.date),
                 type = plan.type,
                 amount = FinanceFormat.amountInput(sms.amountMinor),
-                merchant = plan.merchant.name ?: if (sms.payeeIsUpiId) "" else sms.payee.orEmpty(),
+                merchant = plan.edits.merchant,
                 needsName = plan.merchant.needsName,
                 upiId = sms.payee?.takeIf { sms.payeeIsUpiId },
                 date = plan.date,
@@ -180,39 +182,33 @@ class SmsEntryViewModel @Inject constructor(
 
     private fun save(asNew: Boolean) {
         val state = currentState
-        val sms = state.sms ?: return
+        val plan = plan ?: return
         if (state.saving) return
         if (state.type == SmsEntryType.CARD_REFUND) return
         val amount = FinanceFormat.parseAmount(state.amount) ?: return setState { copy(error = "Enter an amount above zero.") }
         val cardPayment = state.type == SmsEntryType.CARD_PAYMENT
-        val account = (if (cardPayment) state.fromAccountUid else state.accountUid)
-            ?: return setState { copy(error = if (cardPayment) "Pick the account the bill was paid from." else "Pick how you paid.") }
-        if (cardPayment && state.accountUid == null) return setState { copy(error = "Pick the card that was paid.") }
+        val edits = SmsEntryEdits(
+            amountMinor = amount,
+            merchant = state.merchant,
+            date = state.date,
+            accountUid = state.accountUid,
+            fromAccountUid = state.fromAccountUid,
+            categoryUid = state.categoryUid,
+            note = state.note,
+        )
         setState { copy(saving = true, error = null) }
         viewModelScope.launch {
-            val snapshot = observeFinance().first()
-            val name = state.merchant.trim().ifEmpty { state.upiId.orEmpty() }
-            val result = addTransaction(
-                TransactionDraft(
-                    type = state.transactionType,
-                    amountMinor = amount,
-                    accountUid = account,
-                    toAccountUid = state.accountUid.takeIf { cardPayment },
-                    categoryUid = state.categoryUid.takeIf { !cardPayment },
-                    merchant = name.takeIf { !cardPayment },
-                    payeeKey = state.upiId,
-                    note = state.note,
-                    occurredAtMillis = clock.millisAt(state.date, state.time),
-                    source = TransactionSource.SMS,
-                    sourceRef = sms.ref,
-                    statementUid = state.accountUid?.takeIf { cardPayment }?.let { Statements.latest(it, snapshot.statements)?.uid },
-                    // The same SMS pasted twice, or on two phones, is one entry; "Add anyway" makes another.
-                    uid = if (asNew) null else FinanceIds.smsTransaction("", state.text),
-                ),
-            )
+            val result = when (val saved = saveSmsEntry(plan, edits, asNew)) {
+                SmsSaveResult.NoAccount -> return@launch setState {
+                    copy(saving = false, error = if (cardPayment) "Pick the account the bill was paid from." else "Pick how you paid.")
+                }
+                SmsSaveResult.NoCard -> return@launch setState { copy(saving = false, error = "Pick the card that was paid.") }
+                is SmsSaveResult.Done -> saved.result
+            }
             when (result) {
                 is TransactionSaveResult.Saved -> {
                     inboxId?.let { resolveInboxSms.saved(it, result.uid) }
+                    val name = state.merchant.trim().ifEmpty { state.upiId.orEmpty() }
                     val where = name.takeIf { it.isNotEmpty() && !cardPayment }?.let { if (state.type == SmsEntryType.INCOME) " from $it" else " at $it" }.orEmpty()
                     notices.post(FinanceNotice("Saved ${FinanceFormat.rupees(amount)}$where", FinanceUndo.DeleteEntry(result.uid)))
                     sendEffect(SmsEntryEffect.Close)
@@ -220,7 +216,8 @@ class SmsEntryViewModel @Inject constructor(
                 is TransactionSaveResult.AlreadySaved -> {
                     // This SMS's own entry is already there: the received one is done with too.
                     inboxId?.let { resolveInboxSms.saved(it, result.uid) }
-                    setState { copy(saving = false, duplicate = snapshot.transactions.find { it.uid == result.uid }, error = null) }
+                    val duplicate = observeFinance().first().transactions.find { it.uid == result.uid }
+                    setState { copy(saving = false, duplicate = duplicate, error = null) }
                 }
                 else -> setState { copy(saving = false, error = dev.kortex.finance.ui.entry.AddEntryState.message(result)) }
             }

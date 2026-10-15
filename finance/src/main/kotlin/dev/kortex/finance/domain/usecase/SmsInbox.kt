@@ -5,7 +5,6 @@ import dev.kortex.finance.domain.calc.Balances
 import dev.kortex.finance.domain.model.InboxSms
 import dev.kortex.finance.domain.model.InboxStatus
 import dev.kortex.finance.domain.model.ReviewReason
-import dev.kortex.finance.domain.model.TransactionSource
 import dev.kortex.finance.domain.port.Clock
 import dev.kortex.finance.domain.read.SenderGate
 import dev.kortex.finance.domain.repository.SmsInboxRepository
@@ -120,19 +119,7 @@ class ProcessSmsInbox(
             else -> null
         }
         if (reason != null || account == null) return row.toReview(reason ?: ReviewReason.NO_ACCOUNT) to null
-        val draft = TransactionDraft(
-            type = plan.type.transactionType,
-            amountMinor = sms.amountMinor,
-            accountUid = account.uid,
-            categoryUid = plan.merchant.categoryUid,
-            // A UPI id nobody has named yet is the merchant until someone does.
-            merchant = plan.merchant.name ?: sms.payee?.trim()?.takeIf { it.isNotEmpty() },
-            payeeKey = sms.payee?.takeIf { sms.payeeIsUpiId },
-            occurredAtMillis = plan.occurredAtMillis,
-            source = TransactionSource.SMS,
-            sourceRef = sms.ref,
-            uid = plan.uid,
-        )
+        val draft = plan.toDraft(plan.edits, clock, snapshot.statements) ?: return row.toReview(ReviewReason.NO_ACCOUNT) to null
         return when (val result = addTransaction(draft)) {
             is TransactionSaveResult.Saved -> row.handled(InboxStatus.SAVED, result.uid) to
                 AutoSaved(row.id, result.uid, plan, plan.merchant.categoryUid?.let(snapshot.categoriesByUid::get)?.name)

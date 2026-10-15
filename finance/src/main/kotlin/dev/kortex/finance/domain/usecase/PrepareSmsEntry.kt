@@ -49,6 +49,15 @@ data class SmsEntryPlan(
 ) {
     /** The SMS's last 4 when none of your cards or accounts has them (Paste SMS 08). */
     val unknownLast4: String? get() = if (account == null) sms.last4 else null
+
+    /** What the review starts with, and what's saved on its own. */
+    val edits: SmsEntryEdits get() = SmsEntryEdits(
+        amountMinor = sms.amountMinor,
+        merchant = merchant.name ?: if (sms.payeeIsUpiId) "" else sms.payee.orEmpty(),
+        date = date,
+        accountUid = account?.uid,
+        categoryUid = merchant.categoryUid,
+    )
 }
 
 /**

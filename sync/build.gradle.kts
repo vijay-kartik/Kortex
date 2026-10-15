@@ -21,6 +21,10 @@ android {
         // Same as :app: current Firebase artifacts carry newer Kotlin metadata than our compiler.
         freeCompilerArgs += listOf("-Xskip-metadata-version-check")
     }
+    // CloudSyncTest goes through android.util.Log and Firebase's TextUtils checks.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -48,4 +52,5 @@ dependencies {
     implementation(libs.datastore.preferences)
 
     testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
 }

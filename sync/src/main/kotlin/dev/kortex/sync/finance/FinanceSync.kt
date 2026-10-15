@@ -7,9 +7,11 @@ import dev.kortex.finance.data.local.FinancePullResult
 import dev.kortex.finance.data.local.FinanceSyncDao
 import dev.kortex.finance.data.local.FinanceSyncSchema
 import dev.kortex.finance.data.local.RemoteRow
+import dev.kortex.sync.LiveListener
 import dev.kortex.sync.PendingWrite
-import dev.kortex.sync.RemoteChanges
 import dev.kortex.sync.SyncCollection
+import dev.kortex.sync.SyncPart
+import dev.kortex.sync.SyncPartId
 import dev.kortex.sync.SyncRemote
 import kotlinx.coroutines.flow.Flow
 
@@ -23,7 +25,10 @@ import kotlinx.coroutines.flow.Flow
 internal class FinanceSync(
     private val remote: SyncRemote,
     private val dao: FinanceSyncDao,
-) {
+) : SyncPart {
+
+    override val id = SyncPartId.Finance
+
     /** The finance collections, in pull and push order: what's referred to before what refers to it. */
     val collections: List<SyncCollection> = listOf(
         SyncCollection.FinCategories,
@@ -36,10 +41,10 @@ internal class FinanceSync(
         SyncCollection.FinSecrets,
     )
 
-    suspend fun countChanged(userUid: String): Int = collections.sumOf { remote.countChanged(userUid, it) }
+    override suspend fun countChanged(userUid: String): Int = collections.sumOf { remote.countChanged(userUid, it) }
 
     /** Applies every finance document written since the last pull; [onPage] gets each page's size. */
-    suspend fun pull(userUid: String, onPage: (Int) -> Unit) {
+    override suspend fun pull(userUid: String, onPage: (Int) -> Unit) {
         for (collection in collections) {
             remote.pullChanged(userUid, collection) { docs ->
                 apply(collection, docs)
@@ -48,8 +53,10 @@ internal class FinanceSync(
         }
     }
 
-    /** One collection's documents as other clients write them, for live sync. */
-    fun changes(userUid: String, collection: SyncCollection): Flow<RemoteChanges> = remote.changes(userUid, collection)
+    /** Each collection's documents as other clients write them. */
+    override fun listeners(userUid: String): List<LiveListener> = collections.map { collection ->
+        LiveListener(collection, remote.changes(userUid, collection)) { changes -> apply(collection, changes.docs) }
+    }
 
     /** Applies pulled or heard documents of one finance collection. */
     suspend fun apply(collection: SyncCollection, docs: List<DocumentSnapshot>): FinancePullResult {
@@ -73,7 +80,7 @@ internal class FinanceSync(
      * Writes every local change: deletes first, then records in [collections] order. A row is
      * marked in sync only once its batch commits, and only if it hasn't changed again meanwhile.
      */
-    suspend fun push(userUid: String) {
+    override suspend fun push(userUid: String) {
         val now = FieldValue.serverTimestamp()
         fun doc(collection: SyncCollection, uid: String) = remote.collection(userUid, collection).document(uid)
 
@@ -109,6 +116,16 @@ internal class FinanceSync(
         }
         remote.write(deletes + categories + budgets + accounts + statements + recurring + merchants + transactions + secrets)
     }
+
+    override fun observeUnpushedCount(): Flow<Int> = dao.observeUnpushedCount()
+
+    override suspend fun unpushedCount(): Int = dao.unpushedCount()
+
+    override suspend fun recordCount(): Int = dao.recordCount()
+
+    override suspend fun adoptForNewAccount() = dao.adoptForNewAccount()
+
+    override suspend fun discardAll() = dao.discardAll()
 
     private fun collectionOf(kind: String): SyncCollection? = when (kind) {
         FinanceSyncSchema.KIND_CATEGORY -> SyncCollection.FinCategories

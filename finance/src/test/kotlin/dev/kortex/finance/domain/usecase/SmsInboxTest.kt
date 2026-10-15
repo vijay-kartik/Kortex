@@ -20,6 +20,7 @@ import dev.kortex.finance.domain.repository.SmsInboxRepository
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.runTest
@@ -116,6 +117,17 @@ class SmsInboxTest {
         assertEquals("checking", entry.accountUid)
         assertEquals(TransactionSource.SMS, entry.source)
         assertEquals(TODAY, entry.occurredOn)
+    }
+
+    @Test
+    fun `an SMS saved on its own is already saved when the same text is saved from review`() = runTest {
+        val (_, row) = receiveAndProcess(debit)
+        val clock = Fixtures.clock
+        val read = ReadSms(FinanceReader.None, clock)(debit) as SmsResult.Read
+        val plan = PrepareSmsEntry(SuggestMerchant(repository, FinanceReader.None), clock)(debit, read.sms, ObserveFinance(repository)().first())
+        val save = SaveSmsEntry(AddTransaction(repository, clock), ObserveFinance(repository), clock)
+        assertEquals(SmsSaveResult.Done(TransactionSaveResult.AlreadySaved(row.transactionUid!!)), save(plan, plan.edits))
+        assertEquals(1, repository.transactions.value.size)
     }
 
     @Test

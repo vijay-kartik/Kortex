@@ -58,6 +58,7 @@ import dev.kortex.finance.domain.usecase.ProcessSmsInbox
 import dev.kortex.finance.domain.usecase.ReadSms
 import dev.kortex.finance.domain.usecase.ReceiveSms
 import dev.kortex.finance.domain.usecase.ResolveInboxSms
+import dev.kortex.finance.domain.usecase.SaveSmsEntry
 import dev.kortex.finance.domain.usecase.SuggestCategory
 import dev.kortex.finance.domain.usecase.SuggestMerchant
 import dev.kortex.finance.domain.read.FinanceDecider
@@ -206,6 +207,10 @@ object FinanceModule {
 
     @Provides
     fun providePrepareSmsEntry(suggestMerchant: SuggestMerchant, clock: Clock) = PrepareSmsEntry(suggestMerchant, clock)
+
+    @Provides
+    fun provideSaveSmsEntry(addTransaction: AddTransaction, observeFinance: ObserveFinance, clock: Clock) =
+        SaveSmsEntry(addTransaction, observeFinance, clock)
 
     @Provides
     fun provideReceiveSms(inbox: SmsInboxRepository) = ReceiveSms(inbox)

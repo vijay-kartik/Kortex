@@ -18,10 +18,7 @@ class ToolRegistry(tools: List<Tool> = emptyList()) {
     fun allIncludingDisabled(): List<Tool> = byName.values.toList()
 
     fun disable(name: String) { disabled += name }
-    fun enable(name: String) { disabled -= name }
     fun setDisabled(names: Set<String>) { disabled.clear(); disabled.addAll(names) }
-    fun isDisabled(name: String): Boolean = name in disabled
-    fun disabledNames(): Set<String> = disabled.toSet()
 
     /** A view limited to an allow-list, so a sub-agent only sees the tools it should. */
     fun scoped(allowed: Set<String>): ToolRegistry =

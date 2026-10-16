@@ -86,12 +86,4 @@ class Agent(private val ctx: AgentContext) {
         )
         return graph.invoke(ctx, initial)
     }
-
-    companion object {
-        @Deprecated(
-            "Prompts live in the prompt package now.",
-            ReplaceWith("SystemPrompt.DEFAULT", "dev.kortex.core.prompt.SystemPrompt"),
-        )
-        const val DEFAULT_SYSTEM = SystemPrompt.DEFAULT
-    }
 }

@@ -34,6 +34,19 @@ class FinanceRemindersTest {
     }
 
     @Test
+    fun withAppLockOnNoNameOrFigureIsShown() {
+        assertEquals("A payment is due in 2 days", FinanceReminders.title(netflix, redact = true))
+        assertEquals("A payment will be auto-debited today", FinanceReminders.title(netflix.copy(daysLeft = 0, automatic = true), redact = true))
+        assertEquals("A card bill is due tomorrow", FinanceReminders.title(Reminder("b", PendingKind.CARD_BILL, "KORTEX", 1_400_00, LocalDate.of(2026, 10, 15), 1), redact = true))
+        assertEquals("Tap to see it in Kortex", FinanceReminders.text(netflix, redact = true))
+        val near = Reminder("n", PendingKind.BUDGET, "Food", 8_000_00, LocalDate.of(2026, 10, 14), 0, spentMinor = 6_800_00, threshold = 80)
+        assertEquals("A budget is nearly used up", FinanceReminders.title(near, redact = true))
+        assertEquals("Tap to see it in Kortex", FinanceReminders.text(near, redact = true))
+        val over = near.copy(spentMinor = 8_600_00, threshold = 100)
+        assertEquals("A budget is used up", FinanceReminders.title(over, redact = true))
+    }
+
+    @Test
     fun theJobStartsAtTheNextNineOClock() {
         val zone = ZoneId.of("Asia/Kolkata")
         val morning = ZonedDateTime.of(2026, 9, 29, 7, 30, 0, 0, zone)

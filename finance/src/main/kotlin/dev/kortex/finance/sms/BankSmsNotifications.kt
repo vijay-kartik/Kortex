@@ -29,16 +29,18 @@ object BankSmsNotifications {
     private const val REVIEW_ID = 0x5B6
     private const val IMPORT_ID = 0x5B7
 
-    /** "Saved ₹420.00 at Swiggy" · "HDFC ••4471 · Food". */
-    fun title(saved: AutoSaved): String {
+    /** "Saved ₹420.00 at Swiggy" · "HDFC ••4471 · Food"; "Saved an entry" while [redact] (App lock is on). */
+    fun title(saved: AutoSaved, redact: Boolean = false): String {
+        if (redact) return "Saved an entry"
         val amount = FinanceFormat.rupees(saved.plan.sms.amountMinor)
         val name = saved.plan.merchant.name ?: saved.plan.sms.payee?.trim()?.takeIf { it.isNotEmpty() }
         val where = name?.let { if (saved.plan.type == SmsEntryType.INCOME) " from $it" else " at $it" }.orEmpty()
         return "Saved $amount$where"
     }
 
-    fun text(saved: AutoSaved): String =
-        listOfNotNull(saved.plan.account?.let(RecurringLabels::account), saved.categoryName ?: "No category").joinToString(" · ")
+    fun text(saved: AutoSaved, redact: Boolean = false): String =
+        if (redact) "Tap to see it in Kortex"
+        else listOfNotNull(saved.plan.account?.let(RecurringLabels::account), saved.categoryName ?: "No category").joinToString(" · ")
 
     fun reviewTitle(count: Int): String = if (count == 1) "1 bank SMS to review" else "$count bank SMS to review"
 
@@ -54,15 +56,15 @@ object BankSmsNotifications {
         else -> "$toReview to review · tap to check them"
     }
 
-    internal fun postSaved(context: Context, saved: List<AutoSaved>) {
+    internal fun postSaved(context: Context, saved: List<AutoSaved>, redact: Boolean) {
         if (saved.isEmpty()) return
         val manager = channel(context)
         saved.forEach { entry ->
             val undo = Intent(ACTION_UNDO).setPackage(context.packageName).putExtra(EXTRA_SMS_ID, entry.smsId)
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_fin_sms)
-                .setContentTitle(title(entry))
-                .setContentText(text(entry))
+                .setContentTitle(title(entry, redact))
+                .setContentText(text(entry, redact))
                 .setContentIntent(open(context, route = null, requestCode = entry.smsId.hashCode()))
                 .addAction(
                     0,

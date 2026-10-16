@@ -75,7 +75,8 @@ Phase 5 notes:
 
 - `BankSmsNotifications` (`:finance` `sms/`), on a "Bank SMS" channel:
   - One notification per entry saved on its own: "Saved ₹420.00 at Swiggy" · "HDFC ••4471 ·
-    Food" (or "No category"). `AutoSaved` gained `categoryName` for this.
+    Food" (or "No category"). `AutoSaved` gained `categoryName` for this. With App lock on
+    (`NotificationPrivacy`), it's "Saved an entry" · "Tap to see it in Kortex"; Undo still works.
   - One "N bank SMS to review" notification, replaced as the count changes. It counts
     everything waiting, but is only posted again when a run adds new ones. Tapping it opens To
     review, which cancels it.

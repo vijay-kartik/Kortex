@@ -23,6 +23,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import dev.kortex.finance.R
 import dev.kortex.finance.domain.port.BackgroundSync
+import dev.kortex.finance.domain.port.NotificationPrivacy
 import dev.kortex.finance.domain.repository.SmsInboxRepository
 import dev.kortex.finance.domain.usecase.ImportSms
 import dev.kortex.finance.domain.usecase.ProcessSmsInbox
@@ -187,7 +188,7 @@ class BankSmsWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val deps = BankSms.entryPoint(applicationContext)
         return try {
             val run = deps.processSmsInbox()(autoSave = deps.bankSmsStore().settings.value.autoSave)
-            BankSmsNotifications.postSaved(applicationContext, run.saved)
+            BankSmsNotifications.postSaved(applicationContext, run.saved, deps.notificationPrivacy().redact())
             if (run.saved.isNotEmpty()) deps.backgroundSync().requestPush()
             // The count is everything waiting, not just this run's; only new arrivals post it again.
             if (run.toReview > 0) BankSmsNotifications.postReview(applicationContext, deps.smsInbox().observeToReview().first().size)
@@ -290,4 +291,5 @@ interface BankSmsEntryPoint {
     fun smsInbox(): SmsInboxRepository
     fun backgroundSync(): BackgroundSync
     fun importSms(): ImportSms
+    fun notificationPrivacy(): NotificationPrivacy
 }

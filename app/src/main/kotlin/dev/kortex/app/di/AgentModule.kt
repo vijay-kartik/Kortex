@@ -19,6 +19,7 @@ import dev.kortex.app.domain.agent.ModelSelection
 import dev.kortex.app.domain.chat.ChatSessionRepository
 import dev.kortex.app.domain.gmail.GmailAccess
 import dev.kortex.app.domain.gmail.GmailToken
+import dev.kortex.app.domain.security.AppLock
 import dev.kortex.app.domain.share.ShareAgentRunner
 import dev.kortex.app.ui.notifications.ShareResultNotifications
 import dev.kortex.core.gmail.gmailTool
@@ -142,6 +143,7 @@ object AgentModule {
         tools: ToolRegistry,
         sessions: ChatSessionRepository,
         runStore: AgentRunStore,
+        appLock: AppLock,
     ): ShareAgentRunner = ShareAgentRunner(
         scope = scope,
         llm = llm,
@@ -149,7 +151,7 @@ object AgentModule {
         tools = tools,
         sessions = sessions,
         runStore = runStore,
-        notifier = ShareResultNotifications(context),
+        notifier = ShareResultNotifications(context, redact = { appLock.settings.value.enabled }),
         logger = AndroidLogger,
     )
 }

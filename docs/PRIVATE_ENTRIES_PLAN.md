@@ -147,7 +147,7 @@ The new screens need Figma frames first, in a new board on **Kortex - Finances**
 | Categories screen, category pickers | Private categories left out |
 | Pending payments, Recurring list | Recurring payments in a private category are left out |
 | Payment reminders | For a private category: "A payment is due tomorrow" |
-| Auto-saved SMS notification | For a private category: "Saved an entry" with no amount, merchant or account. Undo still works. `VISIBILITY_PRIVATE` on the channel |
+| Auto-saved SMS notification | For a private category: "Saved an entry" with no amount, merchant or account. Undo still works. The generic text is the notification itself, as with App lock on (`NotificationPrivacy`): `VISIBILITY_PRIVATE` alone hides nothing under "Show all content" |
 | Agent read tools | Always left out (Decision 10) |
 | SMS To review | Unchanged: it's the raw SMS, which is in Messages anyway |
 | Firestore / Mac | `private_categories` syncs. Kortex for Mac must filter the same way (follow-up in that repo) |
@@ -212,8 +212,8 @@ The new screens need Figma frames first, in a new board on **Kortex - Finances**
    - the list of private categories with Make visible, shown only while private categories are
      shown;
    - no Budget field on a private category's form.
-4. **Notifications and agent.** Generic SMS and reminder text, `VISIBILITY_PRIVATE`, the generic
-   saved-entry snackbar, and agent read tools leaving private categories out. Tests in
+4. **Notifications and agent.** Generic SMS and reminder text (the `redact` path App lock already
+   uses), the generic saved-entry snackbar, and agent read tools leaving private categories out. Tests in
    `FinanceAgentTest` and `FinanceRemindersTest`.
 
 Phase 1 can land alone. Phases 2 and 3 should land together: marking without hiding, or hiding

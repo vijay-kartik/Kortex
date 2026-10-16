@@ -21,7 +21,7 @@ import io.objectbox.query.QueryBuilder.StringOrder
 class GraphBuilder(
     private val repository: GraphRepository,
     private val boxStore: BoxStore
-) {
+) : FactWriter {
     private val personBox = boxStore.boxFor(PersonEntity::class.java)
     private val topicBox = boxStore.boxFor(TopicEntity::class.java)
     private val assertionBox = boxStore.boxFor(AssertionEntity::class.java)
@@ -153,7 +153,7 @@ class GraphBuilder(
      * PERSON is checked first: person↔person predicates deliberately create people,
      * and a name that is both would be a genuine collision worth keeping stable.
      */
-    fun findEntityType(name: String): dev.kortex.graph_core.NodeType? {
+    override fun findEntityType(name: String): dev.kortex.graph_core.NodeType? {
         val person = personBox.query()
             .equal(PersonEntity_.name, name, StringOrder.CASE_INSENSITIVE)
             .build()
@@ -172,10 +172,10 @@ class GraphBuilder(
      * Anything other than PERSON is stored as a TOPIC — the only two entity
      * tables that exist today.
      */
-    fun getOrCreateEntity(
+    override fun getOrCreateEntity(
         name: String,
         type: dev.kortex.graph_core.NodeType,
-        embedding: FloatArray? = null,
+        embedding: FloatArray?,
     ): GraphReference =
         if (type == dev.kortex.graph_core.NodeType.PERSON) {
             getOrCreatePerson(name = name, embedding = embedding)
@@ -330,15 +330,15 @@ class GraphBuilder(
      * same pair ("booked through" and "can cancel until" for one hotel) are
      * different facts, and deduping them on the bare OTHER would merge them.
      */
-    fun assertFact(
+    override fun assertFact(
         subject: GraphReference,
         predicate: AssertionPredicate,
         obj: GraphReference?,
-        embedding: FloatArray? = null,
-        confidence: Float = 1.0f,
-        validFrom: Long = 0,
-        validTo: Long = 0,
-        rawPredicate: String = "",
+        embedding: FloatArray?,
+        confidence: Float,
+        validFrom: Long,
+        validTo: Long,
+        rawPredicate: String,
     ): GraphReference {
         val subjectKey = repository.getGraphKey(subject.graphId)
             ?: throw IllegalArgumentException("Subject node not found in registry: ${subject.graphId}")

@@ -20,6 +20,7 @@ import dev.kortex.app.domain.security.AppLock
 import dev.kortex.app.domain.voice.VoiceDictation
 import dev.kortex.finance.data.local.FinanceSyncDao
 import dev.kortex.finance.domain.port.FinanceKeySource
+import dev.kortex.finance.domain.port.NotificationPrivacy
 import dev.kortex.links.data.LinkSyncDao
 import dev.kortex.links.images.LinkImageStore
 import dev.kortex.myinfo.topics.data.local.TopicSyncDao
@@ -84,6 +85,11 @@ object AppModule {
     @Singleton
     fun provideAppLock(@ApplicationContext context: Context): AppLock =
         AppLock(AppLockStore(context), clock = SystemClock::elapsedRealtime)
+
+    /** With App lock on, finance notifications leave out amounts, merchants, accounts and categories. */
+    @Provides
+    fun provideNotificationPrivacy(appLock: AppLock): NotificationPrivacy =
+        NotificationPrivacy { appLock.settings.value.enabled }
 
     // Gmail OAuth2 token management (uses device's Google accounts).
     @Provides

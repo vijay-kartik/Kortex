@@ -51,6 +51,7 @@ import dev.kortex.design.SynapseDim
 import dev.kortex.design.R
 import dev.kortex.design.Void
 import dev.kortex.core.state.Attachment
+import dev.kortex.app.domain.share.SharedFileLoad
 
 /**
  * The floating intake card. Same composer grammar as the chat screen — rounded field,
@@ -59,17 +60,19 @@ import dev.kortex.core.state.Attachment
  */
 @Composable
 internal fun ShareComposer(
-    loadAttachment: suspend () -> Attachment?,
+    loadAttachment: suspend () -> SharedFileLoad,
     onSend: (String, Attachment) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var attachment by remember { mutableStateOf<Attachment?>(null) }
-    var loadFailed by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     var input by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        val att = loadAttachment()
-        if (att == null) loadFailed = true else attachment = att
+        when (val load = loadAttachment()) {
+            is SharedFileLoad.Loaded -> attachment = load.attachment
+            is SharedFileLoad.Refused -> loadError = load.message
+        }
     }
 
     // Scrim: tap anywhere outside the card to dismiss.
@@ -122,8 +125,8 @@ internal fun ShareComposer(
                 }
 
                 when {
-                    loadFailed -> Text(
-                        "Couldn't read the shared file. Go back and try sharing it again.",
+                    loadError != null -> Text(
+                        loadError!!,
                         style = MaterialTheme.typography.bodySmall,
                         color = Muted,
                     )

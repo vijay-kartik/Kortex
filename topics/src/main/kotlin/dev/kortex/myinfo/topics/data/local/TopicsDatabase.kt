@@ -127,7 +127,7 @@ data class TopicSummaryEntity(
         SyncTombstoneEntity::class,
         SyncControlEntity::class,
     ],
-    version = 6,
+    version = TopicsDatabase.VERSION,
     exportSchema = false,
 )
 abstract class TopicsDatabase : RoomDatabase() {
@@ -135,6 +135,8 @@ abstract class TopicsDatabase : RoomDatabase() {
     abstract fun topicSyncDao(): TopicSyncDao
 
     companion object {
+        const val VERSION = 6
+
         /** A fresh database gets its tables from Room; the sync switch row and triggers come from here. */
         val SYNC_ON_CREATE = object : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -215,5 +217,8 @@ abstract class TopicsDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE topic_items ADD COLUMN sentAtMillis INTEGER")
             }
         }
+
+        /** Every step from version 1 to [VERSION], in order. Declared last, as it reads the ones above. */
+        val MIGRATIONS = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
     }
 }

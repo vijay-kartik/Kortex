@@ -66,13 +66,7 @@ object TopicsModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TopicsDatabase =
         Room.databaseBuilder(context, TopicsDatabase::class.java, "topics.db")
-            .addMigrations(
-                TopicsDatabase.MIGRATION_1_2,
-                TopicsDatabase.MIGRATION_2_3,
-                TopicsDatabase.MIGRATION_3_4,
-                TopicsDatabase.MIGRATION_4_5,
-                TopicsDatabase.MIGRATION_5_6,
-            )
+            .addMigrations(*TopicsDatabase.MIGRATIONS.toTypedArray())
             .addCallback(TopicsDatabase.SYNC_ON_CREATE)
             .build()
 

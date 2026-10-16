@@ -59,7 +59,7 @@ abstract class LinksModule {
         @Singleton
         fun provideDatabase(@ApplicationContext context: Context): LinksDatabase =
             Room.databaseBuilder(context, LinksDatabase::class.java, "links.db")
-                .addMigrations(LinksDatabase.MIGRATION_1_2, LinksDatabase.MIGRATION_2_3, LinksDatabase.MIGRATION_3_4)
+                .addMigrations(*LinksDatabase.MIGRATIONS.toTypedArray())
                 .addCallback(LinksDatabase.SYNC_ON_CREATE)
                 .build()
 

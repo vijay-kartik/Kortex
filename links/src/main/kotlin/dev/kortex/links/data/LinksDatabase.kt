@@ -90,7 +90,7 @@ data class TagLinkCount(
         SyncTombstoneEntity::class,
         SyncControlEntity::class,
     ],
-    version = 4,
+    version = LinksDatabase.VERSION,
     exportSchema = false,
 )
 abstract class LinksDatabase : RoomDatabase() {
@@ -99,6 +99,8 @@ abstract class LinksDatabase : RoomDatabase() {
     abstract fun linkSyncDao(): LinkSyncDao
 
     companion object {
+        const val VERSION = 4
+
         /** A fresh database gets its tables from Room; the sync switch row and triggers come from here. */
         val SYNC_ON_CREATE = object : Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -162,5 +164,8 @@ abstract class LinksDatabase : RoomDatabase() {
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_links_urlKey` ON `links` (`urlKey`)")
             }
         }
+
+        /** Every step from version 1 to [VERSION], in order. Declared last, as it reads the ones above. */
+        val MIGRATIONS = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
     }
 }

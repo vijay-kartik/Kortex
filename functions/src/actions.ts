@@ -13,7 +13,10 @@ import { HttpsError } from "firebase-functions/v2/https";
 import { itemDoc, linkDoc, MAX_TAG_LENGTH, MAX_TAGS, MAX_TITLE, MAX_URL, parseNewItem, topicDoc, touchedTopic } from "./docs";
 import { Input, invalid } from "./input";
 import { linkUid, linkUrlKey } from "./linkKey";
+import { fetchPageMetadata, PageMetadata } from "./pageMetadata";
 import { parseWebAddress } from "./webAddress";
+
+const EMPTY_PAGE: PageMetadata = { title: null, imageUrl: null };
 
 export type Action = (userUid: string, data: unknown) => Promise<unknown>;
 
@@ -21,17 +24,23 @@ export type Action = (userUid: string, data: unknown) => Promise<unknown>;
  * Saves a link to the Links library.
  *
  * Request: `{ url, title?, tags?: string[], imageUrl? }`. A url without a scheme gets `https://`;
- * a missing title falls back to the url, as the app's pull does.
+ * a missing title or image is read from the page, and a title still missing falls back to the url.
  * Response: `{ linkUid, created }`. The document id comes from the address, so a page the user
  * already saved isn't saved twice: `created` is false and the saved link is left as it is.
  */
 export async function addLink(userUid: string, data: unknown) {
   const input = Input.of(data);
   const url = webAddress(input.string("url", MAX_URL), "url");
-  const title = input.optionalString("title", MAX_TITLE) ?? url;
+  const callerTitle = input.optionalString("title", MAX_TITLE);
   const tags = input.stringList("tags", MAX_TAGS, MAX_TAG_LENGTH);
   const rawImageUrl = input.optionalString("imageUrl", MAX_URL);
-  const imageUrl = rawImageUrl && webAddress(rawImageUrl, "imageUrl");
+  const callerImageUrl = rawImageUrl && webAddress(rawImageUrl, "imageUrl");
+
+  // Read from the page what the caller didn't send, before the transaction so a slow site
+  // can't hold it open.
+  const page = callerTitle === undefined || !callerImageUrl ? await fetchPageMetadata(url) : EMPTY_PAGE;
+  const title = callerTitle ?? page.title ?? url;
+  const imageUrl = callerImageUrl || page.imageUrl;
 
   const urlKey = linkUrlKey(url);
   const uid = linkUid(urlKey);
@@ -98,6 +107,9 @@ export async function addTopicItem(userUid: string, data: unknown) {
   const user = userDoc(userUid);
   const topicRef = user.collection("topics").doc(topicUid);
   const itemRef = user.collection("topicItems").doc(randomUUID());
+  // Only used if the link isn't in the library yet; fetched before the transaction so a slow site
+  // can't hold it open.
+  const page = item.link === null ? EMPTY_PAGE : await fetchPageMetadata(item.link.url);
 
   return getFirestore().runTransaction(async (tx) => {
     // Every read comes before the first write, as a transaction requires.
@@ -122,7 +134,7 @@ export async function addTopicItem(userUid: string, data: unknown) {
       if (!held.empty) throw new HttpsError("already-exists", "The topic already holds this link.");
       // The item points at the link, so the app can only show it once the link is in the library.
       if (!isLive(await tx.get(linkRef))) {
-        newLink = { ref: linkRef, doc: linkDoc({ url, urlKey, title: title ?? url, tags: [], imageUrl: null, nowMillis, serverTime }) };
+        newLink = { ref: linkRef, doc: linkDoc({ url, urlKey, title: title ?? page.title ?? url, tags: [], imageUrl: page.imageUrl, nowMillis, serverTime }) };
       }
     }
 

@@ -75,6 +75,23 @@ test("failures and non-html responses give an empty result", async () => {
   assert.deepEqual(await fetchPageMetadata("https://example.com/missing", d), { title: null, imageUrl: null });
 });
 
+test("YouTube links use oEmbed instead of the consent page", async () => {
+  const watch = "https://www.youtube.com/watch?v=XLUmuB1okWs&si=abc";
+  const oembed = `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(watch)}`;
+  const d = deps({
+    [oembed]: new Response(JSON.stringify({ title: "A video", thumbnail_url: "https://i.ytimg.com/vi/XLUmuB1okWs/hqdefault.jpg" }), { status: 200 }),
+    [watch]: page(html(`<title>YouTube</title>`)),
+  });
+  assert.deepEqual(await fetchPageMetadata(watch, d), { title: "A video", imageUrl: "https://i.ytimg.com/vi/XLUmuB1okWs/hqdefault.jpg" });
+  assert.deepEqual(d.fetched, [oembed]);
+});
+
+test("YouTube falls back to the page when oEmbed has nothing", async () => {
+  const watch = "https://youtu.be/gone";
+  const d = deps({ [watch]: page(html(`<meta property="og:title" content="From page">`)) });
+  assert.equal((await fetchPageMetadata(watch, d)).title, "From page");
+});
+
 test("private ranges", () => {
   for (const a of ["127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:10.0.0.1"]) {
     assert.equal(isPrivateAddress(a), true, a);

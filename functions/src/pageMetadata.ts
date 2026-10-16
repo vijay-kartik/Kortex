@@ -37,11 +37,37 @@ const defaultDeps: PageDeps = {
 
 export async function fetchPageMetadata(url: string, deps: PageDeps = defaultDeps): Promise<PageMetadata> {
   try {
+    // YouTube answers servers with a consent page (title "YouTube", no tags), so ask its oEmbed.
+    if (isYouTube(url)) {
+      const video = await fetchYouTubeOEmbed(url, deps).catch(() => null);
+      if (video !== null) return video;
+    }
     const page = await fetchHtml(url, deps);
     return page === null ? EMPTY : parsePageMetadata(page.html, page.finalUrl);
   } catch {
     return EMPTY;
   }
+}
+
+const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]);
+
+export function isYouTube(url: string): boolean {
+  try {
+    return YOUTUBE_HOSTS.has(new URL(url).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/** The fixed oEmbed endpoint, so it needs no public-host check; null when YouTube has no answer. */
+async function fetchYouTubeOEmbed(url: string, deps: PageDeps): Promise<PageMetadata | null> {
+  const endpoint = `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`;
+  const response = await deps.fetchPage(endpoint, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  if (!response.ok) return null;
+  const body = (await response.json()) as { title?: unknown; thumbnail_url?: unknown };
+  const title = typeof body.title === "string" ? clean(body.title) : null;
+  const imageUrl = typeof body.thumbnail_url === "string" ? absoluteWebUrl(body.thumbnail_url, endpoint) : null;
+  return title === null && imageUrl === null ? null : { title: title?.slice(0, MAX_FIELD_LENGTH) ?? null, imageUrl };
 }
 
 async function fetchHtml(startUrl: string, deps: PageDeps): Promise<{ html: string; finalUrl: string } | null> {

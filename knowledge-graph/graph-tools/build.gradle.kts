@@ -28,4 +28,7 @@ dependencies {
     api(project(":knowledge-graph:graph-storage"))
 
     implementation(libs.kotlinx.serialization.json)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
 }

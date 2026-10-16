@@ -24,7 +24,7 @@ import io.objectbox.query.QueryBuilder.StringOrder
 class PredicateVocabulary(
     boxStore: BoxStore,
     private val now: () -> Long = System::currentTimeMillis,
-) {
+) : PredicateResolver {
     private val box = boxStore.boxFor(PredicateVocabularyEntity::class.java)
 
     /**
@@ -47,7 +47,7 @@ class PredicateVocabulary(
      * deliberate: usage volume is what justifies promoting one into the enum.
      */
     @Synchronized
-    fun resolveAndRecord(raw: String): Resolution {
+    override fun resolveAndRecord(raw: String): Resolution {
         val normalized = AssertionPredicate.normalize(raw)
         val fixed = AssertionPredicate.canonicalize(raw)
         if (fixed != AssertionPredicate.OTHER) {

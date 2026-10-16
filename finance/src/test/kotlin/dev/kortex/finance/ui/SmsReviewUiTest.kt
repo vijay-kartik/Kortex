@@ -41,28 +41,37 @@ class SmsReviewUiTest {
         ReviewReason.entries.forEach { assertEquals(false, SmsReviewUi.reasonLabel(it).isBlank()) }
     }
 
+    private fun saved(type: SmsEntryType, merchant: String?, category: String?) = AutoSaved(
+        smsId = "s",
+        transactionUid = "t",
+        plan = SmsEntryPlan(
+            sms = ParsedSms(MoneyDirection.DEBIT, 420_00, last4 = "4471", payee = "SWIGGY"),
+            type = type,
+            account = Fixtures.checking,
+            merchant = MerchantGuess(merchant, null, null),
+            date = TODAY,
+            occurredAtMillis = 0,
+            uid = "t",
+            duplicate = null,
+        ),
+        categoryName = category,
+    )
+
     @Test
     fun `a saved entry's notification names the amount, the merchant, the account and the category`() {
-        fun saved(type: SmsEntryType, merchant: String?, category: String?) = AutoSaved(
-            smsId = "s",
-            transactionUid = "t",
-            plan = SmsEntryPlan(
-                sms = ParsedSms(MoneyDirection.DEBIT, 420_00, last4 = "4471", payee = "SWIGGY"),
-                type = type,
-                account = Fixtures.checking,
-                merchant = MerchantGuess(merchant, null, null),
-                date = TODAY,
-                occurredAtMillis = 0,
-                uid = "t",
-                duplicate = null,
-            ),
-            categoryName = category,
-        )
         assertEquals("Saved ₹420.00 at Swiggy", BankSmsNotifications.title(saved(SmsEntryType.EXPENSE, "Swiggy", "Food")))
         assertEquals("Saved ₹420.00 from Swiggy", BankSmsNotifications.title(saved(SmsEntryType.INCOME, "Swiggy", null)))
         assertEquals("Saved ₹420.00 at SWIGGY", BankSmsNotifications.title(saved(SmsEntryType.EXPENSE, null, null)))
         assertEquals("Checking Account ••4471 · Food", BankSmsNotifications.text(saved(SmsEntryType.EXPENSE, "Swiggy", "Food")))
         assertEquals("Checking Account ••4471 · No category", BankSmsNotifications.text(saved(SmsEntryType.EXPENSE, "Swiggy", null)))
         assertEquals("3 bank SMS to review", BankSmsNotifications.reviewTitle(3))
+    }
+
+    @Test
+    fun `with App lock on, a saved entry's notification names nothing`() {
+        listOf(saved(SmsEntryType.EXPENSE, "Swiggy", "Food"), saved(SmsEntryType.INCOME, null, null)).forEach {
+            assertEquals("Saved an entry", BankSmsNotifications.title(it, redact = true))
+            assertEquals("Tap to see it in Kortex", BankSmsNotifications.text(it, redact = true))
+        }
     }
 }

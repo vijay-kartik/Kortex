@@ -81,6 +81,7 @@ object FinanceModule {
                 FinanceDatabase.MIGRATION_2_3,
                 FinanceDatabase.MIGRATION_3_4,
                 FinanceDatabase.MIGRATION_4_5,
+                FinanceDatabase.MIGRATION_5_6,
             )
             .build()
 

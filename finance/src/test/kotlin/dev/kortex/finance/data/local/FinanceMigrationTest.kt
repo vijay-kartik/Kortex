@@ -40,6 +40,21 @@ class FinanceMigrationTest {
     }
 
     @Test
+    fun `5 to 6 adds the private categories table`() {
+        FinanceDatabase.MIGRATION_5_6.migrate(db)
+
+        assertEquals(5, FinanceDatabase.MIGRATION_5_6.startVersion)
+        assertEquals(6, FinanceDatabase.MIGRATION_5_6.endVersion)
+        assertEquals(
+            listOf(
+                "CREATE TABLE IF NOT EXISTS `private_categories` (`categoryUid` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, " +
+                    "`updatedAtMillis` INTEGER NOT NULL, `dirty` INTEGER NOT NULL, PRIMARY KEY(`categoryUid`))",
+            ),
+            statements,
+        )
+    }
+
+    @Test
     fun `budget triggers track built-in categories' budgets too`() {
         FinanceDatabase.MIGRATION_4_5.migrate(db)
 

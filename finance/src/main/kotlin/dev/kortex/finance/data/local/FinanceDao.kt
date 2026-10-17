@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
+import dev.kortex.finance.domain.model.CategoryKind
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -28,6 +29,9 @@ abstract class FinanceDao {
 
     @Query("SELECT * FROM budgets")
     abstract fun observeBudgets(): Flow<List<BudgetEntity>>
+
+    @Query("SELECT categoryUid FROM private_categories")
+    abstract fun observePrivateCategoryUids(): Flow<List<String>>
 
     @Query("SELECT * FROM accounts WHERE uid = :uid")
     abstract suspend fun getAccount(uid: String): AccountEntity?
@@ -135,6 +139,25 @@ abstract class FinanceDao {
         )
     }
 
+    /** Ignored when the category is private already, so it keeps its own creation time. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun insertPrivateCategory(privateCategory: PrivateCategoryEntity)
+
+    @Query("DELETE FROM private_categories WHERE categoryUid = :uid")
+    abstract suspend fun deletePrivateCategory(uid: String)
+
+    /**
+     * Only expense categories can be private; anything else writes nothing. A private category
+     * never has a budget, so its budget goes in the same change (docs/PRIVATE_ENTRIES_PLAN.md ›
+     * Decision 4).
+     */
+    @Transaction
+    open suspend fun makeCategoryPrivate(privateCategory: PrivateCategoryEntity) {
+        if (getCategory(privateCategory.categoryUid)?.kind != CategoryKind.EXPENSE.name) return
+        insertPrivateCategory(privateCategory)
+        deleteBudget(privateCategory.categoryUid)
+    }
+
     // A row's `dirty` counts changes not yet pushed, and a push marks it clean only if the count
     // is what it read. Saving a row from its entity would reset the count to the entity's 1, so
     // these keep the stored count and let the trigger move it on.
@@ -204,14 +227,17 @@ abstract class FinanceDao {
 
     /**
      * Moves everything that used the category to [moveTo] (null: Uncategorised), then deletes it and
-     * its budget. Built-ins are never deleted, so their budgets stay.
+     * its budget and private mark. Built-ins are never deleted, so theirs stay.
      */
     @Transaction
     open suspend fun deleteCategoryMoving(uid: String, moveTo: String?) {
         moveTransactions(uid, moveTo)
         moveRecurring(uid, moveTo)
         moveMerchants(uid, moveTo)
-        if (getCategory(uid)?.builtIn == false) deleteBudget(uid)
+        if (getCategory(uid)?.builtIn == false) {
+            deleteBudget(uid)
+            deletePrivateCategory(uid)
+        }
         deleteCategory(uid)
     }
 

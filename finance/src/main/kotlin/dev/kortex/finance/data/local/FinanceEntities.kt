@@ -168,6 +168,19 @@ data class BudgetEntity(
     val dirty: Int = 1,
 )
 
+/**
+ * A category marked private (docs/PRIVATE_ENTRIES_PLAN.md › Data). A row of its own rather than a
+ * column on [CategoryEntity], so built-in categories, which never sync, can be private on every
+ * phone. Making the category visible again deletes the row.
+ */
+@Entity(tableName = "private_categories")
+data class PrivateCategoryEntity(
+    @PrimaryKey val categoryUid: String,
+    val createdAtMillis: Long,
+    val updatedAtMillis: Long,
+    val dirty: Int = 1,
+)
+
 /** A row deleted here and not yet pushed as `deleted: true`. Written by the delete triggers only. */
 @Entity(tableName = "sync_tombstones", primaryKeys = ["kind", "uid"])
 data class SyncTombstoneEntity(

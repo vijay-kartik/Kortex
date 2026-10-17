@@ -77,11 +77,6 @@ data class LinkWithTags(
     val tagNames: List<String>,
 )
 
-data class TagLinkCount(
-    val name: String,
-    val linkCount: Int,
-)
-
 @Database(
     entities = [
         LinkEntity::class,

@@ -1,6 +1,7 @@
 package dev.kortex.finance.data
 
 import dev.kortex.finance.data.local.FinanceDao
+import dev.kortex.finance.data.local.PrivateCategoryEntity
 import dev.kortex.finance.data.local.SecretEntity
 import dev.kortex.finance.data.local.toDomain
 import dev.kortex.finance.data.local.toEntity
@@ -112,4 +113,16 @@ class RoomFinanceRepository(
         dao.saveBudget(Budget(categoryUid, amountMinor).toEntity(clock.nowMillis()))
 
     override suspend fun clearBudget(categoryUid: String) = dao.deleteBudget(categoryUid)
+
+    override fun observePrivateCategories(): Flow<Set<String>> =
+        dao.observePrivateCategoryUids().map { it.toSet() }.flowOn(dispatcher)
+
+    override suspend fun setCategoryPrivate(uid: String, private: Boolean) {
+        if (private) {
+            val now = clock.nowMillis()
+            dao.makeCategoryPrivate(PrivateCategoryEntity(uid, createdAtMillis = now, updatedAtMillis = now))
+        } else {
+            dao.deletePrivateCategory(uid)
+        }
+    }
 }

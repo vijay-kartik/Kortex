@@ -18,8 +18,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SyncControlEntity::class,
         SmsInboxEntity::class,
         BudgetEntity::class,
+        PrivateCategoryEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class FinanceDatabase : RoomDatabase() {
@@ -85,6 +86,16 @@ abstract class FinanceDatabase : RoomDatabase() {
                         "`createdAtMillis` INTEGER NOT NULL, `updatedAtMillis` INTEGER NOT NULL, `dirty` INTEGER NOT NULL, PRIMARY KEY(`uid`))",
                 )
                 FinanceSyncSchema.createTriggers(db, setOf("budgets"))
+            }
+        }
+
+        /** Private categories (docs/PRIVATE_ENTRIES_PLAN.md › Data). Not synced yet: no triggers. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `private_categories` (`categoryUid` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, " +
+                        "`updatedAtMillis` INTEGER NOT NULL, `dirty` INTEGER NOT NULL, PRIMARY KEY(`categoryUid`))",
+                )
             }
         }
     }

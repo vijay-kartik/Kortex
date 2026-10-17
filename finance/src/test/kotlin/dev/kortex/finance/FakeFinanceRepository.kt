@@ -5,6 +5,7 @@ import dev.kortex.finance.domain.model.Budget
 import dev.kortex.finance.domain.model.BuiltInCategories
 import dev.kortex.finance.domain.model.CardStatement
 import dev.kortex.finance.domain.model.Category
+import dev.kortex.finance.domain.model.CategoryKind
 import dev.kortex.finance.domain.model.Merchant
 import dev.kortex.finance.domain.model.Recurring
 import dev.kortex.finance.domain.model.Transaction
@@ -75,7 +76,10 @@ class FakeFinanceRepository : FinanceRepository {
         transactions.update { list -> list.map { if (it.categoryUid == uid) it.copy(categoryUid = moveTo) else it } }
         recurring.update { list -> list.map { if (it.categoryUid == uid) it.copy(categoryUid = moveTo) else it } }
         merchants.update { list -> list.map { if (it.categoryUid == uid) it.copy(categoryUid = moveTo) else it } }
-        if (!BuiltInCategories.isBuiltIn(uid)) budgets.update { list -> list.filterNot { it.categoryUid == uid } }
+        if (!BuiltInCategories.isBuiltIn(uid)) {
+            budgets.update { list -> list.filterNot { it.categoryUid == uid } }
+            privateCategories.update { it - uid }
+        }
         categories.update { list -> list.filterNot { it.uid == uid } }
     }
 
@@ -100,4 +104,15 @@ class FakeFinanceRepository : FinanceRepository {
         budgets.update { list -> list.filterNot { it.categoryUid == categoryUid } + Budget(categoryUid, amountMinor) }
 
     override suspend fun clearBudget(categoryUid: String) = budgets.update { list -> list.filterNot { it.categoryUid == categoryUid } }
+
+    val privateCategories = MutableStateFlow<Set<String>>(emptySet())
+
+    override fun observePrivateCategories(): Flow<Set<String>> = privateCategories
+
+    override suspend fun setCategoryPrivate(uid: String, private: Boolean) {
+        if (!private) return privateCategories.update { it - uid }
+        if (getCategory(uid)?.kind != CategoryKind.EXPENSE) return
+        privateCategories.update { it + uid }
+        clearBudget(uid)
+    }
 }

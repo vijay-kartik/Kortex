@@ -102,4 +102,13 @@ interface FinanceRepository {
 
     /** [categoryUid] is no longer budgeted. */
     suspend fun clearBudget(categoryUid: String)
+
+    /** The uids of the private categories (docs/PRIVATE_ENTRIES_PLAN.md). */
+    fun observePrivateCategories(): Flow<Set<String>>
+
+    /**
+     * Marks [uid] private, removing its budget in the same change, or visible again, which doesn't
+     * bring the budget back. Only expense categories can be private: marking any other writes nothing.
+     */
+    suspend fun setCategoryPrivate(uid: String, private: Boolean)
 }

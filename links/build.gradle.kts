@@ -61,5 +61,6 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
 
     testImplementation(libs.junit)
+    testImplementation(libs.json)
     testImplementation(libs.coroutines.test)
 }

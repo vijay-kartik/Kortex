@@ -14,6 +14,28 @@ import javax.inject.Inject
 class PageMetadataFetcher @Inject constructor() : PageReader {
 
     override suspend fun read(url: String): PageMetadata = withContext(Dispatchers.IO) {
+        readOEmbed(url) ?: readPage(url)
+    }
+
+    /** Asks YouTube's oEmbed about a YouTube address; null for other addresses or when it can't say. */
+    private fun readOEmbed(url: String): PageMetadata? {
+        val endpoint = YouTubeOEmbed.endpoint(url) ?: return null
+        val json = try {
+            Jsoup.connect(endpoint)
+                .userAgent(FETCH_USER_AGENT)
+                .timeout(FETCH_TIMEOUT_MS)
+                .ignoreContentType(true)
+                .execute()
+                .body()
+        } catch (e: IOException) {
+            return null
+        } catch (e: IllegalArgumentException) {
+            return null
+        }
+        return YouTubeOEmbed.parse(url, json)
+    }
+
+    private fun readPage(url: String): PageMetadata {
         val document = try {
             Jsoup.connect(url)
                 .userAgent(FETCH_USER_AGENT)
@@ -21,12 +43,12 @@ class PageMetadataFetcher @Inject constructor() : PageReader {
                 .maxBodySize(MAX_BODY_BYTES)
                 .get()
         } catch (e: IOException) {
-            return@withContext PageMetadata(url)
+            return PageMetadata(url)
         } catch (e: IllegalArgumentException) {
-            return@withContext PageMetadata(url)
+            return PageMetadata(url)
         }
 
-        PageMetadata(
+        return PageMetadata(
             url = url,
             title = document.meta("og:title", "twitter:title") ?: document.title().trim().ifEmpty { null },
             description = document.meta("og:description", "description", "twitter:description"),

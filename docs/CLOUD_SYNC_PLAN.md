@@ -129,7 +129,7 @@ phase 4.
 
 ## Live sync (`CloudSync.runLive()`)
 
-The signed-in app content runs it while the activity is at least STARTED (`ui/sync/LiveSync.kt`), so
+The signed-in app content runs it while the activity is at least STARTED (`ui/sync/LiveSync.kt` runs `domain/sync/LiveSyncSession.kt`), so
 it starts only after onboarding has restored the library.
 
 1. **Catch up** with a full `syncNow()`: pull, then push.

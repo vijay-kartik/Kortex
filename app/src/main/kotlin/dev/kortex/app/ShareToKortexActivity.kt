@@ -6,13 +6,14 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
 import dagger.Lazy
 import dagger.hilt.android.AndroidEntryPoint
+import dev.kortex.app.data.files.AttachmentRead
+import dev.kortex.app.data.files.readAttachment
 import dev.kortex.app.domain.security.AppLock
 import dev.kortex.app.domain.share.ShareAgentRunner
 import dev.kortex.app.domain.share.SharedFileLoad
@@ -98,37 +99,20 @@ class ShareToKortexActivity : FragmentActivity() {
     private fun providerPackage(authority: String): String? =
         runCatching { packageManager.resolveContentProvider(authority, 0)?.packageName }.getOrNull()
 
-    /** Resolves the shared Uri into an in-memory [Attachment] (name, MIME, base64 bytes). */
+    /**
+     * Resolves the shared Uri into an in-memory [Attachment] (name, MIME, base64 bytes),
+     * within the shared attachment size limit.
+     */
     private suspend fun readAttachment(uri: Uri): SharedFileLoad = withContext(Dispatchers.IO) {
-        runCatching {
-            // The provider's type, not the caller-supplied intent.type.
-            val mimeType = contentResolver.getType(uri)
-                ?.takeIf { SharedUriPolicy.isAllowedMimeType(it) }
-                ?: return@runCatching SharedFileLoad.Refused("Kortex only takes photos and PDFs.")
-            var filename: String? = null
-            var size: Long? = null
-            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val i = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (i >= 0) filename = cursor.getString(i)
-                    val s = cursor.getColumnIndex(OpenableColumns.SIZE)
-                    if (s >= 0 && !cursor.isNull(s)) size = cursor.getLong(s)
-                }
-            }
-            val tooLarge = SharedFileLoad.Refused(
-                "That file is over ${SharedUriPolicy.MAX_BYTES / (1024 * 1024)} MB, too large to share.",
-            )
-            if (!SharedUriPolicy.fitsSizeCap(size)) return@runCatching tooLarge
-            // Bounded read: a missing or understated SIZE can't push past the cap.
-            val stream = contentResolver.openInputStream(uri) ?: return@runCatching null
-            val bytes = stream.use { SharedUriPolicy.readCapped(it) } ?: return@runCatching tooLarge
-            SharedFileLoad.Loaded(
-                Attachment(
-                    mimeType = mimeType,
-                    dataBase64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
-                    filename = filename,
-                ),
-            )
-        }.getOrNull() ?: SharedFileLoad.Refused("Couldn't read the shared file. Go back and try sharing it again.")
+        // The provider's type, not the caller-supplied intent.type.
+        val mimeType = runCatching { contentResolver.getType(uri) }.getOrNull()
+            ?.takeIf { SharedUriPolicy.isAllowedMimeType(it) }
+            ?: return@withContext SharedFileLoad.Refused("Kortex only takes photos and PDFs.")
+        when (val read = contentResolver.readAttachment(uri, mimeType)) {
+            is AttachmentRead.Ok -> SharedFileLoad.Loaded(read.attachment)
+            is AttachmentRead.TooLarge -> SharedFileLoad.Refused(read.message)
+            AttachmentRead.Unreadable ->
+                SharedFileLoad.Refused("Couldn't read the shared file. Go back and try sharing it again.")
+        }
     }
 }

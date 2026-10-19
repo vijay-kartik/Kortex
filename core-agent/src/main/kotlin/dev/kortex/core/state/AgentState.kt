@@ -16,6 +16,12 @@ data class Attachment(
     val durationMs: Long? = null,
 )
 
+object Attachments {
+    /** Largest file attached whole (base64) to a message: picked in chat, shared into
+     *  Kortex, or loaded by the agent's `read_file` tool. */
+    const val MAX_BYTES = 10L * 1024 * 1024
+}
+
 /** A single conversational turn or step result that flows through the graph. */
 @Serializable
 data class Message(

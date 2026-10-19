@@ -1,6 +1,7 @@
 package dev.kortex.core.tool.builtin
 
 import dev.kortex.core.state.Attachment
+import dev.kortex.core.state.Attachments
 import dev.kortex.core.llm.renderPdfPagesAsImages
 import dev.kortex.core.tool.RiskLevel
 import dev.kortex.core.tool.Tool
@@ -9,10 +10,6 @@ import dev.kortex.core.tool.string
 import dev.kortex.core.tool.tool
 import java.io.File
 import java.util.Base64
-
-/** Largest file attached whole (base64) to the conversation. PDFs and text are read
- *  incrementally and bounded by page/char caps instead, so they aren't held to this. */
-internal const val MAX_ATTACHED_FILE_BYTES = 10L * 1024 * 1024
 
 private const val MAX_TEXT_CHARS = 100_000
 
@@ -72,11 +69,12 @@ fun readFileTool(): Tool = tool(
                 return@execute ToolResult(true, "File contents of $filePath:\n$text")
             }
 
+            // PDFs and text are bounded by page/char caps above, so only these are held to the limit.
             val size = file.length()
-            if (size > MAX_ATTACHED_FILE_BYTES) {
+            if (size > Attachments.MAX_BYTES) {
                 return@execute ToolResult(
                     false,
-                    "File is too large to attach: ${file.name} is ${size / (1024 * 1024)} MB, the limit is ${MAX_ATTACHED_FILE_BYTES / (1024 * 1024)} MB.",
+                    "File is too large to attach: ${file.name} is ${size / (1024 * 1024)} MB, the limit is ${Attachments.MAX_BYTES / (1024 * 1024)} MB.",
                 )
             }
 

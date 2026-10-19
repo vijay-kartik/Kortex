@@ -1,6 +1,6 @@
 package dev.kortex.core
 
-import dev.kortex.core.tool.builtin.MAX_ATTACHED_FILE_BYTES
+import dev.kortex.core.state.Attachments
 import dev.kortex.core.tool.builtin.readFileTool
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -22,7 +22,7 @@ class ReadFileToolTest {
     @Test
     fun `refuses non-text files over the size limit`() = runTest {
         val video = File(dir, "clip.mp4")
-        RandomAccessFile(video, "rw").use { it.setLength(MAX_ATTACHED_FILE_BYTES + 1) }
+        RandomAccessFile(video, "rw").use { it.setLength(Attachments.MAX_BYTES + 1) }
 
         val result = read(video)
         result.ok shouldBe false

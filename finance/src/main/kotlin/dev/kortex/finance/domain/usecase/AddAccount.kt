@@ -41,7 +41,10 @@ sealed interface AccountSaveResult {
     data object InvalidAmount : AccountSaveResult
     data object UnknownLinkedAccount : AccountSaveResult
 
-    /** A full number that isn't 8 to 19 digits, or doesn't end in the last 4 given. */
+    /**
+     * A full number that isn't 8 to 19 digits, or doesn't end in the last 4 given; or, on edit, a new
+     * last 4 without a new full number for an account whose full number is kept.
+     */
     data object InvalidNumber : AccountSaveResult
     data object NotFound : AccountSaveResult
 }

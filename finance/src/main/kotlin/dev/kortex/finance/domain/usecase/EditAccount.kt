@@ -14,8 +14,11 @@ class UpdateAccount(private val repository: FinanceRepository, private val secre
         val name = draft.name.trim().ifEmpty { return AccountSaveResult.BlankName }
         val number = AccountNumbers.clean(draft.fullNumber)
         if (number == AccountNumbers.INVALID) return AccountSaveResult.InvalidNumber
-        val last4 = number?.takeLast(4) ?: draft.last4?.trim()?.ifEmpty { null }
+        val last4 = draft.last4?.trim()?.ifEmpty { null } ?: number?.takeLast(4)
         if (last4 != null && (last4.length != 4 || !last4.all { it.isDigit() })) return AccountSaveResult.InvalidLast4
+        if (number != null && number.takeLast(4) != last4) return AccountSaveResult.InvalidNumber
+        // The kept full number must still end in the last 4 shown: changing them means typing it again.
+        if (number == null && account.hasSecret && last4 != account.last4) return AccountSaveResult.InvalidNumber
         if (listOfNotNull(draft.statementDay, draft.dueDay).any { it !in 1..31 }) return AccountSaveResult.InvalidDay
         if ((draft.creditLimitMinor ?: 0) < 0) return AccountSaveResult.InvalidAmount
         val kind = account.kind

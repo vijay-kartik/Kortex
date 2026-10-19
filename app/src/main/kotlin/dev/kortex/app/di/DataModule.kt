@@ -95,7 +95,10 @@ object DataModule {
     @Singleton
     fun provideFinanceDecider(gateway: AiGatewayClient): FinanceDecider = JevFinanceDecider(gateway)
 
-    /** Entries added from bank SMS while the app is closed reach the cloud through a background push. */
+    /**
+     * Entries added from bank SMS while the app is closed, and a push that failed as the app left
+     * the screen, reach the cloud through a background push.
+     */
     @Provides
     fun provideBackgroundSync(@ApplicationContext context: Context): BackgroundSync = BackgroundSync { BackgroundPush.enqueue(context) }
 }

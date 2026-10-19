@@ -25,11 +25,8 @@ import dev.kortex.app.ui.security.AppLockGate
 import dev.kortex.app.ui.security.applyAppLockWindowPolicy
 import dev.kortex.app.ui.onboarding.AuthGate
 import dev.kortex.app.ui.onboarding.SplashHandoff
-import dev.kortex.app.di.ApplicationScope
 import dev.kortex.app.ui.sync.LiveSync
 import dev.kortex.sync.CloudAccount
-import dev.kortex.sync.CloudSync
-import kotlinx.coroutines.CoroutineScope
 import dagger.hilt.android.AndroidEntryPoint
 import dev.kortex.finance.domain.read.SmsKind
 import dev.kortex.finance.domain.read.SmsParser
@@ -44,8 +41,6 @@ class MainActivity : FragmentActivity() {
 
     @Inject lateinit var appLock: AppLock
     @Inject lateinit var cloudAccount: CloudAccount
-    @Inject lateinit var cloudSync: CloudSync
-    @Inject @field:ApplicationScope lateinit var appScope: CoroutineScope
 
     /** Latest request from a notification, shortcut or share; RootScreen clears it once handled. */
     private var entryRequest by mutableStateOf<EntryRequest?>(null)
@@ -79,7 +74,7 @@ class MainActivity : FragmentActivity() {
                 // Every entry point (launcher, notification, shortcut, share) lands behind the lock.
                 AppLockGate(appLock) {
                     AuthGate(cloudAccount, playIntro, splashHandoff = { splashHandoff }) {
-                        LiveSync(cloudAccount, cloudSync, appScope)
+                        LiveSync()
                         RootScreen(
                             entryRequest = entryRequest,
                             onEntryRequestHandled = { entryRequest = null },

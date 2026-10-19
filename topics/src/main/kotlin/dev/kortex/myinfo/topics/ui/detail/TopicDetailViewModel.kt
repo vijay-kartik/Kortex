@@ -8,16 +8,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.mvi.MviViewModel
 import dev.kortex.myinfo.topics.domain.model.SummaryDigest
 import dev.kortex.myinfo.topics.domain.model.TopicItem
-import dev.kortex.myinfo.topics.domain.model.TopicSort
-import dev.kortex.myinfo.topics.domain.model.sortedFor
 import dev.kortex.myinfo.topics.domain.model.storedFile
 import dev.kortex.myinfo.topics.domain.port.Clock
 import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
+import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicChoices
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
-import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
 import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
 import dev.kortex.myinfo.topics.domain.usecase.SetTopicPinned
@@ -30,7 +28,7 @@ import kotlinx.coroutines.launch
 class TopicDetailViewModel @AssistedInject constructor(
     @Assisted("topicId") private val topicId: Long,
     observeTopic: ObserveTopic,
-    observeTopics: ObserveTopics,
+    observeTopicChoices: ObserveTopicChoices,
     private val clock: Clock,
     private val setTopicPinned: SetTopicPinned,
     private val setItemDone: SetItemDone,
@@ -66,12 +64,8 @@ class TopicDetailViewModel @AssistedInject constructor(
         }
         observeTopicSummary(topicId).reduceInto { summary -> copy(summary = summary) }
         // Everywhere the selection could move to; this topic isn't one of them.
-        observeTopics().reduceInto { overviews ->
-            copy(
-                moveTargets = overviews.sortedFor(TopicSort.Recent)
-                    .filterNot { it.topic.id == topicId }
-                    .map { TopicChoice(it.topic.id, it.topic.name) },
-            )
+        observeTopicChoices().reduceInto { topics ->
+            copy(moveTargets = topics.filterNot { it.id == topicId }.map { TopicChoice(it.id, it.name) })
         }
     }
 

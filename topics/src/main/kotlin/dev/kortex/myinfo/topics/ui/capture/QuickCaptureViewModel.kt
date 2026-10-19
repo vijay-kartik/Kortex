@@ -13,8 +13,6 @@ import dev.kortex.myinfo.topics.domain.model.CaptureResult
 import dev.kortex.myinfo.topics.domain.model.CaptureTarget
 import dev.kortex.myinfo.topics.domain.model.ItemType
 import dev.kortex.myinfo.topics.domain.model.PickedFile
-import dev.kortex.myinfo.topics.domain.model.TopicSort
-import dev.kortex.myinfo.topics.domain.model.sortedFor
 import dev.kortex.myinfo.topics.domain.port.EmailSearchResult
 import dev.kortex.myinfo.topics.domain.usecase.CaptureItem
 import dev.kortex.myinfo.topics.domain.usecase.DetectItemType
@@ -23,7 +21,7 @@ import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.MoneyAmount
 import dev.kortex.myinfo.topics.domain.usecase.ObserveLinkTags
-import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
+import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicChoices
 import dev.kortex.myinfo.topics.domain.usecase.SearchEmails
 import dev.kortex.myinfo.topics.ui.common.TopicChoice
 import kotlinx.coroutines.CoroutineScope
@@ -35,7 +33,7 @@ import kotlinx.coroutines.launch
 class QuickCaptureViewModel @AssistedInject constructor(
     @Assisted initialTopicId: Long,
     @TopicsScope private val appScope: CoroutineScope,
-    observeTopics: ObserveTopics,
+    observeTopicChoices: ObserveTopicChoices,
     observeLinkTags: ObserveLinkTags,
     private val detectItemType: DetectItemType,
     private val lookUpLink: LookUpLink,
@@ -58,11 +56,9 @@ class QuickCaptureViewModel @AssistedInject constructor(
 
     init {
         // Same order as the topics list, so the topic the user works in most is near the front.
-        observeTopics().reduceInto { overviews ->
-            copy(
-                topics = overviews.sortedFor(TopicSort.Recent).map { TopicChoice(it.topic.id, it.topic.name) },
-                selectedTopicId = selectedTopicId?.takeIf { id -> overviews.any { it.topic.id == id } },
-            )
+        observeTopicChoices().reduceInto { topics ->
+            val choices = topics.map { TopicChoice(it.id, it.name) }
+            copy(topics = choices, selectedTopicId = selectedTopicId?.takeIf { id -> choices.any { it.id == id } })
         }
         observeLinkTags().reduceInto { tags -> copy(tagChoices = tags) }
     }

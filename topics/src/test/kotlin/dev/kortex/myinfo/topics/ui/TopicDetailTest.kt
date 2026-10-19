@@ -18,8 +18,8 @@ import dev.kortex.myinfo.topics.domain.usecase.DeleteItems
 import dev.kortex.myinfo.topics.domain.usecase.DeleteTopic
 import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
+import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicChoices
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
-import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
 import dev.kortex.myinfo.topics.domain.usecase.SetItemDone
 import dev.kortex.myinfo.topics.domain.usecase.SetItemsPinned
 import dev.kortex.myinfo.topics.domain.usecase.SetTopicPinned
@@ -502,7 +502,7 @@ class TopicDetailTest {
         return TopicDetailViewModel(
             topicId = 7,
             observeTopic = ObserveTopic(repository),
-            observeTopics = ObserveTopics(repository),
+            observeTopicChoices = ObserveTopicChoices(repository),
             clock = Clock { NOW },
             setTopicPinned = SetTopicPinned(repository),
             setItemDone = SetItemDone(repository, Clock { NOW }),

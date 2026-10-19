@@ -20,7 +20,7 @@ import dev.kortex.myinfo.topics.domain.usecase.DiscardPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.KeepPickedFile
 import dev.kortex.myinfo.topics.domain.usecase.LookUpLink
 import dev.kortex.myinfo.topics.domain.usecase.ObserveLinkTags
-import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
+import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicChoices
 import dev.kortex.myinfo.topics.domain.usecase.SearchEmails
 import dev.kortex.myinfo.topics.ui.capture.CaptureError
 import dev.kortex.myinfo.topics.ui.capture.QuickCaptureEffect
@@ -438,7 +438,7 @@ class QuickCaptureViewModelTest {
         return QuickCaptureViewModel(
             initialTopicId = 1,
             appScope = CoroutineScope(dispatcher),
-            observeTopics = ObserveTopics(repository),
+            observeTopicChoices = ObserveTopicChoices(repository),
             observeLinkTags = ObserveLinkTags(catalog),
             detectItemType = detect,
             lookUpLink = LookUpLink(catalog),

@@ -81,10 +81,11 @@ enum class TopicSort {
     Alphabetical,
 }
 
+/** [TopicSort.Recent]'s order: pinned topics first, then most recently changed. */
+val RecentFirst: Comparator<Topic> = compareByDescending<Topic> { it.pinned }.thenByDescending { it.updatedAtMillis }
+
 fun List<TopicOverview>.sortedFor(sort: TopicSort): List<TopicOverview> = when (sort) {
-    TopicSort.Recent -> sortedWith(
-        compareByDescending<TopicOverview> { it.topic.pinned }.thenByDescending { it.topic.updatedAtMillis },
-    )
+    TopicSort.Recent -> sortedWith(compareBy(RecentFirst) { it.topic })
     TopicSort.Pinned -> filter { it.topic.pinned }.sortedByDescending { it.topic.updatedAtMillis }
     TopicSort.Alphabetical -> sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.topic.name })
 }

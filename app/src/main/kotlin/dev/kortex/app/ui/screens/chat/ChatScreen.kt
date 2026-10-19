@@ -3,8 +3,6 @@ package dev.kortex.app.ui.screens.chat
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.provider.OpenableColumns
-import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -65,9 +63,11 @@ import dev.kortex.design.Synapse
 import dev.kortex.design.SynapseDim
 import dev.kortex.design.Void
 import dev.kortex.app.ui.util.formatVoiceDuration
-import dev.kortex.core.state.Attachment
+import dev.kortex.app.data.files.AttachmentRead
+import dev.kortex.app.data.files.readAttachment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * @param request session change from another screen; applied once, then [onRequestHandled] clears it.
@@ -102,25 +102,12 @@ fun ChatScreen(
         coroutineScope.launch(Dispatchers.IO) {
             uris.forEach { uri ->
                 val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                if (bytes != null) {
-                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    var filename: String? = null
-                    contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                        if (cursor.moveToFirst()) {
-                            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                            if (nameIndex >= 0) {
-                                filename = cursor.getString(nameIndex)
-                            }
-                        }
+                when (val read = contentResolver.readAttachment(uri, mimeType)) {
+                    is AttachmentRead.Ok -> vm.stageAttachment(read.attachment)
+                    is AttachmentRead.TooLarge -> withContext(Dispatchers.Main) {
+                        Toast.makeText(context, read.message, Toast.LENGTH_LONG).show()
                     }
-                    vm.stageAttachment(
-                        Attachment(
-                            mimeType = mimeType,
-                            dataBase64 = base64,
-                            filename = filename
-                        )
-                    )
+                    AttachmentRead.Unreadable -> Unit
                 }
             }
         }

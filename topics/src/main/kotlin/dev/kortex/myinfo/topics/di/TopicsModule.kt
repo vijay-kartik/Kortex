@@ -38,6 +38,7 @@ import dev.kortex.myinfo.topics.domain.usecase.MoveItems
 import dev.kortex.myinfo.topics.domain.usecase.ObserveLinkTags
 import dev.kortex.myinfo.topics.domain.usecase.ObserveSearchCorpus
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopic
+import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicChoices
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSuggestions
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopicSummary
 import dev.kortex.myinfo.topics.domain.usecase.ObserveTopics
@@ -104,6 +105,9 @@ object TopicsModule {
 
     @Provides
     fun provideObserveTopics(repository: TopicsRepository) = ObserveTopics(repository)
+
+    @Provides
+    fun provideObserveTopicChoices(repository: TopicsRepository) = ObserveTopicChoices(repository)
 
     @Provides
     fun provideObserveTopic(repository: TopicsRepository) = ObserveTopic(repository)

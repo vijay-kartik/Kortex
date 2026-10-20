@@ -18,6 +18,7 @@ import dev.kortex.core.observability.AgentRunStore
 import dev.kortex.core.observability.AgentRunSummary
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.ToolRegistry
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -120,8 +122,8 @@ class ChatViewModelTest {
         voice.events.emit(VoiceEvent.Final("remind me to call mom"))
 
         vm.send("")
-        // The agent graph runs on Dispatchers.Default; the session save marks the turn done.
-        val save = sessions.saved.first { it.isNotEmpty() }.single()
+        // The agent graph runs on Dispatchers.Default; the save with the answer marks the turn done.
+        val save = sessions.saved.first { saves -> saves.any { it.turns.size == 2 } }.last()
 
         val userMessages = llm.requests.flatMap { req -> req.messages.filter { it.role == Message.Role.USER } }
         assertTrue(userMessages.any { it.content == "remind me to call mom" })
@@ -131,6 +133,39 @@ class ChatViewModelTest {
         assertEquals("", userTurn.content)
         assertEquals("remind me to call mom", userTurn.attachments.single().transcript)
         assertTrue(vm.stagedAttachments.value.isEmpty())
+    }
+
+    @Test
+    fun `opening another chat while the agent answers leaves it alone and saves the answer where it was asked`() = runTest {
+        val other = listOf(ChatTurn(Message(Message.Role.USER, "old question")), ChatTurn(Message(Message.Role.ASSISTANT, "old answer")))
+        sessions.stored["b"] = ChatSession("b", "Old chat", other, updatedAtMillis = 0)
+        llm.gate = CompletableDeferred()
+        val vm = viewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.ui.collect {} }
+
+        vm.send("what's on today?")
+        llm.called.await()
+        // The question is saved as soon as it's sent, before any answer.
+        val askedIn = sessions.saved.value.single()
+        assertEquals(listOf("what's on today?"), askedIn.turns.map { it.message.content })
+
+        vm.loadSession("b")
+        assertEquals(other, vm.ui.value.turns)
+        // The run is still going, so the composer stays locked and a second send is ignored.
+        assertTrue(vm.ui.value.busy)
+        assertTrue(vm.ui.value.liveReasoning.isEmpty())
+        vm.send("and tomorrow?")
+
+        llm.gate!!.complete(Unit)
+        val answered = sessions.saved.first { saves -> saves.any { it.turns.size == 2 } }.last()
+        val idle = vm.ui.first { !it.busy }
+
+        assertEquals(askedIn.id, answered.id)
+        assertEquals(listOf("what's on today?", "Done."), answered.turns.map { it.message.content })
+        assertEquals("what's on today?", answered.fallbackTitle)
+        assertTrue(sessions.saved.value.none { it.id == "b" })
+        assertEquals(other, idle.turns)
+        assertTrue(idle.liveReasoning.isEmpty())
     }
 
     @Test
@@ -157,9 +192,14 @@ class ChatViewModelTest {
 
     private class FakeLlm : LlmProvider {
         val requests = mutableListOf<LlmRequest>()
+        /** Completed on the first call; set [gate] to hold every call until it's completed. */
+        val called = CompletableDeferred<Unit>()
+        var gate: CompletableDeferred<Unit>? = null
 
         override suspend fun complete(req: LlmRequest, logger: Logger?): LlmResponse {
             requests += req
+            called.complete(Unit)
+            gate?.await()
             return LlmResponse(Message(Message.Role.ASSISTANT, "Done."))
         }
 
@@ -171,7 +211,9 @@ class ChatViewModelTest {
         val saved = MutableStateFlow<List<Save>>(emptyList())
 
         override fun observeSummaries(): Flow<List<ChatSessionSummary>> = flowOf(emptyList())
-        override suspend fun get(id: String): ChatSession? = null
+        val stored = mutableMapOf<String, ChatSession>()
+
+        override suspend fun get(id: String): ChatSession? = stored[id]
         override suspend fun save(id: String, turns: List<ChatTurn>, fallbackTitle: String) {
             saved.update { it + Save(id, turns, fallbackTitle) }
         }

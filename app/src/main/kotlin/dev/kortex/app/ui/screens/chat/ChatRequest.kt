@@ -1,8 +1,8 @@
 package dev.kortex.app.ui.screens.chat
 
 /**
- * A session change asked of [ChatScreen] by another screen (history, notification, share).
- * Held as state until ChatScreen has applied it, then cleared.
+ * A session change asked of [ChatRoute] by another screen (history, notification, share).
+ * Held as state until ChatRoute has applied it, then cleared.
  */
 sealed interface ChatRequest {
     /** Open a saved conversation. */

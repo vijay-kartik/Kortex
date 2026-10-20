@@ -15,13 +15,13 @@ import dev.kortex.design.R
 /** Top-bar action for the Chat tab: shares the conversation as text. Hidden while it's empty. */
 @Composable
 fun ChatShareAction(vm: ChatViewModel = hiltViewModel()) {
-    val ui by vm.ui.collectAsStateWithLifecycle()
-    if (ui.turns.isEmpty()) return
+    val state by vm.state.collectAsStateWithLifecycle()
+    if (state.turns.isEmpty()) return
     val context = LocalContext.current
     CircleButton(
         icon = R.drawable.ic_share,
         contentDescription = "Share conversation",
-        onClick = { shareConversation(context, ui.turns) },
+        onClick = { shareConversation(context, state.turns) },
     )
 }
 

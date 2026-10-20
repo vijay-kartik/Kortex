@@ -39,7 +39,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.tooling.preview.Preview
 import dev.kortex.app.ui.navigation.HomeMenu
 import dev.kortex.app.ui.screens.chat.ChatRequest
-import dev.kortex.app.ui.screens.chat.ChatScreen
+import dev.kortex.app.ui.screens.chat.ChatRoute
 import dev.kortex.app.ui.screens.chat.ChatShareAction
 import dev.kortex.app.ui.screens.chat.HistoryScreen
 import dev.kortex.app.ui.screens.graph.GraphScreen
@@ -124,7 +124,7 @@ fun RootScreen(
         },
         tabContent = { tab ->
             when (tab) {
-                KortexTab.Chat -> ChatScreen(
+                KortexTab.Chat -> ChatRoute(
                     request = state.pendingChatRequest,
                     onRequestHandled = state::onChatRequestHandled,
                 )

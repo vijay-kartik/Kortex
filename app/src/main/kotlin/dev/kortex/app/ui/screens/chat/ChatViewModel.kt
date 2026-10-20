@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import dev.kortex.core.observability.AgentRunStore
 import dev.kortex.app.domain.agent.ActiveModels
@@ -112,13 +111,23 @@ class ChatViewModel @Inject constructor(
      */
     val sessions: StateFlow<List<ChatSessionSummary>?> = sessionRepository.observeSummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    private var currentSessionId: String = UUID.randomUUID().toString()
+    @Volatile private var currentSessionId: String = UUID.randomUUID().toString()
+
+    /**
+     * The session the in-flight agent run belongs to, or null when idle. One run at a time:
+     * it keeps going if the user opens another session, saves into its own session, and only
+     * drives the live reasoning and status while its own session is on screen.
+     */
+    @Volatile private var runSessionId: String? = null
+    private var runJob: Job? = null
 
     private val approver = Approver { name, args ->
         _ui.update { it.copy(pendingApproval = "$name $args") }
         CompletableDeferred<Boolean>().also { approvalGate = it }.await()
     }
-    private val progress = ProgressListener { s -> _ui.update { it.copy(status = s) } }
+    private val progress = ProgressListener { s ->
+        if (runSessionId == currentSessionId) _ui.update { it.copy(status = s) }
+    }
 
     fun resolveApproval(approved: Boolean) {
         _ui.update { it.copy(pendingApproval = null) }
@@ -225,16 +234,15 @@ class ChatViewModel @Inject constructor(
     fun loadSession(sessionId: String) {
         viewModelScope.launch {
             val session = sessionRepository.get(sessionId)
-            if (session != null) {
-                currentSessionId = session.id
-                _ui.update { it.copy(turns = session.turns, busy = false, status = null) }
-            }
+            if (session != null) open(session.id, session.turns)
         }
     }
 
     /** Deletes a past conversation. If it's the one currently open, starts a fresh one so
-     *  the chat screen isn't left pointing at a session that no longer exists. */
+     *  the chat screen isn't left pointing at a session that no longer exists. A run still
+     *  answering in it is cancelled, so its save can't bring the conversation back. */
     fun deleteSession(sessionId: String) {
+        if (sessionId == runSessionId) runJob?.cancel()
         viewModelScope.launch {
             sessionRepository.delete(sessionId)
             if (sessionId == currentSessionId) startNewSession()
@@ -247,9 +255,28 @@ class ChatViewModel @Inject constructor(
 
     /** Opens a fresh conversation; a [draft] is placed in the composer for the user to send. */
     fun startNewSession(draft: String? = null) {
-        currentSessionId = UUID.randomUUID().toString()
-        _ui.update { it.copy(turns = emptyList(), busy = false, status = null) }
+        open(UUID.randomUUID().toString(), emptyList())
         if (draft != null) _draft.value = draft
+    }
+
+    /** Puts session [id] on screen. A run still in flight keeps the composer locked; its
+     *  live reasoning only shows in its own session. */
+    private fun open(id: String, turns: List<ChatTurn>) {
+        currentSessionId = id
+        val running = runSessionId
+        _ui.update {
+            it.copy(
+                turns = turns,
+                busy = running != null,
+                status = when (running) {
+                    null -> null
+                    id -> "thinking…"
+                    else -> "answering in another chat…"
+                },
+                liveReasoning = emptyList(),
+                liveStats = ReasoningStats(),
+            )
+        }
     }
 
     fun consumeDraft() { _draft.value = null }
@@ -271,89 +298,112 @@ class ChatViewModel @Inject constructor(
         val agentAttachments = attachmentsToSend - voiceTranscripts.toSet()
 
         if (agentQuery.isBlank() && attachmentsToSend.isEmpty()) return
-        viewModelScope.launch {
-            val activeProviderName = modelSelection.activeProvider.first()
-            // The same pair is shown in the header and passed to the run, so they can't disagree.
-            val activeModels = ActiveModels.of(activeProviderName, modelSelection.activeModel.first())
-            val model = activeModels.reasoning
-            // Snapshot history before appending this turn — Agent.ask() adds the query as a
-            // fresh USER message itself, so including the just-added turn would send it twice.
-            val historyMessages = _ui.value.turns.map { it.message }
-            _ui.update {
-                it.copy(
-                    turns = it.turns + ChatTurn(Message(Message.Role.USER, query, attachmentsToSend)),
-                    busy = true,
-                    status = "thinking…",
-                    liveReasoning = emptyList(),
-                    activeProvider = activeProviderName,
-                    activeModel = model,
-                )
-            }
-            // Scoped to this turn: the logger mirrors every line to Logcat (via AndroidLogger)
-            // and streams it into the reasoning panel; the structured callbacks (onLlmUsage,
-            // the governor's onAudit) drive the stats footer, so the numbers come from the
-            // agent runtime itself rather than from parsing log strings.
-            val liveLines = mutableListOf<ReasoningLine>()
-            var tokens = 0
-            var toolCalls = 0
-            val startMs = System.currentTimeMillis()
-            fun statsNow() = ReasoningStats(tokens, toolCalls, System.currentTimeMillis() - startMs)
-            // Records a structured AgentRun for the dedicated Runs screen while still
-            // driving the live reasoning panel + Logcat via its delegate logger. The run
-            // content is owned by core-agent (dev.kortex.core.observability), not this module.
-            val recorder = dev.kortex.core.observability.AgentRunRecorder(
-                query = agentQuery,
-                sessionId = currentSessionId,
-                delegate = Logger { level, tag, message, error ->
-                    AndroidLogger.log(level, tag, message, error)
-                    liveLines += ReasoningLine(level, tag, message)
-                    _ui.update { it.copy(liveReasoning = liveLines.toList(), liveStats = statsNow()) }
-                },
-            )
-            val turnCtx = AgentContext(
-                llm = provider,
-                tools = tools,
-                models = activeModels.toAgentModels(),
-                governor = ToolGovernor(onAudit = { entry ->
-                    toolCalls++
-                    _ui.update { it.copy(liveStats = statsNow()) }
-                    recorder.audit(entry)
-                }),
-                approver = approver,
-                onProgress = progress,
-                logger = recorder.logger,
-                onLlmUsage = LlmUsageListener { usage ->
-                    tokens += usage.inputTokens + usage.outputTokens
-                    _ui.update { it.copy(liveStats = statsNow()) }
-                    recorder.usage.report(usage)
-                },
-            )
-
-            val result = Agent(turnCtx).ask(agentQuery, agentAttachments, history = historyMessages)
-            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                runCatching {
-                    runTraceStore.save(
-                        recorder.finish(result, dev.kortex.core.observability.AgentRun.Status.COMPLETED)
+        if (runSessionId != null) return
+        // Pinned before the run: the user may open another session while it's going, and the
+        // answer must land in (and be saved to) the session the question was asked in.
+        val sessionId = currentSessionId
+        // Snapshot history before appending this turn — Agent.ask() adds the query as a
+        // fresh USER message itself, so including the just-added turn would send it twice.
+        val history = _ui.value.turns
+        val historyMessages = history.map { it.message }
+        val baseTurns = history + ChatTurn(Message(Message.Role.USER, query, attachmentsToSend))
+        val title = sessionTitle(agentQuery, agentAttachments)
+        runSessionId = sessionId
+        _ui.update {
+            it.copy(turns = baseTurns, busy = true, status = "thinking…", liveReasoning = emptyList())
+        }
+        // Saved now, so a run that's killed or crashes doesn't lose the question.
+        viewModelScope.launch { sessionRepository.save(sessionId, baseTurns, fallbackTitle = title) }
+        runJob = viewModelScope.launch {
+            try {
+                runTurn(sessionId, agentQuery, agentAttachments, historyMessages, baseTurns, title)
+            } finally {
+                // Also reached on failure or cancellation, so the composer never stays locked.
+                runSessionId = null
+                runJob = null
+                approvalGate = null
+                _ui.update {
+                    it.copy(
+                        liveReasoning = emptyList(),
+                        liveStats = ReasoningStats(),
+                        busy = false,
+                        status = null,
+                        pendingApproval = null,
                     )
                 }
             }
-            val answer = result.messages
-                .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
-
-            val answerTurn = answer?.let { ChatTurn(it, liveLines.toList(), statsNow()) }
-            val newTurns = _ui.updateAndGet { cur ->
-                cur.copy(
-                    turns = cur.turns + listOfNotNull(answerTurn),
-                    liveReasoning = emptyList(),
-                    liveStats = ReasoningStats(),
-                    busy = false,
-                    status = null,
-                )
-            }.turns
-            // Saved outside the update: its lambda can rerun on contention, the save must not.
-            val sessionId = currentSessionId
-            val title = sessionTitle(agentQuery, agentAttachments)
-            viewModelScope.launch { sessionRepository.save(sessionId, newTurns, fallbackTitle = title) }
         }
+    }
+
+    private suspend fun runTurn(
+        sessionId: String,
+        agentQuery: String,
+        agentAttachments: List<dev.kortex.core.state.Attachment>,
+        historyMessages: List<Message>,
+        baseTurns: List<ChatTurn>,
+        title: String,
+    ) {
+        val activeProviderName = modelSelection.activeProvider.first()
+        // The same pair is shown in the header and passed to the run, so they can't disagree.
+        val activeModels = ActiveModels.of(activeProviderName, modelSelection.activeModel.first())
+        _ui.update { it.copy(activeProvider = activeProviderName, activeModel = activeModels.reasoning) }
+        // Live reasoning and stats only reach the screen while this run's session is open.
+        fun onScreen() = sessionId == currentSessionId
+        // Scoped to this turn: the logger mirrors every line to Logcat (via AndroidLogger)
+        // and streams it into the reasoning panel; the structured callbacks (onLlmUsage,
+        // the governor's onAudit) drive the stats footer, so the numbers come from the
+        // agent runtime itself rather than from parsing log strings.
+        val liveLines = mutableListOf<ReasoningLine>()
+        var tokens = 0
+        var toolCalls = 0
+        val startMs = System.currentTimeMillis()
+        fun statsNow() = ReasoningStats(tokens, toolCalls, System.currentTimeMillis() - startMs)
+        // Records a structured AgentRun for the dedicated Runs screen while still
+        // driving the live reasoning panel + Logcat via its delegate logger. The run
+        // content is owned by core-agent (dev.kortex.core.observability), not this module.
+        val recorder = dev.kortex.core.observability.AgentRunRecorder(
+            query = agentQuery,
+            sessionId = sessionId,
+            delegate = Logger { level, tag, message, error ->
+                AndroidLogger.log(level, tag, message, error)
+                liveLines += ReasoningLine(level, tag, message)
+                if (onScreen()) _ui.update { it.copy(liveReasoning = liveLines.toList(), liveStats = statsNow()) }
+            },
+        )
+        val turnCtx = AgentContext(
+            llm = provider,
+            tools = tools,
+            models = activeModels.toAgentModels(),
+            governor = ToolGovernor(onAudit = { entry ->
+                toolCalls++
+                if (onScreen()) _ui.update { it.copy(liveStats = statsNow()) }
+                recorder.audit(entry)
+            }),
+            approver = approver,
+            onProgress = progress,
+            logger = recorder.logger,
+            onLlmUsage = LlmUsageListener { usage ->
+                tokens += usage.inputTokens + usage.outputTokens
+                if (onScreen()) _ui.update { it.copy(liveStats = statsNow()) }
+                recorder.usage.report(usage)
+            },
+        )
+
+        val result = Agent(turnCtx).ask(agentQuery, agentAttachments, history = historyMessages)
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                runTraceStore.save(
+                    recorder.finish(result, dev.kortex.core.observability.AgentRun.Status.COMPLETED)
+                )
+            }
+        }
+        val answer = result.messages
+            .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
+
+        val answerTurn = answer?.let { ChatTurn(it, liveLines.toList(), statsNow()) }
+        // Built from the turns pinned at send, not the screen's: another session may be open now.
+        val newTurns = baseTurns + listOfNotNull(answerTurn)
+        viewModelScope.launch { sessionRepository.save(sessionId, newTurns, fallbackTitle = title) }
+        if (onScreen()) _ui.update { it.copy(turns = newTurns) }
     }
 }

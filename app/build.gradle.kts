@@ -1,8 +1,7 @@
 import java.util.Properties
 
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kortex.android.application)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
@@ -19,12 +18,9 @@ val localProps = Properties().apply {
 
 android {
     namespace = "dev.kortex.app"
-    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.kortex.app"
-        minSdk = 26
-        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
 
@@ -58,15 +54,6 @@ android {
         noCompress += "tflite"
     }
 
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions { 
-        jvmTarget = "17" 
-        freeCompilerArgs += listOf("-Xskip-metadata-version-check")
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -81,6 +68,12 @@ android {
     // Lets JVM tests hand a plain `Intent()` through, as the Gmail consent flow does.
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-Xskip-metadata-version-check")
     }
 }
 

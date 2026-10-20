@@ -1,9 +1,5 @@
 plugins {
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.ksp)
-    alias(libs.plugins.hilt)
+    alias(libs.plugins.kortex.android.feature)
 }
 
 // Links (the Links tab): a pure domain (models, ports, use cases), Room storage, page reading and
@@ -11,37 +7,9 @@ plugins {
 // data/ directly; everything else goes through the domain.
 android {
     namespace = "dev.kortex.links"
-    compileSdk = 36
-
-    defaultConfig {
-        minSdk = 26
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-    buildFeatures {
-        compose = true
-    }
 }
 
 dependencies {
-    implementation(project(":design"))
-    implementation(project(":mvi"))
-
-    implementation(libs.androidx.core.ktx)
-
-    // Compose
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.material3)
-    implementation(libs.compose.ui.tooling.preview)
-    debugImplementation(libs.compose.ui.tooling)
-    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     implementation(libs.kotlinx.coroutines.android)
@@ -50,17 +18,5 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.mediapipe.tasks.text)
 
-    // Room
-    implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
-
-    // Hilt
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
-    implementation(libs.hilt.navigation.compose)
-
-    testImplementation(libs.junit)
     testImplementation(libs.json)
-    testImplementation(libs.coroutines.test)
 }

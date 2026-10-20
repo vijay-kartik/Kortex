@@ -98,6 +98,10 @@ jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 # origin YouTube now requires; it brings lifecycle-runtime 2.9.
 youtube-player = { module = "com.pierfrancescosoffritti.androidyoutubeplayer:core", version = "13.0.0" }
 
+# Compile-time only, for the convention plugins in build-logic/.
+android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
@@ -107,3 +111,10 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version = "2.1.0-1.0.29" }
+
+# Convention plugins (build-logic/convention).
+kortex-android-application = { id = "kortex.android.application", version = "unspecified" }
+kortex-android-library = { id = "kortex.android.library", version = "unspecified" }
+kortex-android-compose = { id = "kortex.android.compose", version = "unspecified" }
+kortex-android-feature = { id = "kortex.android.feature", version = "unspecified" }
+kortex-jvm-library = { id = "kortex.jvm.library", version = "unspecified" }

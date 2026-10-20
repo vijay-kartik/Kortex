@@ -1,29 +1,21 @@
 plugins {
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kortex.android.library)
 }
 
 // Cloud sync: owns every Firebase dependency, so :links, :topics and :finance stay Firebase-free.
 android {
     namespace = "dev.kortex.sync"
-    compileSdk = 36
 
-    defaultConfig {
-        minSdk = 26
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = "17"
-        // Same as :app: current Firebase artifacts carry newer Kotlin metadata than our compiler.
-        freeCompilerArgs += listOf("-Xskip-metadata-version-check")
-    }
     // CloudSyncTest goes through android.util.Log and Firebase's TextUtils checks.
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        // Same as :app: current Firebase artifacts carry newer Kotlin metadata than our compiler.
+        freeCompilerArgs.add("-Xskip-metadata-version-check")
     }
 }
 

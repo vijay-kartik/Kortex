@@ -63,7 +63,7 @@ Storage (not built; see "Records only"): users/{uid}/topic-files/{itemUid}{ext}
 - Tags are an array on the link. A tag no link uses isn't synced, since tags only live through links.
 - **Deletes are soft** (`deleted: true`), so the other client sees them. They are never purged in v1.
 - **Link thumbnails aren't uploaded.** On restore they're downloaded again from `imageUrl` through
-  the existing `LinkImageStore.attachWhenReady`.
+  the existing `LinkThumbnails.attachWhenReady`.
 
 ## Change tracking (local)
 
@@ -110,7 +110,7 @@ would overwrite, say, a newer title the extension wrote.)
    - An item whose `linkUid` or `topicUid` isn't known locally yet is held back: its uid is kept
      (`held_items:<uid>` in DataStore) and the next sync fetches it again by id, since the
      watermark has moved past it.
-3. **Thumbnails.** New link thumbnails are queued through `LinkImageStore`. (Topic files would be
+3. **Thumbnails.** New link thumbnails are queued through `LinkThumbnails`. (Topic files would be
    downloaded here once they're uploaded; see "Records only".)
 4. Save `lastPulledAt` as the max `serverUpdatedAt` seen, and "Last synced" as the current time.
 

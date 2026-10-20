@@ -22,7 +22,7 @@ import dev.kortex.finance.data.local.FinanceSyncDao
 import dev.kortex.finance.domain.port.FinanceKeySource
 import dev.kortex.finance.domain.port.NotificationPrivacy
 import dev.kortex.links.data.LinkSyncDao
-import dev.kortex.links.images.LinkImageStore
+import dev.kortex.links.domain.port.LinkThumbnails
 import dev.kortex.myinfo.topics.data.local.TopicSyncDao
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.sync.CloudAccount
@@ -69,7 +69,7 @@ object AppModule {
         @ApplicationContext context: Context,
         account: CloudAccount,
         linkSyncDao: LinkSyncDao,
-        linkImages: LinkImageStore,
+        linkImages: LinkThumbnails,
         topicSyncDao: TopicSyncDao,
         topicFiles: FileVault,
         financeSyncDao: FinanceSyncDao,

@@ -27,6 +27,10 @@ android {
     buildFeatures {
         compose = true
     }
+    // RoomLinksRepositoryTest and LinkThumbnailAttacherTest go through android.util.Log and SQLiteConstraintException.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {

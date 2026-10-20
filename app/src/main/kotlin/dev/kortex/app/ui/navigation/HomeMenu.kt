@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -96,7 +97,7 @@ fun HomeMenu(
                 onClick = onClose,
                 modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp),
             )
-            Wordmark(Modifier.align(Alignment.CenterStart).padding(start = 72.dp))
+            Wordmark(Modifier.align(Alignment.CenterStart).padding(start = 68.dp))
         }
         Column(
             Modifier
@@ -153,12 +154,15 @@ private fun Wordmark(modifier: Modifier = Modifier) {
     Row(
         modifier.semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Image(painterResource(R.drawable.ic_kortex_mark), contentDescription = null, modifier = Modifier.size(18.dp))
+        // A 28dp icon slot takes a 42dp mark (see KortexMark), so the glyph matches the app icon's.
+        Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+            Image(painterResource(R.drawable.ic_kortex_mark), contentDescription = null, modifier = Modifier.requiredSize(42.dp))
+        }
         Text(
             "KORTEX",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
+            style = MaterialTheme.typography.titleSmall.copy(letterSpacing = 4.sp),
             color = Ink,
         )
     }
@@ -230,7 +234,11 @@ private fun AccountCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Box(Modifier.size(36.dp).background(SynapseDim, CircleShape), contentAlignment = Alignment.Center) {
-                Text(label.first().uppercase(), color = Synapse, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(
+                    label.first().uppercase(),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Synapse,
+                )
             }
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.titleSmall, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)

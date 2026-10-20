@@ -1,6 +1,5 @@
 package dev.kortex.app.ui.screens.chat
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.kortex.core.log.AndroidLogger
@@ -11,25 +10,20 @@ import dev.kortex.core.graph.LlmUsageListener
 import dev.kortex.core.graph.ProgressListener
 import dev.kortex.core.llm.LlmProvider
 import dev.kortex.core.log.Logger
+import dev.kortex.core.state.Attachment
 import dev.kortex.core.state.Message
 import dev.kortex.core.tool.ToolGovernor
 import dev.kortex.core.tool.ToolRegistry
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import dev.kortex.core.observability.AgentRunStore
 import dev.kortex.app.domain.agent.ActiveModels
 import dev.kortex.app.domain.agent.ModelSelection
 import dev.kortex.app.domain.chat.ChatSessionRepository
-import dev.kortex.app.domain.chat.ChatSessionSummary
 import dev.kortex.app.domain.chat.ChatTurn
 import dev.kortex.app.domain.chat.ReasoningLine
 import dev.kortex.app.domain.chat.ReasoningStats
@@ -37,36 +31,13 @@ import dev.kortex.app.domain.voice.VoiceDictation
 import dev.kortex.app.domain.voice.VoiceEvent
 import dev.kortex.app.domain.voice.VoiceFailure
 import dev.kortex.app.domain.chat.sessionTitle
-import kotlinx.coroutines.flow.stateIn
+import dev.kortex.mvi.MviViewModel
 import java.util.UUID
 import javax.inject.Inject
 
-data class ChatUi(
-    val turns: List<ChatTurn> = emptyList(),
-    /** Reasoning for the turn currently in flight, streamed live while [busy]. */
-    val liveReasoning: List<ReasoningLine> = emptyList(),
-    val liveStats: ReasoningStats = ReasoningStats(),
-    val busy: Boolean = false,
-    /** Live, human-readable status of the current step (e.g. "Tool usage: web_search"). */
-    val status: String? = null,
-    /** Set when a HIGH-risk tool is awaiting approval (pattern 13). */
-    val pendingApproval: String? = null,
-    val activeProvider: String? = null,
-    val activeModel: String? = null,
-)
-
-/** Voice input (on-device dictation) lifecycle, driven by [ChatViewModel.startVoiceInput]. */
-sealed interface VoiceState {
-    data object Idle : VoiceState
-    /** Mic is open. [partial] streams in live; [rms] is the current mic level in dB. */
-    data class Listening(val partial: String = "", val elapsedMs: Long = 0, val rms: Float = 0f) : VoiceState
-    /** Mic closed, waiting for the recognizer's final result. */
-    data object Transcribing : VoiceState
-}
-
 /**
  * Wires the pure-Kotlin [Agent] to Compose. The [Approver] bridges the agent's
- * Human-in-the-Loop pause to a UI dialog: the agent suspends until [resolveApproval].
+ * Human-in-the-Loop pause to a UI dialog: the agent suspends until [ChatIntent.ResolveApproval].
  * The singleton [ToolRegistry] is injected so that the MCP settings
  * screen and this ViewModel operate on the same tool set; AgentBootstrap sets it up at app start.
  */
@@ -78,143 +49,127 @@ class ChatViewModel @Inject constructor(
     private val sessionRepository: ChatSessionRepository,
     private val runTraceStore: AgentRunStore,
     private val voiceDictation: VoiceDictation,
-) : ViewModel() {
-
-    private val _ui = MutableStateFlow(ChatUi())
-    val ui: StateFlow<ChatUi> = kotlinx.coroutines.flow.combine(
-        _ui, modelSelection.activeProvider, modelSelection.activeModel
-    ) { state, provider, model ->
-        state.copy(activeProvider = provider, activeModel = ActiveModels.of(provider, model).reasoning)
-    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), ChatUi())
-
-    private val _stagedAttachments = MutableStateFlow<List<dev.kortex.core.state.Attachment>>(emptyList())
-    val stagedAttachments: StateFlow<List<dev.kortex.core.state.Attachment>> = _stagedAttachments.asStateFlow()
-
-    private val _voice = MutableStateFlow<VoiceState>(VoiceState.Idle)
-    val voice: StateFlow<VoiceState> = _voice.asStateFlow()
-
-    /** One-shot dictation error for the UI to toast; cleared via [consumeVoiceError]. */
-    private val _voiceError = MutableStateFlow<String?>(null)
-    val voiceError: StateFlow<String?> = _voiceError.asStateFlow()
-
-    /** One-shot text for the composer (e.g. shared from another app); cleared via [consumeDraft]. */
-    private val _draft = MutableStateFlow<String?>(null)
-    val draft: StateFlow<String?> = _draft.asStateFlow()
+) : MviViewModel<ChatState, ChatIntent, ChatEffect>(ChatState()) {
 
     private var voiceTicker: Job? = null
     private var voiceStartMs = 0L
 
     private var approvalGate: CompletableDeferred<Boolean>? = null
 
-    /**
-     * Saved conversations, newest first. Null until Room's first read, so History can tell
-     * "still loading" from "no conversations". Kept warm briefly so switching tabs reuses it.
-     */
-    val sessions: StateFlow<List<ChatSessionSummary>?> = sessionRepository.observeSummaries()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private var currentSessionId: String = UUID.randomUUID().toString()
 
     private val approver = Approver { name, args ->
-        _ui.update { it.copy(pendingApproval = "$name $args") }
+        setState { copy(pendingApproval = "$name $args") }
         CompletableDeferred<Boolean>().also { approvalGate = it }.await()
     }
-    private val progress = ProgressListener { s -> _ui.update { it.copy(status = s) } }
+    private val progress = ProgressListener { s -> setState { copy(status = s) } }
 
-    fun resolveApproval(approved: Boolean) {
-        _ui.update { it.copy(pendingApproval = null) }
+    init {
+        combine(modelSelection.activeProvider, modelSelection.activeModel) { provider, model ->
+            provider to ActiveModels.of(provider, model).reasoning
+        }.reduceInto { (provider, model) -> copy(activeProvider = provider, activeModel = model) }
+        sessionRepository.observeSummaries().reduceInto { copy(sessions = it) }
+        viewModelScope.launch { voiceDictation.events.collect(::onVoiceEvent) }
+    }
+
+    override fun handleIntent(intent: ChatIntent) {
+        when (intent) {
+            is ChatIntent.Send -> send(intent.text)
+            is ChatIntent.StageAttachment -> setState { copy(stagedAttachments = stagedAttachments + intent.attachment) }
+            is ChatIntent.RemoveAttachment ->
+                setState { copy(stagedAttachments = stagedAttachments.filterIndexed { i, _ -> i != intent.index }) }
+            ChatIntent.StartVoice -> startVoiceInput()
+            ChatIntent.StopVoice -> stopVoiceInput()
+            ChatIntent.CancelVoice -> cancelVoiceInput()
+            is ChatIntent.ResolveApproval -> resolveApproval(intent.approved)
+            is ChatIntent.LoadSession -> loadSession(intent.sessionId)
+            is ChatIntent.NewSession -> startNewSession(intent.draft)
+            is ChatIntent.DeleteSession -> deleteSession(intent.sessionId)
+            is ChatIntent.RenameSession ->
+                viewModelScope.launch { sessionRepository.rename(intent.sessionId, intent.title) }
+        }
+    }
+
+    private fun resolveApproval(approved: Boolean) {
+        setState { copy(pendingApproval = null) }
         approvalGate?.complete(approved)
         approvalGate = null
     }
 
-    fun stageAttachment(attachment: dev.kortex.core.state.Attachment) {
-        _stagedAttachments.update { it + attachment }
-    }
-
-    fun removeStagedAttachment(index: Int) {
-        _stagedAttachments.update { it.filterIndexed { i, _ -> i != index } }
-    }
-
     // ── voice input (dictation via VoiceDictation) ──────────
 
-    init {
-        viewModelScope.launch { voiceDictation.events.collect(::onVoiceEvent) }
-    }
-
-    /** Opens the mic and streams live partial transcripts into [voice]. Caller must hold
+    /** Opens the mic and streams live partial transcripts into [ChatState.voice]. Caller must hold
      *  RECORD_AUDIO. The final transcript is staged as a voice-note attachment. */
-    fun startVoiceInput() {
-        if (_voice.value !is VoiceState.Idle) return
+    private fun startVoiceInput() {
+        if (currentState.voice !is VoiceState.Idle) return
         voiceStartMs = System.currentTimeMillis()
-        _voice.value = VoiceState.Listening()
+        setState { copy(voice = VoiceState.Listening()) }
         voiceTicker = viewModelScope.launch {
             while (true) {
                 delay(100)
-                _voice.update { cur ->
-                    if (cur is VoiceState.Listening) cur.copy(elapsedMs = System.currentTimeMillis() - voiceStartMs) else cur
-                }
+                updateListening { copy(elapsedMs = System.currentTimeMillis() - voiceStartMs) }
             }
         }
         voiceDictation.start()
     }
 
-    /** Closes the mic; the engine finishes transcribing what was said. */
-    fun stopVoiceInput() {
-        if (_voice.value !is VoiceState.Listening) return
-        _voice.value = VoiceState.Transcribing
+    private fun stopVoiceInput() {
+        if (currentState.voice !is VoiceState.Listening) return
+        setState { copy(voice = VoiceState.Transcribing) }
         voiceDictation.stop()
     }
 
-    /** Abandons the dictation entirely — nothing is staged. */
-    fun cancelVoiceInput() {
+    private fun cancelVoiceInput() {
         voiceTicker?.cancel()
         voiceDictation.cancel()
-        _voice.value = VoiceState.Idle
+        setState { copy(voice = VoiceState.Idle) }
     }
 
-    fun consumeVoiceError() { _voiceError.value = null }
+    /** Changes the voice state only while the mic is still open. */
+    private fun updateListening(reducer: VoiceState.Listening.() -> VoiceState) = setState {
+        if (voice is VoiceState.Listening) copy(voice = voice.reducer()) else this
+    }
 
     private fun onVoiceEvent(event: VoiceEvent) {
         // Idle means no dictation is running (or it was cancelled): drop any late events.
-        if (_voice.value is VoiceState.Idle) return
+        if (currentState.voice is VoiceState.Idle) return
         when (event) {
-            is VoiceEvent.Level ->
-                _voice.update { cur -> if (cur is VoiceState.Listening) cur.copy(rms = event.rmsDb) else cur }
-            is VoiceEvent.Partial ->
-                _voice.update { cur -> if (cur is VoiceState.Listening) cur.copy(partial = event.text) else cur }
-            VoiceEvent.Transcribing ->
-                _voice.update { cur -> if (cur is VoiceState.Listening) VoiceState.Transcribing else cur }
+            is VoiceEvent.Level -> updateListening { copy(rms = event.rmsDb) }
+            is VoiceEvent.Partial -> updateListening { copy(partial = event.text) }
+            VoiceEvent.Transcribing -> updateListening { VoiceState.Transcribing }
             is VoiceEvent.Final -> {
                 voiceTicker?.cancel()
                 if (event.transcript.isBlank()) {
-                    _voiceError.value = "Didn't catch that — try again."
+                    setState { copy(voice = VoiceState.Idle) }
+                    sendEffect(ChatEffect.ShowToast("Didn't catch that — try again."))
                 } else {
-                    stageAttachment(
-                        dev.kortex.core.state.Attachment(
-                            mimeType = "audio/x-voice",
-                            dataBase64 = "",
-                            filename = "Voice message",
-                            transcript = event.transcript,
-                            durationMs = System.currentTimeMillis() - voiceStartMs,
-                        )
+                    val note = Attachment(
+                        mimeType = "audio/x-voice",
+                        dataBase64 = "",
+                        filename = "Voice message",
+                        transcript = event.transcript,
+                        durationMs = System.currentTimeMillis() - voiceStartMs,
                     )
+                    setState { copy(stagedAttachments = stagedAttachments + note, voice = VoiceState.Idle) }
                 }
-                _voice.value = VoiceState.Idle
             }
             is VoiceEvent.Failed -> {
                 voiceTicker?.cancel()
-                _voice.value = VoiceState.Idle
-                _voiceError.value = when (event.reason) {
-                    VoiceFailure.UNAVAILABLE -> "Speech recognition isn't available on this device."
-                    VoiceFailure.NO_MATCH -> "Didn't catch that — try again."
-                    VoiceFailure.LANGUAGE_UNAVAILABLE ->
-                        "Offline English isn't installed. Add it under system Settings > Voice input."
-                    VoiceFailure.NO_PERMISSION -> "Microphone permission is required."
-                    VoiceFailure.BUSY -> "The recognizer is busy — try again in a moment."
-                    VoiceFailure.OTHER ->
-                        "Voice input failed${event.code?.let { " (error $it)" }.orEmpty()} — try again."
-                }
+                setState { copy(voice = VoiceState.Idle) }
+                sendEffect(ChatEffect.ShowToast(voiceFailureMessage(event)))
             }
         }
+    }
+
+    private fun voiceFailureMessage(event: VoiceEvent.Failed): String = when (event.reason) {
+        VoiceFailure.UNAVAILABLE -> "Speech recognition isn't available on this device."
+        VoiceFailure.NO_MATCH -> "Didn't catch that — try again."
+        VoiceFailure.LANGUAGE_UNAVAILABLE ->
+            "Offline English isn't installed. Add it under system Settings > Voice input."
+        VoiceFailure.NO_PERMISSION -> "Microphone permission is required."
+        VoiceFailure.BUSY -> "The recognizer is busy — try again in a moment."
+        VoiceFailure.OTHER ->
+            "Voice input failed${event.code?.let { " (error $it)" }.orEmpty()} — try again."
     }
 
     override fun onCleared() {
@@ -222,41 +177,35 @@ class ChatViewModel @Inject constructor(
         super.onCleared()
     }
 
-    fun loadSession(sessionId: String) {
+    private fun loadSession(sessionId: String) {
         viewModelScope.launch {
             val session = sessionRepository.get(sessionId)
             if (session != null) {
                 currentSessionId = session.id
-                _ui.update { it.copy(turns = session.turns, busy = false, status = null) }
+                setState { copy(turns = session.turns, busy = false, status = null) }
             }
         }
     }
 
     /** Deletes a past conversation. If it's the one currently open, starts a fresh one so
      *  the chat screen isn't left pointing at a session that no longer exists. */
-    fun deleteSession(sessionId: String) {
+    private fun deleteSession(sessionId: String) {
         viewModelScope.launch {
             sessionRepository.delete(sessionId)
             if (sessionId == currentSessionId) startNewSession()
         }
     }
 
-    fun renameSession(sessionId: String, title: String) {
-        viewModelScope.launch { sessionRepository.rename(sessionId, title) }
-    }
-
     /** Opens a fresh conversation; a [draft] is placed in the composer for the user to send. */
-    fun startNewSession(draft: String? = null) {
+    private fun startNewSession(draft: String? = null) {
         currentSessionId = UUID.randomUUID().toString()
-        _ui.update { it.copy(turns = emptyList(), busy = false, status = null) }
-        if (draft != null) _draft.value = draft
+        setState { copy(turns = emptyList(), busy = false, status = null) }
+        if (draft != null) sendEffect(ChatEffect.FillComposer(draft))
     }
 
-    fun consumeDraft() { _draft.value = null }
-
-    fun send(query: String) {
-        val attachmentsToSend = _stagedAttachments.value
-        _stagedAttachments.value = emptyList()
+    private fun send(query: String) {
+        val attachmentsToSend = currentState.stagedAttachments
+        setState { copy(stagedAttachments = emptyList()) }
 
         // Voice notes are dictation-only (transcript, no audio bytes): fold their text into
         // the query the agent sees — the router classifies on query text, and an empty query
@@ -278,10 +227,10 @@ class ChatViewModel @Inject constructor(
             val model = activeModels.reasoning
             // Snapshot history before appending this turn — Agent.ask() adds the query as a
             // fresh USER message itself, so including the just-added turn would send it twice.
-            val historyMessages = _ui.value.turns.map { it.message }
-            _ui.update {
-                it.copy(
-                    turns = it.turns + ChatTurn(Message(Message.Role.USER, query, attachmentsToSend)),
+            val historyMessages = currentState.turns.map { it.message }
+            setState {
+                copy(
+                    turns = turns + ChatTurn(Message(Message.Role.USER, query, attachmentsToSend)),
                     busy = true,
                     status = "thinking…",
                     liveReasoning = emptyList(),
@@ -307,7 +256,7 @@ class ChatViewModel @Inject constructor(
                 delegate = Logger { level, tag, message, error ->
                     AndroidLogger.log(level, tag, message, error)
                     liveLines += ReasoningLine(level, tag, message)
-                    _ui.update { it.copy(liveReasoning = liveLines.toList(), liveStats = statsNow()) }
+                    setState { copy(liveReasoning = liveLines.toList(), liveStats = statsNow()) }
                 },
             )
             val turnCtx = AgentContext(
@@ -316,7 +265,7 @@ class ChatViewModel @Inject constructor(
                 models = activeModels.toAgentModels(),
                 governor = ToolGovernor(onAudit = { entry ->
                     toolCalls++
-                    _ui.update { it.copy(liveStats = statsNow()) }
+                    setState { copy(liveStats = statsNow()) }
                     recorder.audit(entry)
                 }),
                 approver = approver,
@@ -324,7 +273,7 @@ class ChatViewModel @Inject constructor(
                 logger = recorder.logger,
                 onLlmUsage = LlmUsageListener { usage ->
                     tokens += usage.inputTokens + usage.outputTokens
-                    _ui.update { it.copy(liveStats = statsNow()) }
+                    setState { copy(liveStats = statsNow()) }
                     recorder.usage.report(usage)
                 },
             )
@@ -341,16 +290,17 @@ class ChatViewModel @Inject constructor(
                 .lastOrNull { it.role == Message.Role.ASSISTANT && it.content.isNotBlank() }
 
             val answerTurn = answer?.let { ChatTurn(it, liveLines.toList(), statsNow()) }
-            val newTurns = _ui.updateAndGet { cur ->
-                cur.copy(
-                    turns = cur.turns + listOfNotNull(answerTurn),
+            setState {
+                copy(
+                    turns = turns + listOfNotNull(answerTurn),
                     liveReasoning = emptyList(),
                     liveStats = ReasoningStats(),
                     busy = false,
                     status = null,
                 )
-            }.turns
-            // Saved outside the update: its lambda can rerun on contention, the save must not.
+            }
+            // Saved outside the reducer: it can rerun on contention, the save must not.
+            val newTurns = currentState.turns
             val sessionId = currentSessionId
             val title = sessionTitle(agentQuery, agentAttachments)
             viewModelScope.launch { sessionRepository.save(sessionId, newTurns, fallbackTitle = title) }

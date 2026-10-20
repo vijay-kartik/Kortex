@@ -54,7 +54,8 @@ fun HistoryScreen(
     vm: ChatViewModel = hiltViewModel()
 ) {
     // Null while the first read is in flight: render nothing rather than the empty state.
-    val sessions by vm.sessions.collectAsStateWithLifecycle()
+    val state by vm.state.collectAsStateWithLifecycle()
+    val sessions = state.sessions
     var pendingDelete by remember { mutableStateOf<ChatSessionSummary?>(null) }
     var pendingRename by remember { mutableStateOf<ChatSessionSummary?>(null) }
 
@@ -145,7 +146,7 @@ fun HistoryScreen(
                 TextButton(
                     enabled = title.isNotBlank(),
                     onClick = {
-                        vm.renameSession(session.id, title)
+                        vm.onIntent(ChatIntent.RenameSession(session.id, title))
                         pendingRename = null
                     },
                 ) {
@@ -174,7 +175,7 @@ fun HistoryScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    vm.deleteSession(session.id)
+                    vm.onIntent(ChatIntent.DeleteSession(session.id))
                     pendingDelete = null
                 }) {
                     Text("Delete", color = Alarm)

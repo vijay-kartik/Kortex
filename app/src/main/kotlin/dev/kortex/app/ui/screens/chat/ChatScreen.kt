@@ -37,8 +37,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +65,7 @@ import dev.kortex.design.Void
 import dev.kortex.app.ui.util.formatVoiceDuration
 import dev.kortex.app.data.files.AttachmentRead
 import dev.kortex.app.data.files.readAttachment
+import dev.kortex.mvi.ObserveEffects
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,25 +74,49 @@ import kotlinx.coroutines.withContext
  * @param request session change from another screen; applied once, then [onRequestHandled] clears it.
  */
 @Composable
-fun ChatScreen(
+fun ChatRoute(
     modifier: Modifier = Modifier,
     request: ChatRequest? = null,
     onRequestHandled: () -> Unit = {},
-    vm: ChatViewModel = hiltViewModel(),
+    viewModel: ChatViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(request) {
         when (val pending = request ?: return@LaunchedEffect) {
-            is ChatRequest.LoadSession -> vm.loadSession(pending.sessionId)
-            is ChatRequest.NewSession -> vm.startNewSession(draft = pending.draft)
+            is ChatRequest.LoadSession -> viewModel.onIntent(ChatIntent.LoadSession(pending.sessionId))
+            is ChatRequest.NewSession -> viewModel.onIntent(ChatIntent.NewSession(draft = pending.draft))
         }
         onRequestHandled()
     }
 
-    val ui by vm.ui.collectAsStateWithLifecycle()
-    var input by remember { mutableStateOf("") }
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    var input by rememberSaveable { mutableStateOf("") }
+    val context = LocalContext.current
+    ObserveEffects(viewModel.effects) { effect ->
+        when (effect) {
+            is ChatEffect.ShowToast -> Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
+            is ChatEffect.FillComposer -> input = effect.text
+        }
+    }
+    ChatScreen(
+        state = state,
+        input = input,
+        onInputChange = { input = it },
+        onIntent = viewModel::onIntent,
+        modifier = modifier,
+    )
+}
+
+/** The composer's [input] is owned by the caller and only reaches the ViewModel in [ChatIntent.Send]. */
+@Composable
+fun ChatScreen(
+    state: ChatState,
+    input: String,
+    onInputChange: (String) -> Unit,
+    onIntent: (ChatIntent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val listState = rememberLazyListState()
 
-    val stagedAttachments by vm.stagedAttachments.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val contentResolver = context.contentResolver
     val coroutineScope = rememberCoroutineScope()
@@ -103,7 +128,9 @@ fun ChatScreen(
             uris.forEach { uri ->
                 val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
                 when (val read = contentResolver.readAttachment(uri, mimeType)) {
-                    is AttachmentRead.Ok -> vm.stageAttachment(read.attachment)
+                    is AttachmentRead.Ok -> withContext(Dispatchers.Main) {
+                        onIntent(ChatIntent.StageAttachment(read.attachment))
+                    }
                     is AttachmentRead.TooLarge -> withContext(Dispatchers.Main) {
                         Toast.makeText(context, read.message, Toast.LENGTH_LONG).show()
                     }
@@ -113,45 +140,27 @@ fun ChatScreen(
         }
     }
 
-    val voice by vm.voice.collectAsStateWithLifecycle()
-    val voiceError by vm.voiceError.collectAsStateWithLifecycle()
-    val draft by vm.draft.collectAsStateWithLifecycle()
-
-    LaunchedEffect(draft) {
-        draft?.let {
-            input = it
-            vm.consumeDraft()
-        }
-    }
-
-    LaunchedEffect(voiceError) {
-        voiceError?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-            vm.consumeVoiceError()
-        }
-    }
-
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            vm.startVoiceInput()
+            onIntent(ChatIntent.StartVoice)
         } else {
             Toast.makeText(context, "Microphone permission is required for voice input.", Toast.LENGTH_SHORT).show()
         }
     }
 
-    LaunchedEffect(ui.turns.size) {
-        if (ui.turns.isNotEmpty()) listState.animateScrollToItem(ui.turns.lastIndex)
+    LaunchedEffect(state.turns.size) {
+        if (state.turns.isNotEmpty()) listState.animateScrollToItem(state.turns.lastIndex)
     }
 
-    ui.pendingApproval?.let { pending ->
+    state.pendingApproval?.let { pending ->
         AlertDialog(
-            onDismissRequest = { vm.resolveApproval(false) },
+            onDismissRequest = { onIntent(ChatIntent.ResolveApproval(false)) },
             title = { Text("Approve action?") },
             text = { Text(pending, fontFamily = Mono, fontSize = 12.sp) },
-            confirmButton = { TextButton(onClick = { vm.resolveApproval(true) }) { Text("Allow") } },
-            dismissButton = { TextButton(onClick = { vm.resolveApproval(false) }) { Text("Deny") } },
+            confirmButton = { TextButton(onClick = { onIntent(ChatIntent.ResolveApproval(true)) }) { Text("Allow") } },
+            dismissButton = { TextButton(onClick = { onIntent(ChatIntent.ResolveApproval(false)) }) { Text("Deny") } },
         )
     }
 
@@ -161,7 +170,7 @@ fun ChatScreen(
             .imePadding()
             .padding(horizontal = 14.dp),
     ) {
-        if (ui.turns.isEmpty() && !ui.busy) {
+        if (state.showEmptyState) {
             EmptyState(Modifier.weight(1f).fillMaxWidth())
         } else {
             LazyColumn(
@@ -170,22 +179,22 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(vertical = 12.dp),
             ) {
-                items(ui.turns) { turn -> MessageBubble(turn) }
+                items(state.turns) { turn -> MessageBubble(turn) }
             }
         }
 
         // Live trace: the agent's routing, LLM calls, tool calls, and reflection verdicts
         // stream in here while it works, then fold into the finished answer's own panel.
-        if (ui.busy && ui.liveReasoning.isNotEmpty()) {
+        if (state.busy && state.liveReasoning.isNotEmpty()) {
             ReasoningPanel(
-                lines = ui.liveReasoning,
-                stats = ui.liveStats,
+                lines = state.liveReasoning,
+                stats = state.liveStats,
                 live = true,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
             )
         }
 
-        if (ui.busy) {
+        if (state.busy) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -193,33 +202,25 @@ fun ChatScreen(
             ) {
                 PulsingDot(7.dp)
                 Text(
-                    buildString {
-                        append((ui.status ?: "working…").lowercase())
-                        if (ui.activeProvider != null) {
-                            append(" • ${ui.activeProvider}")
-                            if (ui.activeModel != null) {
-                                append(" / ${ui.activeModel}")
-                            }
-                        }
-                    },
+                    state.busyLine,
                     style = MaterialTheme.typography.labelSmall,
                     color = Muted,
                 )
             }
         }
 
-        if (stagedAttachments.isNotEmpty()) {
+        if (state.stagedAttachments.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                stagedAttachments.forEachIndexed { index, att ->
+                state.stagedAttachments.forEachIndexed { index, att ->
                     val isVoice = att.mimeType.startsWith("audio/") && att.transcript != null
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = if (isVoice) SynapseDim else Panel,
                         border = BorderStroke(1.dp, if (isVoice) Synapse.copy(alpha = 0.4f) else Edge),
-                        modifier = Modifier.clickable { vm.removeStagedAttachment(index) }
+                        modifier = Modifier.clickable { onIntent(ChatIntent.RemoveAttachment(index)) }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -251,11 +252,11 @@ fun ChatScreen(
             }
         }
 
-        if (voice !is VoiceState.Idle) {
+        if (state.voice !is VoiceState.Idle) {
             ListeningBar(
-                state = voice,
-                onCancel = { vm.cancelVoiceInput() },
-                onDone = { vm.stopVoiceInput() },
+                state = state.voice,
+                onCancel = { onIntent(ChatIntent.CancelVoice) },
+                onDone = { onIntent(ChatIntent.StopVoice) },
                 modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
             )
         } else {
@@ -266,7 +267,7 @@ fun ChatScreen(
             ) {
                 IconButton(
                     onClick = { filePickerLauncher.launch("*/*") },
-                    enabled = !ui.busy,
+                    enabled = !state.busy,
                     modifier = Modifier.size(52.dp)
                 ) {
                     Icon(
@@ -283,9 +284,9 @@ fun ChatScreen(
                 ) {
                     TextField(
                         value = input,
-                        onValueChange = { input = it },
+                        onValueChange = onInputChange,
                         placeholder = { Text("Message Kortex…", color = Muted) },
-                        enabled = !ui.busy,
+                        enabled = !state.busy,
                         maxLines = 4,
                         textStyle = MaterialTheme.typography.bodyLarge,
                         colors = TextFieldDefaults.colors(
@@ -302,11 +303,10 @@ fun ChatScreen(
                 }
                 // The trailing action morphs: mic when there's nothing to send (dictation is
                 // an offer, in the dimmer accent), solid send once text or attachments exist.
-                val canSend = input.isNotBlank() || stagedAttachments.isNotEmpty()
-                if (canSend) {
+                if (state.canSend(input)) {
                     FilledIconButton(
-                        onClick = { vm.send(input); input = "" },
-                        enabled = !ui.busy,
+                        onClick = { onIntent(ChatIntent.Send(input)); onInputChange("") },
+                        enabled = !state.busy,
                         shape = CircleShape,
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = Synapse,
@@ -326,12 +326,12 @@ fun ChatScreen(
                     FilledIconButton(
                         onClick = {
                             if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                vm.startVoiceInput()
+                                onIntent(ChatIntent.StartVoice)
                             } else {
                                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         },
-                        enabled = !ui.busy,
+                        enabled = !state.busy,
                         shape = CircleShape,
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = SynapseDim,
@@ -351,14 +351,9 @@ fun ChatScreen(
             }
         }
 
-        if (ui.activeModel != null) {
-            val providerName = when (ui.activeProvider) {
-                "ollama" -> "Ollama"
-                "ollama-cloud" -> "Ollama Cloud"
-                else -> "OpenAI"
-            }
+        state.modelFooter?.let { footer ->
             Text(
-                text = "${ui.activeModel} • $providerName",
+                text = footer,
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                 color = Muted.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center,

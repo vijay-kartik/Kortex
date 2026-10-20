@@ -93,6 +93,7 @@ dependencies {
     implementation(project(":topics"))
     implementation(project(":finance"))
     implementation(project(":design"))
+    implementation(project(":mvi"))
     implementation(project(":sync"))
     implementation(libs.ktor.client.okhttp)
 

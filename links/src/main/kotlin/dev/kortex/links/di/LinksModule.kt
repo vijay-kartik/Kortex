@@ -16,6 +16,7 @@ import dev.kortex.links.data.TagDao
 import dev.kortex.links.domain.agent.LinksAgent
 import dev.kortex.links.domain.port.Clock
 import dev.kortex.links.domain.port.ImageDownloads
+import dev.kortex.links.domain.port.LinkThumbnails
 import dev.kortex.links.domain.port.PageReader
 import dev.kortex.links.domain.port.TagSuggester
 import dev.kortex.links.domain.repository.LinksRepository
@@ -31,7 +32,10 @@ import dev.kortex.links.domain.usecase.RenameLink
 import dev.kortex.links.domain.usecase.RetryLinkImage
 import dev.kortex.links.domain.usecase.SaveLink
 import dev.kortex.links.domain.usecase.SetLinkTags
-import dev.kortex.links.images.LinkImageStore
+import dev.kortex.links.images.HttpImageFetcher
+import dev.kortex.links.images.ImageDownloadCache
+import dev.kortex.links.images.ImageFetcher
+import dev.kortex.links.images.LinkThumbnailAttacher
 import dev.kortex.links.tagging.LinkEmbedder
 import dev.kortex.links.tagging.MediaPipeLinkEmbedder
 import dev.kortex.links.tagging.PageMetadataFetcher
@@ -52,7 +56,13 @@ abstract class LinksModule {
     abstract fun bindPageReader(impl: PageMetadataFetcher): PageReader
 
     @Binds
-    abstract fun bindImageDownloads(impl: LinkImageStore): ImageDownloads
+    abstract fun bindImageDownloads(impl: ImageDownloadCache): ImageDownloads
+
+    @Binds
+    abstract fun bindImageFetcher(impl: HttpImageFetcher): ImageFetcher
+
+    @Binds
+    abstract fun bindLinkThumbnails(impl: LinkThumbnailAttacher): LinkThumbnails
 
     companion object {
         @Provides
@@ -74,8 +84,8 @@ abstract class LinksModule {
 
         @Provides
         @Singleton
-        fun provideRepository(linkDao: LinkDao, tagDao: TagDao, imageStore: LinkImageStore): LinksRepository =
-            RoomLinksRepository(linkDao, tagDao, imageStore)
+        fun provideRepository(linkDao: LinkDao, tagDao: TagDao, thumbnails: LinkThumbnails): LinksRepository =
+            RoomLinksRepository(linkDao, tagDao, thumbnails)
 
         @Provides
         fun provideClock(): Clock = Clock.System

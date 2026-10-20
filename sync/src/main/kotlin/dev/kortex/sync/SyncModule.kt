@@ -6,7 +6,7 @@ import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.MemoryCacheSettings
 import dev.kortex.finance.data.local.FinanceSyncDao
 import dev.kortex.links.data.LinkSyncDao
-import dev.kortex.links.images.LinkImageStore
+import dev.kortex.links.domain.port.LinkThumbnails
 import dev.kortex.myinfo.topics.data.local.TopicSyncDao
 import dev.kortex.myinfo.topics.domain.port.FileVault
 import dev.kortex.sync.finance.FinanceSync
@@ -20,7 +20,7 @@ object SyncModule {
         context: Context,
         account: CloudAccount,
         linkDao: LinkSyncDao,
-        linkImages: LinkImageStore,
+        linkImages: LinkThumbnails,
         topicDao: TopicSyncDao,
         topicFiles: FileVault,
         financeDao: FinanceSyncDao,

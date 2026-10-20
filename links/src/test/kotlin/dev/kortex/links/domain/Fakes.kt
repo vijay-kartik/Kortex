@@ -3,10 +3,12 @@ package dev.kortex.links.domain
 import dev.kortex.links.data.linkUrlKey
 import dev.kortex.links.domain.model.Link
 import dev.kortex.links.domain.model.LinkDraft
+import dev.kortex.links.domain.model.LinkImageSource
 import dev.kortex.links.domain.model.LinkImageState
 import dev.kortex.links.domain.model.PageMetadata
 import dev.kortex.links.domain.model.TagCount
 import dev.kortex.links.domain.port.ImageDownloads
+import dev.kortex.links.domain.port.LinkThumbnails
 import dev.kortex.links.domain.port.PageReader
 import dev.kortex.links.domain.port.TagSuggester
 import dev.kortex.links.domain.port.TagSuggestion
@@ -113,4 +115,28 @@ class FakeImageDownloads : ImageDownloads {
 
     fun download(imageUrl: String): MutableStateFlow<LinkImageState> =
         downloads.getOrPut(imageUrl) { MutableStateFlow(LinkImageState.Loading(null)) }
+}
+
+/** Records every call; attaches and deletes nothing. */
+class FakeLinkThumbnails : LinkThumbnails {
+    var starts = 0
+    var attachMissingCalls = 0
+    val attached = mutableListOf<Triple<Long, String, LinkImageSource>>()
+    val deleted = mutableListOf<Long>()
+
+    override fun start() {
+        starts++
+    }
+
+    override fun attachWhenReady(linkId: Long, pageUrl: String, source: LinkImageSource) {
+        attached += Triple(linkId, pageUrl, source)
+    }
+
+    override fun attachMissing() {
+        attachMissingCalls++
+    }
+
+    override suspend fun deleteImages(linkId: Long) {
+        deleted += linkId
+    }
 }

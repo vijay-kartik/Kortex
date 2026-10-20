@@ -12,6 +12,7 @@ import dev.kortex.core.log.AndroidLogger
 import dev.kortex.core.log.Logger
 import dev.kortex.finance.reminders.FinanceReminders
 import dev.kortex.finance.sms.BankSms
+import dev.kortex.links.domain.port.LinkThumbnails
 import javax.inject.Inject
 
 /** Root of the Hilt dependency graph (modules in `di/`). Registered as android:name in the manifest. */
@@ -20,6 +21,7 @@ class KortexApp : Application() {
 
     @Inject lateinit var agentBootstrap: AgentBootstrap
     @Inject lateinit var appLock: AppLock
+    @Inject lateinit var linkThumbnails: LinkThumbnails
 
     override fun onCreate() {
         // Before Hilt builds anything that logs: agent DEBUG/INFO lines carry user data, so only
@@ -34,6 +36,8 @@ class KortexApp : Application() {
         FinanceReminders.schedule(this)
         // Bank SMS a stopped job left unread; nothing happens while the feature is off.
         BankSms.catchUp(this)
+        // Link thumbnails: drops files an interrupted delete left behind and retries failed downloads.
+        linkThumbnails.start()
         // App lock times the whole app in the background, not each activity.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) = appLock.onAppForegrounded()

@@ -6,9 +6,9 @@ import dev.kortex.links.domain.model.Link
 import dev.kortex.links.domain.model.LinkDraft
 import dev.kortex.links.domain.model.LinkImageSource
 import dev.kortex.links.domain.model.TagCount
+import dev.kortex.links.domain.port.LinkThumbnails
 import dev.kortex.links.domain.repository.LinksRepository
 import dev.kortex.links.domain.repository.SaveLinkResult
-import dev.kortex.links.images.LinkImageStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.map
 class RoomLinksRepository(
     private val linkDao: LinkDao,
     private val tagDao: TagDao,
-    private val imageStore: LinkImageStore,
+    private val thumbnails: LinkThumbnails,
 ): LinksRepository {
     override fun observeTagNames(): Flow<List<String>> = tagDao.observeAll().map { tags -> tags.map { it.name } }
 
@@ -36,12 +36,12 @@ class RoomLinksRepository(
     /**
      * Deletes the link together with its tag assignments, any tag left with no links because of it,
      * and its thumbnail in app storage. The rows go first, in one transaction: a crash before the
-     * files are removed leaves only orphan files, which [LinkImageStore] sweeps up, never a link
+     * files are removed leaves only orphan files, which [LinkThumbnails.start] sweeps up, never a link
      * pointing at a missing image.
      */
     override suspend fun deleteLink(id: Long) {
         linkDao.deleteWithOrphanedTags(id)
-        imageStore.deleteImages(id)
+        thumbnails.deleteImages(id)
     }
 
     /**
@@ -91,7 +91,7 @@ class RoomLinksRepository(
             Log.e(TAG, "Saving link failed for ${draft.url}", e)
             return SaveLinkResult.Failed
         }
-        imageStore.attachWhenReady(linkId, draft.url, draft.image)
+        thumbnails.attachWhenReady(linkId, draft.url, draft.image)
         return SaveLinkResult.Saved(linkId)
     }
 

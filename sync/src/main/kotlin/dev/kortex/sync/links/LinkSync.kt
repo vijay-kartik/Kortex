@@ -4,8 +4,7 @@ import android.util.Log
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import dev.kortex.links.data.LinkSyncDao
-import dev.kortex.links.domain.model.LinkImageSource
-import dev.kortex.links.images.LinkImageStore
+import dev.kortex.links.domain.port.LinkThumbnails
 import dev.kortex.sync.LiveListener
 import dev.kortex.sync.PendingWrite
 import dev.kortex.sync.SyncCollection
@@ -21,11 +20,13 @@ import kotlinx.coroutines.flow.Flow
 internal class LinkSync(
     private val remote: SyncRemote,
     private val dao: LinkSyncDao,
-    private val images: LinkImageStore,
+    private val images: LinkThumbnails,
     private val afterHeard: suspend (userUid: String) -> Unit = {},
 ) : SyncPart {
 
     override val id = SyncPartId.Links
+
+    private val local = LocalLinks(dao, images)
 
     /** Link documents written since the last pull. */
     override suspend fun countChanged(userUid: String): Int = remote.countChanged(userUid, SyncCollection.Links)
@@ -55,9 +56,7 @@ internal class LinkSync(
         val links = docs.mapNotNull { doc ->
             remoteLink(doc.id, doc.data.orEmpty()).also { if (it == null) Log.w(TAG, "Skipping malformed link doc ${doc.id}") }
         }
-        val result = dao.applyPulled(links)
-        result.needsImage.forEach { images.attachWhenReady(it.id, it.url, LinkImageSource.Known(it.imageUrl)) }
-        result.deleted.forEach { images.deleteImages(it) }
+        local.apply(links)
     }
 
     /**
@@ -89,9 +88,7 @@ internal class LinkSync(
     override suspend fun adoptForNewAccount() = dao.adoptForNewAccount()
 
     /** Thumbnails go with their links. */
-    override suspend fun discardAll() {
-        dao.discardAll().forEach { images.deleteImages(it) }
-    }
+    override suspend fun discardAll() = local.discardAll()
 
     private companion object {
         const val TAG = "LinkSync"

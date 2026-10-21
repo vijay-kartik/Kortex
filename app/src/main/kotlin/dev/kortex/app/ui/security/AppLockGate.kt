@@ -16,11 +16,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -50,6 +50,7 @@ import androidx.lifecycle.withResumed
 import dev.kortex.app.domain.security.AppLock
 import dev.kortex.design.Amber
 import dev.kortex.design.Ink
+import dev.kortex.design.KortexMark
 import dev.kortex.design.Muted
 import dev.kortex.design.R
 import dev.kortex.design.Synapse
@@ -142,19 +143,16 @@ private fun LockScreen(appLock: AppLock) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.fillMaxHeight(0.23f))
-        Box(
-            Modifier.size(72.dp).background(SynapseDim, RoundedCornerShape(18.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("K", color = Synapse, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+        Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {
+            KortexMark(Modifier.requiredSize(72.dp * 1.5f))
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(32.dp))
         Text("Kortex is locked", color = Ink, style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(12.dp))
         Text(
             "Your chats and saved info stay private.",
             color = Muted,
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.weight(1f))

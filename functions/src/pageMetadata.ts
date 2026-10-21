@@ -110,6 +110,20 @@ export function isPrivateAddress(address: string): boolean {
   return v6 === "::" || v6 === "::1" || /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6) || v6.startsWith("ff");
 }
 
+/**
+ * The title and image to save with a link: the caller's where sent, otherwise the page's, and the
+ * url when neither has a title. The page is only fetched when the caller left one of them out.
+ */
+export async function linkFields(
+  url: string,
+  callerTitle: string | null,
+  callerImageUrl: string | null,
+  fetchMetadata: (url: string) => Promise<PageMetadata> = fetchPageMetadata,
+): Promise<{ title: string; imageUrl: string | null }> {
+  const page = callerTitle === null || callerImageUrl === null ? await fetchMetadata(url) : EMPTY;
+  return { title: callerTitle ?? page.title ?? url, imageUrl: callerImageUrl ?? page.imageUrl };
+}
+
 /** Title and image from the page's tags, in the order the app prefers them. */
 export function parsePageMetadata(html: string, pageUrl: string): PageMetadata {
   const head = html.slice(0, MAX_BODY_BYTES);

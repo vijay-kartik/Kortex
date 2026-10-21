@@ -13,7 +13,7 @@ import { HttpsError } from "firebase-functions/v2/https";
 import { itemDoc, linkDoc, MAX_TAG_LENGTH, MAX_TAGS, MAX_TITLE, MAX_URL, parseNewItem, topicDoc, touchedTopic } from "./docs";
 import { Input, invalid } from "./input";
 import { linkUid, linkUrlKey } from "./linkKey";
-import { fetchPageMetadata, PageMetadata } from "./pageMetadata";
+import { fetchPageMetadata, linkFields, PageMetadata } from "./pageMetadata";
 import { parseWebAddress } from "./webAddress";
 
 const EMPTY_PAGE: PageMetadata = { title: null, imageUrl: null };
@@ -34,13 +34,11 @@ export async function addLink(userUid: string, data: unknown) {
   const callerTitle = input.optionalString("title", MAX_TITLE);
   const tags = input.stringList("tags", MAX_TAGS, MAX_TAG_LENGTH);
   const rawImageUrl = input.optionalString("imageUrl", MAX_URL);
-  const callerImageUrl = rawImageUrl && webAddress(rawImageUrl, "imageUrl");
+  const callerImageUrl = rawImageUrl === null ? null : webAddress(rawImageUrl, "imageUrl");
 
   // Read from the page what the caller didn't send, before the transaction so a slow site
   // can't hold it open.
-  const page = callerTitle === undefined || !callerImageUrl ? await fetchPageMetadata(url) : EMPTY_PAGE;
-  const title = callerTitle ?? page.title ?? url;
-  const imageUrl = callerImageUrl || page.imageUrl;
+  const { title, imageUrl } = await linkFields(url, callerTitle, callerImageUrl);
 
   const urlKey = linkUrlKey(url);
   const uid = linkUid(urlKey);

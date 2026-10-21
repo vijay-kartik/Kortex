@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fetchPageMetadata, isPrivateAddress, PageDeps, parsePageMetadata } from "../pageMetadata";
+import { fetchPageMetadata, isPrivateAddress, linkFields, PageDeps, PageMetadata, parsePageMetadata } from "../pageMetadata";
 
 const html = (head: string) => `<html><head>${head}</head><body><p>hi</p></body></html>`;
 
@@ -73,6 +73,45 @@ test("failures and non-html responses give an empty result", async () => {
   const d = deps({ "https://example.com/img": new Response("x", { status: 200, headers: { "content-type": "image/png" } }) });
   assert.deepEqual(await fetchPageMetadata("https://example.com/img", d), { title: null, imageUrl: null });
   assert.deepEqual(await fetchPageMetadata("https://example.com/missing", d), { title: null, imageUrl: null });
+});
+
+function metadata(result: PageMetadata): ((url: string) => Promise<PageMetadata>) & { fetched: string[] } {
+  const fetched: string[] = [];
+  return Object.assign(async (url: string) => {
+    fetched.push(url);
+    return result;
+  }, { fetched });
+}
+
+const LINK_URL = "https://example.com/p";
+const PAGE: PageMetadata = { title: "Page title", imageUrl: "https://example.com/page.png" };
+
+test("link with title and image doesn't fetch the page", async () => {
+  const read = metadata(PAGE);
+  assert.deepEqual(await linkFields(LINK_URL, "Mine", "https://example.com/mine.png", read), { title: "Mine", imageUrl: "https://example.com/mine.png" });
+  assert.deepEqual(read.fetched, []);
+});
+
+test("link with only a title reads the image from the page", async () => {
+  const read = metadata(PAGE);
+  assert.deepEqual(await linkFields(LINK_URL, "Mine", null, read), { title: "Mine", imageUrl: PAGE.imageUrl });
+  assert.deepEqual(read.fetched, [LINK_URL]);
+});
+
+test("link with only an image reads the title from the page", async () => {
+  const read = metadata(PAGE);
+  assert.deepEqual(await linkFields(LINK_URL, null, "https://example.com/mine.png", read), { title: "Page title", imageUrl: "https://example.com/mine.png" });
+  assert.deepEqual(read.fetched, [LINK_URL]);
+});
+
+test("link with neither reads both from the page", async () => {
+  const read = metadata(PAGE);
+  assert.deepEqual(await linkFields(LINK_URL, null, null, read), PAGE);
+  assert.deepEqual(read.fetched, [LINK_URL]);
+});
+
+test("link title falls back to the url when the page gives none", async () => {
+  assert.deepEqual(await linkFields(LINK_URL, null, null, metadata({ title: null, imageUrl: null })), { title: LINK_URL, imageUrl: null });
 });
 
 test("private ranges", () => {

@@ -9,6 +9,7 @@ import dev.kortex.core.tool.ToolResult
 import dev.kortex.core.tool.string
 import dev.kortex.core.tool.tool
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 import java.util.Base64
 
 private const val MAX_TEXT_CHARS = 100_000
@@ -48,6 +49,8 @@ fun readFileTool(): Tool = tool(
                         content = "Converted PDF into ${attachments.size} image pages. The pages are attached to this message. Analyze the attached images to extract the required details.",
                         attachments = attachments
                     )
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     ToolResult(false, "Failed to render PDF: ${e.message}")
                 }
@@ -90,6 +93,8 @@ fun readFileTool(): Tool = tool(
                 content = "Successfully loaded file '${file.name}'. The file has been attached to the conversation. Analyze the attached document and extract the required details.",
                 attachments = listOf(attachment)
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             ToolResult(false, "Failed to read file: ${e.message}")
         }

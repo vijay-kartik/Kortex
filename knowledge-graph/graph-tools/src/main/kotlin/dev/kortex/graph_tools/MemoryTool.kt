@@ -8,6 +8,7 @@ import dev.kortex.core.tool.ToolSchema
 import dev.kortex.graph_core.NodeType
 import dev.kortex.graph_storage.GraphBuilder
 import dev.kortex.graph_storage.GraphRepository
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -65,6 +66,8 @@ class MemoryTool(
             }
 
             ToolResult(true, builder.toString())
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             ToolResult(false, "Failed to search memory: ${e.message}")
         }

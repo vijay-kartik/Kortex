@@ -25,6 +25,9 @@ import kotlinx.serialization.json.putJsonObject
 
 open class McpException(message: String) : RuntimeException(message)
 
+/** The token endpoint explicitly rejected the grant (HTTP 400/401), so stored credentials are no longer usable. */
+class McpOAuthGrantRejectedException(message: String) : McpException(message)
+
 class McpUnauthorizedException(val wwwAuthenticate: String?) : McpException("Unauthorized (401)")
 
 /** One tool advertised by an MCP server: name, description, and its raw JSON-Schema input. */

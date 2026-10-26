@@ -231,7 +231,11 @@ object McpOAuth {
         )
         if (!response.status.isSuccess()) {
             val errorBody = response.bodyAsText()
-            throw McpException("Token refresh failed: ${response.status} - $errorBody")
+            val message = "Token refresh failed: ${response.status} - $errorBody"
+            if (response.status == HttpStatusCode.BadRequest || response.status == HttpStatusCode.Unauthorized) {
+                throw McpOAuthGrantRejectedException(message)
+            }
+            throw McpException(message)
         }
         val tokenResponse = json.decodeFromString<TokenResponse>(response.bodyAsText())
         val expiresAt = tokenResponse.expiresIn?.let { System.currentTimeMillis() + (it * 1000) - 60_000 }

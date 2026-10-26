@@ -1,5 +1,6 @@
 package dev.kortex.core.mcp
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.ktor.client.*
@@ -307,6 +308,27 @@ class McpOAuthTest {
         tokens.expiresAtMillis shouldNotBe null
         val expectedExpiresAt = System.currentTimeMillis() + (3600 * 1000) - 60_000
         (abs(tokens.expiresAtMillis!! - expectedExpiresAt) < 1000L) shouldBe true
+    }
+
+    @Test
+    fun `refresh throws grant rejected on 400 and 401`() = runTest {
+        for (status in listOf(HttpStatusCode.BadRequest, HttpStatusCode.Unauthorized)) {
+            val client = mockClient { respond("""{"error":"invalid_grant"}""", status) }
+            shouldThrow<McpOAuthGrantRejectedException> {
+                McpOAuth.refresh("https://auth.example.com/token", "cid", "ref", "https://api.example.com", client)
+            }
+        }
+    }
+
+    @Test
+    fun `refresh throws plain McpException on server errors`() = runTest {
+        for (status in listOf(HttpStatusCode.TooManyRequests, HttpStatusCode.InternalServerError, HttpStatusCode.ServiceUnavailable)) {
+            val client = mockClient { respond("oops", status) }
+            val e = shouldThrow<McpException> {
+                McpOAuth.refresh("https://auth.example.com/token", "cid", "ref", "https://api.example.com", client)
+            }
+            (e is McpOAuthGrantRejectedException) shouldBe false
+        }
     }
 
     @Test

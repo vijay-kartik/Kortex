@@ -7,7 +7,9 @@ import android.widget.Toast
 import dev.kortex.app.data.settings.McpOAuthState
 import dev.kortex.app.data.settings.SettingsStore
 import dev.kortex.core.mcp.McpOAuth
+import dev.kortex.core.mcp.McpOAuthGrantRejectedException
 import dev.kortex.core.mcp.McpServer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -136,8 +138,13 @@ class McpOAuthManager(
                                     )
                                     settingsStore.setOauthState(url, newState)
                                     newState.accessToken
-                                } catch (e: Exception) {
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: McpOAuthGrantRejectedException) {
                                     settingsStore.setOauthState(url, null)
+                                    null
+                                } catch (e: Exception) {
+                                    // Transient failure (offline, 5xx, bad body): keep credentials so a later call can retry.
                                     null
                                 }
                             }
